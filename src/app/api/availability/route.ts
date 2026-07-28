@@ -60,11 +60,22 @@ export async function GET(req: NextRequest) {
   // too. Without a studio filter we return every studio's classes.
   let studioId: string | undefined;
   if (studioParam) {
-    const { data: studio } = await service
-      .from("studios")
-      .select("id")
-      .or(`slug.eq.${studioParam},id.eq.${studioParam}`)
-      .maybeSingle();
+    // Branch on the shape first. A blanket `.or(slug.eq.X,id.eq.X)` makes
+    // Postgres compare the uuid `id` column against a non-UUID string, which
+    // throws a type error and silently yields no rows — so a friendly slug
+    // like "hideaway" (or even "hideaway-pilates") resolved to nothing.
+    const isUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        studioParam,
+      );
+
+    const studioQuery = isUuid
+      ? service.from("studios").select("id").eq("id", studioParam)
+      : // Prefix match so marketing shorthand (?studio=hideaway) resolves to
+        // the full slug (hideaway-pilates), and an exact slug still works.
+        service.from("studios").select("id").ilike("slug", `${studioParam}%`);
+
+    const { data: studio } = await studioQuery.maybeSingle();
     if (!studio) {
       // Unknown studio → empty (but valid) payload, not an error.
       return NextResponse.json({ sessions: [] }, { headers: cors });

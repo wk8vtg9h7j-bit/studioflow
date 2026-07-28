@@ -35,3 +35,4 @@ supabase/.env
 
 # typescript
 *.tsbuildinfo
+.env*

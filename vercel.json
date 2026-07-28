@@ -1,0 +1,7 @@
+{
+  "framework": "nextjs",
+  "regions": ["icn1"],
+  "crons": [
+    { "path": "/api/cron/sync-google", "schedule": "*/3 * * * *" }
+  ]
+}

@@ -15,9 +15,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { notifyBookingMade } from "@/lib/notify";
 
 export async function bookSessionAction(formData: FormData) {
-  await requireRole("customer", "/book");
+  const profile = await requireRole("customer", "/book");
 
   const sessionId = String(formData.get("session_id") ?? "").trim();
   if (!sessionId) {
@@ -39,6 +40,14 @@ export async function bookSessionAction(formData: FormData) {
     data && typeof data === "object" && "status" in data
       ? String((data as { status: unknown }).status)
       : "booked";
+
+  // Fire-and-forget email alert to admins/instructor (see notify.ts). This can
+  // never block the booking: it no-ops without RESEND_API_KEY and swallows all
+  // errors internally.
+  await notifyBookingMade(sessionId, {
+    customerName: profile.full_name ?? undefined,
+    waitlisted: status === "waitlisted",
+  });
 
   revalidatePath("/book");
   revalidatePath("/my-bookings");

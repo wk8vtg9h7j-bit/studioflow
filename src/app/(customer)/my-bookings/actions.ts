@@ -11,9 +11,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { notifyBookingCancelled } from "@/lib/notify";
 
 export async function cancelBookingAction(formData: FormData) {
-  await requireRole("customer", "/book");
+  const profile = await requireRole("customer", "/book");
 
   const bookingId = String(formData.get("booking_id") ?? "").trim();
   if (!bookingId) {
@@ -21,12 +22,30 @@ export async function cancelBookingAction(formData: FormData) {
   }
 
   const supabase = await createClient();
+
+  // Grab the session before cancelling — the cancel RPC may change the row, so
+  // we read the session_id up front to know which class to alert about.
+  const { data: bk } = await supabase
+    .from("bookings")
+    .select("session_id")
+    .eq("id", bookingId)
+    .single();
+
   const { error } = await supabase.rpc("cancel_booking", {
     p_booking_id: bookingId,
   });
 
   if (error) {
     redirect(`/my-bookings?error=${encodeURIComponent(error.message)}`);
+  }
+
+  // Fire-and-forget email alert to admins/instructor (see notify.ts). This can
+  // never block the cancellation: it no-ops without RESEND_API_KEY and swallows
+  // all errors internally.
+  if (bk?.session_id) {
+    await notifyBookingCancelled(String(bk.session_id), {
+      customerName: profile.full_name ?? undefined,
+    });
   }
 
   revalidatePath("/my-bookings");
