@@ -289,6 +289,60 @@ export async function attachLoginAction(
   };
 }
 
+// ----------------------------------------------------------------------------
+// Delete a customer account.
+//
+// Frees up the email so the person can sign up again. Two cases:
+//   • Has a login (profile_id set) → delete the auth user via the service role.
+//     ON DELETE CASCADE then removes profiles → customers → credit_ledger +
+//     bookings, and — crucially — releases the email from auth.users so it can
+//     be re-registered.
+//   • Walk-in (no profile_id) → delete the customer row directly; the cascade
+//     clears its credit_ledger + bookings.
+//
+// Admin-only and irreversible, so the UI guards it behind a typed confirmation.
+// ----------------------------------------------------------------------------
+const DeleteSchema = z.object({
+  id: z.string().uuid("Could not identify which customer to delete."),
+});
+
+export async function deleteCustomerAction(
+  _prev: CustomerActionState,
+  formData: FormData,
+): Promise<CustomerActionState> {
+  await requireRole("admin", "/admin/customers");
+
+  const parsed = DeleteSchema.safeParse({ id: formData.get("id") });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Check the form." };
+  }
+
+  const svc = createServiceClient();
+
+  // Look the customer up server-side so we never trust a profile_id from the
+  // form, and so we know whether an auth user needs removing.
+  const { data: customer, error: lookupErr } = await svc
+    .from("customers")
+    .select("id, profile_id")
+    .eq("id", parsed.data.id)
+    .single();
+  if (lookupErr || !customer) {
+    return { error: "That customer could not be found." };
+  }
+
+  if (customer.profile_id) {
+    // Cascades profiles → customers → credit_ledger + bookings, and frees the email.
+    const { error } = await svc.auth.admin.deleteUser(customer.profile_id);
+    if (error) return { error: error.message };
+  } else {
+    const { error } = await svc.from("customers").delete().eq("id", customer.id);
+    if (error) return { error: error.message };
+  }
+
+  revalidatePath("/admin/customers");
+  return { ok: true };
+}
+
 export async function updateCustomerAction(
   _prev: CustomerActionState,
   formData: FormData,
@@ -317,6 +371,54 @@ export async function updateCustomerAction(
     .from("customers")
     .update({ ...fields, tags })
     .eq("id", id);
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidatePath("/admin/customers");
+  return { ok: true };
+}
+
+// ----------------------------------------------------------------------------
+// Correct the payment method on a purchase row.
+//
+// Reception sometimes records the wrong tender at grant time (e.g. picks QR when
+// the member actually paid cash). The clips themselves are unaffected — this only
+// rewrites the payment_method column on that one credit_ledger row so the takings
+// report reconciles. Admin-only, matching credit_ledger's write policy.
+// ----------------------------------------------------------------------------
+const PaymentMethodSchema = z.object({
+  ledger_id: z.string().uuid("Could not identify which payment to update."),
+  payment_method: z.enum(PAYMENT_METHODS, {
+    errorMap: () => ({ message: "Choose how it was paid (QR, card, or cash)." }),
+  }),
+});
+
+export async function updatePaymentMethodAction(
+  _prev: CustomerActionState,
+  formData: FormData,
+): Promise<CustomerActionState> {
+  await requireRole("admin", "/admin/customers");
+
+  const parsed = PaymentMethodSchema.safeParse({
+    ledger_id: formData.get("ledger_id"),
+    payment_method: formData.get("payment_method"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Check the form." };
+  }
+
+  const { ledger_id, payment_method } = parsed.data;
+  const supabase = await createClient();
+
+  // Scoped to purchase rows so this can never rewrite a booking deduction or the
+  // automatic starter credit.
+  const { error } = await supabase
+    .from("credit_ledger")
+    .update({ payment_method })
+    .eq("id", ledger_id)
+    .eq("reason", "purchase");
 
   if (error) {
     return { error: error.message };

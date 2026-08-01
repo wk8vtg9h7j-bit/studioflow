@@ -153,12 +153,12 @@ function TierSummary({
 
 function formatAmount(amount: number, currency: string): string {
   try {
-    return new Intl.NumberFormat("en-GB", {
+    return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: currency || "GBP",
+      currency: currency || "VND",
       maximumFractionDigits: 0,
     }).format(amount ?? 0);
   } catch {
-    return `${(amount ?? 0).toFixed(0)} ${currency || "GBP"}`;
+    return `${(amount ?? 0).toFixed(0)} ${currency || "VND"}`;
   }
 }

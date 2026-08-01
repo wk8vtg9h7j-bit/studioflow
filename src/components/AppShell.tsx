@@ -5,6 +5,8 @@
 import Link from "next/link";
 import { SignOutButton } from "@/components/SignOutButton";
 import { NavLink } from "@/components/NavLink";
+import { LanguageToggle } from "@/components/LanguageToggle";
+import type { Locale } from "@/lib/i18n";
 
 export type NavItem = { href: string; label: string };
 
@@ -12,11 +14,13 @@ export function AppShell({
   navItems,
   user,
   roleLabel,
+  locale,
   children,
 }: {
   navItems: NavItem[];
   user: string;
   roleLabel: string;
+  locale?: Locale;
   children: React.ReactNode;
 }) {
   return (
@@ -36,6 +40,7 @@ export function AppShell({
           </nav>
 
           <div className="flex items-center gap-3">
+            {locale && <LanguageToggle locale={locale} />}
             <div className="hidden text-right sm:block">
               <p className="text-sm font-medium leading-tight text-ink">{user}</p>
               <p className="text-xs leading-tight text-ink-soft">{roleLabel}</p>

@@ -19,7 +19,7 @@ import type {
   ClassTypeOption,
   InstructorOption,
 } from "./SessionForm";
-import { setSessionStatusAction } from "./actions";
+import { setSessionStatusAction, fillSessionAction } from "./actions";
 
 export function SessionRow({
   session,
@@ -83,6 +83,19 @@ export function SessionRow({
           >
             {editing ? "Close" : "Edit"}
           </button>
+
+          {!cancelled && (
+            <form action={fillSessionAction}>
+              <input type="hidden" name="id" value={session.id} />
+              <button
+                type="submit"
+                className="btn-ghost"
+                title="Hold every remaining seat so the class shows as full"
+              >
+                Fill class
+              </button>
+            </form>
+          )}
 
           <form action={setSessionStatusAction}>
             <input type="hidden" name="id" value={session.id} />

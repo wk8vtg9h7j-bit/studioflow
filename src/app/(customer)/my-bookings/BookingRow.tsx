@@ -5,9 +5,9 @@
 // cancelBookingAction. Past or already-cancelled bookings show no action.
 // ============================================================================
 import type { Session, Studio, ClassType, Instructor } from "@/lib/types";
+import type { Dict } from "@/lib/i18n";
 import { formatSessionWhen } from "@/lib/format";
-import { SubmitButton } from "@/app/(auth)/SubmitButton";
-import { cancelBookingAction } from "./actions";
+import { CancelBookingForm } from "./CancelBookingForm";
 
 // The joined shape we read on the my-bookings page: a booking with its session
 // and that session's studio / class type / instructor. There's no shared
@@ -39,26 +39,39 @@ const STATUS_BADGE: Record<BookingWithSession["status"], string> = {
   no_show: "bg-zinc-100 text-zinc-600",
 };
 
-const STATUS_LABEL: Record<BookingWithSession["status"], string> = {
-  booked: "Booked",
-  waitlisted: "Waitlisted",
-  cancelled: "Cancelled",
-  attended: "Attended",
-  no_show: "No show",
-};
+const statusLabel = (
+  status: BookingWithSession["status"],
+  dict: Dict,
+): string =>
+  ({
+    booked: dict.booking_status_booked,
+    waitlisted: dict.booking_status_waitlisted,
+    cancelled: dict.booking_status_cancelled,
+    attended: dict.booking_status_attended,
+    no_show: dict.booking_status_no_show,
+  })[status];
 
 export function BookingRow({
   booking,
   cancellable,
+  dict,
 }: {
   booking: BookingWithSession;
   cancellable: boolean;
+  dict: Dict;
 }) {
   const session = booking.session;
   const accent = session?.class_type?.color ?? "#7c3aed";
   const tz = session?.studio?.timezone;
   const title =
-    session?.title || session?.class_type?.name || "Class";
+    session?.title || session?.class_type?.name || dict.session_fallback;
+
+  // A credit is only refunded when the class is still 3+ hours out. Inside that
+  // window we warn the member that cancelling forfeits the credit — matching the
+  // hard rule enforced by the cancel_booking RPC.
+  const warnNoRefund =
+    !!session &&
+    Date.parse(session.starts_at) <= Date.now() + 3 * 60 * 60 * 1000;
 
   return (
     <li className="card overflow-hidden">
@@ -73,11 +86,13 @@ export function BookingRow({
           <div className="flex items-center gap-2">
             <p className="truncate text-sm font-semibold text-ink">{title}</p>
             <span className={`badge ${STATUS_BADGE[booking.status]}`}>
-              {STATUS_LABEL[booking.status]}
+              {statusLabel(booking.status, dict)}
             </span>
           </div>
           <p className="mt-0.5 truncate text-sm text-ink-muted">
-            {session ? formatSessionWhen(session.starts_at, tz) : "Class removed"}
+            {session
+              ? formatSessionWhen(session.starts_at, tz)
+              : dict.booking_class_removed}
             {session?.studio?.name ? ` · ${session.studio.name}` : ""}
             {session?.instructor?.display_name
               ? ` · ${session.instructor.display_name}`
@@ -87,10 +102,7 @@ export function BookingRow({
 
         <div className="w-32 shrink-0">
           {cancellable ? (
-            <form action={cancelBookingAction}>
-              <input type="hidden" name="booking_id" value={booking.id} />
-              <SubmitButton>Cancel</SubmitButton>
-            </form>
+            <CancelBookingForm bookingId={booking.id} warnNoRefund={warnNoRefund} />
           ) : (
             <p className="text-center text-xs text-ink-muted">—</p>
           )}

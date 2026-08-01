@@ -9,25 +9,26 @@ import Link from "next/link";
 import { useFormState } from "react-dom";
 import { updatePasswordAction, type ResetState } from "../actions";
 import { SubmitButton } from "../SubmitButton";
+import { getDict } from "@/lib/i18n";
+import { useLocale } from "@/components/LocaleProvider";
 
 const initial: ResetState = {};
 
 export default function ResetPasswordPage() {
   const [state, formAction] = useFormState(updatePasswordAction, initial);
+  const dict = getDict(useLocale());
 
   return (
     <div className="card p-6">
       <h1 className="text-xl font-semibold tracking-tight text-ink">
-        Set a new password
+        {dict.reset_title}
       </h1>
-      <p className="mt-1 text-sm text-ink-muted">
-        Choose a new password for your account.
-      </p>
+      <p className="mt-1 text-sm text-ink-muted">{dict.reset_intro}</p>
 
       <form action={formAction} className="mt-6 space-y-4">
         <div>
           <label htmlFor="password" className="label">
-            New password
+            {dict.reset_new_password}
           </label>
           <input
             id="password"
@@ -39,7 +40,9 @@ export default function ResetPasswordPage() {
             className="input"
             placeholder="••••••••"
           />
-          <p className="mt-1 text-xs text-ink-soft">At least 8 characters.</p>
+          <p className="mt-1 text-xs text-ink-soft">
+            {dict.reset_password_hint}
+          </p>
         </div>
 
         {state.error ? (
@@ -48,7 +51,7 @@ export default function ResetPasswordPage() {
           </p>
         ) : null}
 
-        <SubmitButton>Update password</SubmitButton>
+        <SubmitButton>{dict.reset_submit}</SubmitButton>
       </form>
 
       <p className="mt-6 text-center text-sm text-ink-muted">
@@ -56,7 +59,7 @@ export default function ResetPasswordPage() {
           href="/forgot-password"
           className="font-medium text-brand-600 hover:text-brand-700"
         >
-          Request a new link
+          {dict.reset_request_new}
         </Link>
       </p>
     </div>

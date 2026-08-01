@@ -177,8 +177,8 @@ export function PayRuleForm({
             type="text"
             className="input"
             maxLength={3}
-            defaultValue={rule?.currency ?? "GBP"}
-            placeholder="GBP"
+            defaultValue={rule?.currency ?? "VND"}
+            placeholder="VND"
             required
           />
         </div>

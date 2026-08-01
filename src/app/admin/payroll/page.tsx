@@ -38,7 +38,7 @@ export default async function PayrollPage() {
   // Totals are split by where the money sits in the flow. "Owed" is everything
   // not yet paid (and not parked in dispute); "paid" is settled. Currency is
   // read off the first row — a single studio book runs one currency in practice.
-  const currency = rows[0]?.currency ?? "GBP";
+  const currency = rows[0]?.currency ?? "VND";
   const totals = rows.reduce(
     (acc, r) => {
       const amount = r.computed_amount ?? 0;
@@ -142,11 +142,12 @@ function SummaryStat({
 
 function formatTotal(amount: number, currency: string): string {
   try {
-    return new Intl.NumberFormat("en-GB", {
+    return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: currency || "GBP",
+      currency: currency || "VND",
+      maximumFractionDigits: 0,
     }).format(amount ?? 0);
   } catch {
-    return `${(amount ?? 0).toFixed(2)} ${currency || "GBP"}`;
+    return `${(amount ?? 0).toFixed(0)} ${currency || "VND"}`;
   }
 }

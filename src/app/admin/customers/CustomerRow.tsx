@@ -7,14 +7,16 @@
 "use client";
 
 import { useState } from "react";
-import { useFormState } from "react-dom";
+import { useFormState, useFormStatus } from "react-dom";
 import { SubmitButton } from "@/app/(auth)/SubmitButton";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, formatSessionDate } from "@/lib/format";
 import type { Customer, Package, Profile } from "@/lib/types";
 import { CustomerForm } from "./CustomerForm";
 import {
   grantPackageAction,
   attachLoginAction,
+  deleteCustomerAction,
+  updatePaymentMethodAction,
   type CustomerActionState,
   type AddCustomerState,
 } from "./actions";
@@ -36,14 +38,33 @@ const STATUS_STYLES: Record<string, string> = {
 
 const grantInitialState: CustomerActionState = {};
 
+const paymentInitialState: CustomerActionState = {};
+
+// Mirrors the credit_ledger payment_method check constraint (0005).
+export type PurchaseRow = {
+  id: string;
+  delta: number;
+  payment_method: string | null;
+  created_at: string;
+  package: { name: string } | null;
+};
+
+const PAYMENT_LABELS: Record<string, string> = {
+  qr: "QR transfer",
+  card: "Card",
+  cash: "Cash",
+};
+
 export function CustomerRow({
   customer,
   creditBalance,
   packages,
+  purchases,
 }: {
   customer: CustomerWithProfile;
   creditBalance: number;
   packages: Package[];
+  purchases: PurchaseRow[];
 }) {
   const [editing, setEditing] = useState(false);
   const isWalkIn = !customer.profile;
@@ -109,9 +130,89 @@ export function CustomerRow({
             <AttachLogin customerId={customer.id} defaultName={name} />
           )}
           <GrantPackage customerId={customer.id} packages={packages} />
+          <PaymentHistory purchases={purchases} />
+          <DeleteCustomer
+            customerId={customer.id}
+            name={name}
+            hasLogin={!isWalkIn}
+          />
         </div>
       )}
     </li>
+  );
+}
+
+const deleteInitialState: CustomerActionState = {};
+
+function DeleteCustomer({
+  customerId,
+  name,
+  hasLogin,
+}: {
+  customerId: string;
+  name: string;
+  hasLogin: boolean;
+}) {
+  const [state, formAction] = useFormState(
+    deleteCustomerAction,
+    deleteInitialState,
+  );
+  const [confirming, setConfirming] = useState(false);
+
+  return (
+    <div className="border-t border-rose-100 pt-4">
+      <h3 className="mb-1 text-sm font-semibold text-rose-700">
+        Delete account
+      </h3>
+      <p className="mb-3 text-xs text-ink-soft">
+        Permanently removes this customer, their credits and booking history.
+        {hasLogin
+          ? " Frees up the email so they can sign up again."
+          : " This walk-in has no login."}{" "}
+        This cannot be undone.
+      </p>
+
+      {state.error && (
+        <p className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {state.error}
+        </p>
+      )}
+
+      {!confirming ? (
+        <button
+          type="button"
+          onClick={() => setConfirming(true)}
+          className="rounded-lg border border-rose-200 px-3 py-1.5 text-sm font-medium text-rose-700 hover:bg-rose-50"
+        >
+          Delete {name}
+        </button>
+      ) : (
+        <form action={formAction} className="flex items-center gap-2">
+          <input type="hidden" name="id" value={customerId} />
+          <DangerSubmit>Yes, delete permanently</DangerSubmit>
+          <button
+            type="button"
+            onClick={() => setConfirming(false)}
+            className="btn-secondary"
+          >
+            Cancel
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+function DangerSubmit({ children }: { children: React.ReactNode }) {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-60"
+    >
+      {pending ? "Please wait…" : children}
+    </button>
   );
 }
 
@@ -251,6 +352,83 @@ function GrantPackage({
         <SubmitButton>Grant package</SubmitButton>
       </form>
     </div>
+  );
+}
+
+function PaymentHistory({ purchases }: { purchases: PurchaseRow[] }) {
+  if (purchases.length === 0) {
+    return (
+      <div className="border-t border-stone-200 pt-4">
+        <p className="text-xs text-ink-soft">No clip-cards sold yet.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-t border-stone-200 pt-4">
+      <h3 className="mb-3 text-sm font-semibold text-ink">Payment history</h3>
+      <ul className="space-y-2">
+        {purchases.map((row) => (
+          <PaymentRow key={row.id} row={row} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function PaymentRow({ row }: { row: PurchaseRow }) {
+  const [state, formAction] = useFormState(
+    updatePaymentMethodAction,
+    paymentInitialState,
+  );
+
+  return (
+    <li className="rounded-lg bg-white px-3 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm text-ink">
+            {row.package?.name ?? "Package"} · {row.delta} credits
+          </p>
+          <p className="text-[11px] text-ink-soft">
+            {formatSessionDate(row.created_at)}
+            {" · "}
+            {row.payment_method
+              ? (PAYMENT_LABELS[row.payment_method] ?? row.payment_method)
+              : "Not recorded"}
+          </p>
+        </div>
+
+        <form action={formAction} className="flex items-center gap-2">
+          <input type="hidden" name="ledger_id" value={row.id} />
+          <select
+            name="payment_method"
+            className="input w-auto py-1 text-sm"
+            defaultValue={row.payment_method ?? ""}
+            required
+            aria-label="Payment method"
+          >
+            <option value="" disabled>
+              How was it paid?…
+            </option>
+            <option value="qr">QR transfer</option>
+            <option value="card">Card</option>
+            <option value="cash">Cash</option>
+          </select>
+          <SubmitButton>Save</SubmitButton>
+        </form>
+      </div>
+
+      {state.error && (
+        <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {state.error}
+        </p>
+      )}
+      {state.ok && (
+        <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+          Payment method updated.
+        </p>
+      )}
+    </li>
   );
 }
 
