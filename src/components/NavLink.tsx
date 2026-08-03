@@ -25,8 +25,8 @@ export function NavLink({
       aria-current={active ? "page" : undefined}
       className={
         active
-          ? "rounded-md px-3 py-1.5 text-sm font-medium text-brand-700 bg-brand-50"
-          : "rounded-md px-3 py-1.5 text-sm font-medium text-ink-muted hover:text-ink hover:bg-stone-100"
+          ? "whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-brand-700 bg-brand-50"
+          : "whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-ink-muted hover:text-ink hover:bg-stone-100"
       }
     >
       {children}

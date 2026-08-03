@@ -40,6 +40,7 @@ export type Dict = {
   nav_book: string;
   nav_bookings: string;
   nav_packages: string;
+  nav_account: string;
   role_member: string;
   sign_out: string;
   language_name: string;
@@ -146,6 +147,7 @@ const en: Dict = {
   nav_book: "Book classes",
   nav_bookings: "My bookings",
   nav_packages: "My packages",
+  nav_account: "My account",
   role_member: "Member",
   sign_out: "Sign out",
   language_name: "English",
@@ -247,6 +249,7 @@ const vi: Dict = {
   nav_book: "Đặt lớp",
   nav_bookings: "Lịch của tôi",
   nav_packages: "Gói của tôi",
+  nav_account: "Tài khoản",
   role_member: "Hội viên",
   sign_out: "Đăng xuất",
   language_name: "Tiếng Việt",
