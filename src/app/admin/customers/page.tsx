@@ -15,17 +15,6 @@ import { AddCustomer } from "./AddCustomer";
 
 export const dynamic = "force-dynamic";
 
-// credit_ledger has a payment_method column (0005) that src/lib/types.ts doesn't
-// model, so the purchase rows get a local shape here.
-type PurchaseRow = {
-  id: string;
-  customer_id: string;
-  delta: number;
-  payment_method: string | null;
-  created_at: string;
-  package: { name: string } | null;
-};
-
 export default async function CustomersPage() {
   const supabase = await createClient();
 
@@ -55,27 +44,6 @@ export default async function CustomersPage() {
     }),
   );
   const balanceById = new Map<string, number>(balances);
-
-  // Past clip-card sales, so an admin can correct a mis-recorded tender. Scoped to
-  // purchases: booking deductions and starter credit have no payment to fix.
-  const purchasesByCustomer = new Map<string, PurchaseRow[]>();
-  if (customers.length > 0) {
-    const { data: purchaseData } = await supabase
-      .from("credit_ledger")
-      .select("id,customer_id,delta,payment_method,created_at,package:packages(name)")
-      .eq("reason", "purchase")
-      .in(
-        "customer_id",
-        customers.map((c) => c.id),
-      )
-      .order("created_at", { ascending: false });
-
-    for (const row of (purchaseData ?? []) as unknown as PurchaseRow[]) {
-      const list = purchasesByCustomer.get(row.customer_id);
-      if (list) list.push(row);
-      else purchasesByCustomer.set(row.customer_id, [row]);
-    }
-  }
 
   const counts = customers.reduce(
     (acc, c) => {
@@ -111,7 +79,6 @@ export default async function CustomersPage() {
                   customer={customer}
                   creditBalance={balanceById.get(customer.id) ?? 0}
                   packages={packages}
-                  purchases={purchasesByCustomer.get(customer.id) ?? []}
                 />
               ))}
             </ul>

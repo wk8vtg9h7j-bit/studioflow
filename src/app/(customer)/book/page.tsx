@@ -1,6 +1,6 @@
 // ============================================================================
-// Customer browse-and-book page. Shows one day at a time: a day picker, studio
-// and class filters, live seat counts, and the member's current credit balance.
+// Customer browse-and-book page. Lists upcoming, bookable classes with live seat
+// counts and the member's current credit balance.
 //
 // Seat counts are the one thing a member can't read for themselves: the bookings
 // RLS policy only exposes a customer's *own* bookings, so a logged-in client can
@@ -10,94 +10,33 @@
 // are read through their normal authed client so each row knows whether they're
 // already booked or waitlisted.
 // ============================================================================
-import { Suspense } from "react";
-import { cookies } from "next/headers";
-import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import type { SessionWithRelations } from "@/lib/types";
-import { getDict, localeFromCookieString } from "@/lib/i18n";
 import { BookSessionRow } from "./BookSessionRow";
-import { BookFilters } from "./BookFilters";
-import { DayNav } from "./DayNav";
-
-// Studios all run on the same clock today; the day picker works in that zone so
-// "today" means the member's today, not the server's.
-const TZ = "Asia/Ho_Chi_Minh";
 
 type MyStatus = "booked" | "waitlisted";
-type Opt = { id: string; name: string };
-
-const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export default async function BookPage({
   searchParams,
 }: {
-  searchParams: Promise<{
-    error?: string;
-    notice?: string;
-    date?: string;
-    studio?: string;
-    type?: string;
-  }>;
+  searchParams: Promise<{ error?: string; notice?: string }>;
 }) {
-  const {
-    error,
-    notice,
-    date: dateParam,
-    studio,
-    type,
-  } = await searchParams;
+  const { error, notice } = await searchParams;
   const supabase = await createClient();
 
-  const cookieStore = await cookies();
-  const locale = localeFromCookieString(cookieStore.toString());
-  const dict = getDict(locale);
+  const nowIso = new Date().toISOString();
 
-  // Which day are we looking at? Anything malformed falls back to today.
-  const now = new Date();
-  const today = formatInTimeZone(now, TZ, "yyyy-MM-dd");
-  const date = dateParam && DAY_RE.test(dateParam) ? dateParam : today;
-  const label = formatInTimeZone(
-    fromZonedTime(`${date}T12:00:00`, TZ),
-    TZ,
-    "EEEE, d MMM yyyy",
-  );
-
-  // Day bounds are local midnight-to-midnight, converted to UTC for the query.
-  // On today we start from "now" so classes that already began drop off.
-  const dayStart = fromZonedTime(`${date}T00:00:00`, TZ);
-  const dayEnd = fromZonedTime(`${date}T00:00:00`, TZ);
-  dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
-  const lowerBound = dayStart > now ? dayStart : now;
-
-  // Filter options. RLS already hides anything a member shouldn't see.
-  const [studiosRes, typesRes] = await Promise.all([
-    supabase.from("studios").select("id,name").eq("active", true).order("name"),
-    supabase
-      .from("class_types")
-      .select("id,name")
-      .eq("active", true)
-      .order("name"),
-  ]);
-  const studios = (studiosRes.data ?? []) as Opt[];
-  const classTypes = (typesRes.data ?? []) as Opt[];
-
-  // Public session list (RLS hides cancelled classes), scoped to the chosen day
-  // and any active filters, soonest-first.
-  let query = supabase
+  // Public session list (RLS hides cancelled classes). Only upcoming, scheduled
+  // classes are bookable, so we filter to those and order soonest-first.
+  const sessionsRes = await supabase
     .from("sessions")
     .select(
-      "*, studio:studios(id,name,slug,brand_color,timezone), class_type:class_types(id,name,color,credits_cost,description), instructor:instructors(id,display_name)",
+      "*, studio:studios(id,name,slug,brand_color,timezone), class_type:class_types(id,name,color,credits_cost), instructor:instructors(id,display_name)",
     )
     .eq("status", "scheduled")
-    .gt("starts_at", lowerBound.toISOString())
-    .lt("starts_at", dayEnd.toISOString())
+    .gt("starts_at", nowIso)
     .order("starts_at", { ascending: true });
 
-  if (studio) query = query.eq("studio_id", studio);
-  if (type) query = query.eq("class_type_id", type);
-
-  const sessionsRes = await query;
   const sessions = (sessionsRes.data ?? []) as SessionWithRelations[];
 
   // Who am I, and how many credits do I have to spend?
@@ -148,9 +87,12 @@ export default async function BookPage({
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-ink">
-          {dict.book_title}
+          Book a class
         </h1>
-        <p className="mt-1 text-sm text-ink-muted">{dict.book_intro}</p>
+        <p className="mt-1 text-sm text-ink-muted">
+          Upcoming classes across our studios. Times are shown in each
+          studio&apos;s local timezone. Booking spends credits from your balance.
+        </p>
       </div>
 
       {error && (
@@ -165,22 +107,10 @@ export default async function BookPage({
       )}
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-        <section className="space-y-4 lg:col-span-2">
-          <Suspense fallback={<div className="card h-16 p-2" />}>
-            <DayNav date={date} today={today} label={label} />
-          </Suspense>
-
-          <BookFilters
-            studios={studios}
-            classTypes={classTypes}
-            studio={studio}
-            type={type}
-            date={date}
-          />
-
+        <section className="lg:col-span-2">
           {sessions.length === 0 ? (
             <div className="card px-5 py-12 text-center text-sm text-ink-muted">
-              {dict.book_empty}
+              No upcoming classes are open for booking right now. Check back soon.
             </div>
           ) : (
             <ul className="space-y-3">
@@ -190,7 +120,6 @@ export default async function BookPage({
                   session={session}
                   booked={bookedBySession.get(session.id) ?? 0}
                   myStatus={myStatusBySession.get(session.id) ?? null}
-                  dict={dict}
                 />
               ))}
             </ul>
@@ -199,17 +128,16 @@ export default async function BookPage({
 
         <aside className="lg:col-span-1">
           <div className="card sticky top-24 p-5">
-            <h2 className="text-sm font-semibold text-ink">
-              {dict.book_credits_heading}
-            </h2>
+            <h2 className="text-sm font-semibold text-ink">Your credits</h2>
             <p className="mt-2 text-3xl font-semibold tracking-tight text-ink">
               {credits}
             </p>
             <p className="mt-1 text-xs text-ink-muted">
-              {dict.credits_available(credits)}
+              credit{credits === 1 ? "" : "s"} available
             </p>
             <p className="mt-4 text-xs leading-relaxed text-ink-muted">
-              {dict.book_credits_help}
+              Each class costs the number of credits shown on it. Out of credits?
+              Purchase a package to top up.
             </p>
           </div>
         </aside>

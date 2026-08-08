@@ -9,26 +9,25 @@ import Link from "next/link";
 import { useFormState } from "react-dom";
 import { updatePasswordAction, type ResetState } from "../actions";
 import { SubmitButton } from "../SubmitButton";
-import { getDict } from "@/lib/i18n";
-import { useLocale } from "@/components/LocaleProvider";
 
 const initial: ResetState = {};
 
 export default function ResetPasswordPage() {
   const [state, formAction] = useFormState(updatePasswordAction, initial);
-  const dict = getDict(useLocale());
 
   return (
     <div className="card p-6">
       <h1 className="text-xl font-semibold tracking-tight text-ink">
-        {dict.reset_title}
+        Set a new password
       </h1>
-      <p className="mt-1 text-sm text-ink-muted">{dict.reset_intro}</p>
+      <p className="mt-1 text-sm text-ink-muted">
+        Choose a new password for your account.
+      </p>
 
       <form action={formAction} className="mt-6 space-y-4">
         <div>
           <label htmlFor="password" className="label">
-            {dict.reset_new_password}
+            New password
           </label>
           <input
             id="password"
@@ -40,9 +39,7 @@ export default function ResetPasswordPage() {
             className="input"
             placeholder="••••••••"
           />
-          <p className="mt-1 text-xs text-ink-soft">
-            {dict.reset_password_hint}
-          </p>
+          <p className="mt-1 text-xs text-ink-soft">At least 8 characters.</p>
         </div>
 
         {state.error ? (
@@ -51,7 +48,7 @@ export default function ResetPasswordPage() {
           </p>
         ) : null}
 
-        <SubmitButton>{dict.reset_submit}</SubmitButton>
+        <SubmitButton>Update password</SubmitButton>
       </form>
 
       <p className="mt-6 text-center text-sm text-ink-muted">
@@ -59,7 +56,7 @@ export default function ResetPasswordPage() {
           href="/forgot-password"
           className="font-medium text-brand-600 hover:text-brand-700"
         >
-          {dict.reset_request_new}
+          Request a new link
         </Link>
       </p>
     </div>

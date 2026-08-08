@@ -8,8 +8,6 @@ import Link from "next/link";
 import { useFormState } from "react-dom";
 import { signUpAction, type AuthState } from "../actions";
 import { SubmitButton } from "../SubmitButton";
-import { getDict } from "@/lib/i18n";
-import { useLocale } from "@/components/LocaleProvider";
 
 const initial: AuthState = { error: null };
 
@@ -46,19 +44,20 @@ function PreviewRolePicker() {
 
 export default function SignupPage() {
   const [state, formAction] = useFormState(signUpAction, initial);
-  const dict = getDict(useLocale());
 
   return (
     <div className="card p-6">
       <h1 className="text-xl font-semibold tracking-tight text-ink">
-        {dict.signup_title}
+        Create your account
       </h1>
-      <p className="mt-1 text-sm text-ink-muted">{dict.signup_intro}</p>
+      <p className="mt-1 text-sm text-ink-muted">
+        Book classes and manage your credits in one place.
+      </p>
 
       <form action={formAction} className="mt-6 space-y-4">
         <div>
           <label htmlFor="fullName" className="label">
-            {dict.signup_full_name}
+            Full name
           </label>
           <input
             id="fullName"
@@ -67,13 +66,13 @@ export default function SignupPage() {
             autoComplete="name"
             required
             className="input"
-            placeholder={dict.signup_name_placeholder}
+            placeholder="Cleo Rivera"
           />
         </div>
 
         <div>
           <label htmlFor="email" className="label">
-            {dict.auth_email}
+            Email
           </label>
           <input
             id="email"
@@ -88,7 +87,7 @@ export default function SignupPage() {
 
         <div>
           <label htmlFor="password" className="label">
-            {dict.auth_password}
+            Password
           </label>
           <input
             id="password"
@@ -98,7 +97,7 @@ export default function SignupPage() {
             required
             minLength={8}
             className="input"
-            placeholder={dict.signup_password_hint}
+            placeholder="At least 8 characters"
           />
         </div>
 
@@ -108,15 +107,15 @@ export default function SignupPage() {
           </p>
         ) : null}
 
-        <SubmitButton>{dict.signup_submit}</SubmitButton>
+        <SubmitButton>Create account</SubmitButton>
       </form>
 
       <PreviewRolePicker />
 
       <p className="mt-6 text-center text-sm text-ink-muted">
-        {dict.signup_have_account}{" "}
+        Already have an account?{" "}
         <Link href="/login" className="font-medium text-brand-600 hover:text-brand-700">
-          {dict.signup_login_link}
+          Log in
         </Link>
       </p>
     </div>

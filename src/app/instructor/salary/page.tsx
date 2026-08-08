@@ -53,7 +53,7 @@ export default async function InstructorSalaryPage() {
   // Totals from the instructor's point of view. "Owed" is everything not yet
   // paid and not in dispute; "paid" is settled. "To confirm" nudges them toward
   // the rows still waiting on their sign-off. Currency is read off the first row.
-  const currency = rows[0]?.currency ?? "VND";
+  const currency = rows[0]?.currency ?? "GBP";
   const totals = rows.reduce(
     (acc, r) => {
       const amount = r.computed_amount ?? 0;
@@ -131,12 +131,11 @@ function SummaryStat({
 
 function formatTotal(amount: number, currency: string): string {
   try {
-    return new Intl.NumberFormat("en-US", {
+    return new Intl.NumberFormat("en-GB", {
       style: "currency",
-      currency: currency || "VND",
-      maximumFractionDigits: 0,
+      currency: currency || "GBP",
     }).format(amount ?? 0);
   } catch {
-    return `${(amount ?? 0).toFixed(0)} ${currency || "VND"}`;
+    return `${(amount ?? 0).toFixed(2)} ${currency || "GBP"}`;
   }
 }

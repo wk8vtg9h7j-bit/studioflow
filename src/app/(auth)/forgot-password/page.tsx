@@ -9,31 +9,31 @@ import Link from "next/link";
 import { useFormState } from "react-dom";
 import { requestPasswordResetAction, type ResetState } from "../actions";
 import { SubmitButton } from "../SubmitButton";
-import { getDict } from "@/lib/i18n";
-import { useLocale } from "@/components/LocaleProvider";
 
 const initial: ResetState = {};
 
 export default function ForgotPasswordPage() {
   const [state, formAction] = useFormState(requestPasswordResetAction, initial);
-  const dict = getDict(useLocale());
 
   return (
     <div className="card p-6">
       <h1 className="text-xl font-semibold tracking-tight text-ink">
-        {dict.forgot_title}
+        Reset your password
       </h1>
-      <p className="mt-1 text-sm text-ink-muted">{dict.forgot_intro}</p>
+      <p className="mt-1 text-sm text-ink-muted">
+        Enter your email and we&rsquo;ll send you a link to set a new password.
+      </p>
 
       {state.ok ? (
         <div className="mt-6 rounded-lg bg-emerald-50 px-3 py-3 text-sm text-emerald-700">
-          {dict.forgot_success}
+          If an account exists for that email, a reset link is on its way. Check
+          your inbox (and spam).
         </div>
       ) : (
         <form action={formAction} className="mt-6 space-y-4">
           <div>
             <label htmlFor="email" className="label">
-              {dict.auth_email}
+              Email
             </label>
             <input
               id="email"
@@ -52,17 +52,17 @@ export default function ForgotPasswordPage() {
             </p>
           ) : null}
 
-          <SubmitButton>{dict.forgot_submit}</SubmitButton>
+          <SubmitButton>Send reset link</SubmitButton>
         </form>
       )}
 
       <p className="mt-6 text-center text-sm text-ink-muted">
-        {dict.forgot_remembered}{" "}
+        Remembered it?{" "}
         <Link
           href="/login"
           className="font-medium text-brand-600 hover:text-brand-700"
         >
-          {dict.forgot_back_to_login}
+          Back to login
         </Link>
       </p>
     </div>

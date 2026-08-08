@@ -35,12 +35,10 @@ export function localeFromCookieString(cookieString: string | undefined | null):
   return normalizeLocale(decodeURIComponent(match.slice(LOCALE_COOKIE.length + 1)));
 }
 
-export type Dict = {
+type Dict = {
   // Shell / nav
   nav_book: string;
   nav_bookings: string;
-  nav_packages: string;
-  nav_account: string;
   role_member: string;
   sign_out: string;
   language_name: string;
@@ -79,19 +77,6 @@ export type Dict = {
   booking_status_no_show: string;
   booking_class_removed: string;
   booking_cancel: string;
-
-  // My packages
-  packages_title: string;
-  packages_intro: string;
-  packages_none: string;
-  packages_browse: string;
-  packages_remaining: (n: number) => string;
-  packages_expires: (date: string) => string;
-  packages_no_expiry: string;
-  packages_purchased: (date: string) => string;
-  packages_pool_regular: string;
-  packages_pool_private: string;
-  packages_of_total: (n: number) => string;
 
   // Auth — shared
   auth_email: string;
@@ -146,8 +131,6 @@ export type Dict = {
 const en: Dict = {
   nav_book: "Book classes",
   nav_bookings: "My bookings",
-  nav_packages: "My packages",
-  nav_account: "My account",
   role_member: "Member",
   sign_out: "Sign out",
   language_name: "English",
@@ -174,7 +157,7 @@ const en: Dict = {
 
   bookings_title: "My bookings",
   bookings_intro:
-    "Your upcoming classes and booking history. Cancel at least 3 hours before a class starts to get your credit back.",
+    "Your upcoming classes and booking history. Cancel an upcoming class to get your credits back.",
   bookings_upcoming: "Upcoming",
   bookings_none_upcoming: "You have no upcoming classes.",
   bookings_book_now: "Book one now",
@@ -186,19 +169,6 @@ const en: Dict = {
   booking_status_no_show: "No show",
   booking_class_removed: "Class removed",
   booking_cancel: "Cancel",
-
-  packages_title: "My packages",
-  packages_intro:
-    "Credit packages you've purchased. Use credits to book classes across our studios.",
-  packages_none: "You have no active packages.",
-  packages_browse: "Browse packages",
-  packages_remaining: (n) => `${n} credit${n === 1 ? "" : "s"} remaining`,
-  packages_expires: (date) => `Expires ${date}`,
-  packages_no_expiry: "No expiry",
-  packages_purchased: (date) => `Purchased ${date}`,
-  packages_pool_regular: "Group credits",
-  packages_pool_private: "Private credits",
-  packages_of_total: (n) => `of ${n}`,
 
   auth_email: "Email",
   auth_password: "Password",
@@ -248,8 +218,6 @@ const en: Dict = {
 const vi: Dict = {
   nav_book: "Đặt lớp",
   nav_bookings: "Lịch của tôi",
-  nav_packages: "Gói của tôi",
-  nav_account: "Tài khoản",
   role_member: "Hội viên",
   sign_out: "Đăng xuất",
   language_name: "Tiếng Việt",
@@ -276,7 +244,7 @@ const vi: Dict = {
 
   bookings_title: "Lịch của tôi",
   bookings_intro:
-    "Các lớp sắp tới và lịch sử đặt lớp của bạn. Hủy ít nhất 3 giờ trước khi lớp bắt đầu để được hoàn lại tín dụng.",
+    "Các lớp sắp tới và lịch sử đặt lớp của bạn. Hủy một lớp sắp tới để được hoàn lại tín dụng.",
   bookings_upcoming: "Sắp tới",
   bookings_none_upcoming: "Bạn chưa có lớp nào sắp tới.",
   bookings_book_now: "Đặt lớp ngay",
@@ -288,19 +256,6 @@ const vi: Dict = {
   booking_status_no_show: "Vắng mặt",
   booking_class_removed: "Lớp đã bị xóa",
   booking_cancel: "Hủy",
-
-  packages_title: "Gói của tôi",
-  packages_intro:
-    "Các gói tín dụng bạn đã mua. Dùng tín dụng để đặt lớp tại các studio của chúng tôi.",
-  packages_none: "Bạn chưa có gói nào đang hoạt động.",
-  packages_browse: "Xem các gói",
-  packages_remaining: (n) => `Còn ${n} tín dụng`,
-  packages_expires: (date) => `Hết hạn ${date}`,
-  packages_no_expiry: "Không hết hạn",
-  packages_purchased: (date) => `Đã mua ${date}`,
-  packages_pool_regular: "Tín dụng lớp nhóm",
-  packages_pool_private: "Tín dụng lớp riêng",
-  packages_of_total: (n) => `trên ${n}`,
 
   auth_email: "Email",
   auth_password: "Mật khẩu",
