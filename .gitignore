@@ -36,3 +36,6 @@ supabase/.env
 # typescript
 *.tsbuildinfo
 .env*
+
+# local backups
+*.bak
