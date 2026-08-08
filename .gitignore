@@ -39,3 +39,6 @@ supabase/.env
 
 # local backups
 *.bak
+
+# claude code local state (contains machine-specific paths and secrets)
+.claude/settings.local.json
