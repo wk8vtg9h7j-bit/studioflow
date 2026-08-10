@@ -1,9 +1,15 @@
 // ============================================================================
 // SessionRow — one scheduled class on the admin calendar list. It shows the
-// at-a-glance details (class/title, studio, when, instructor, capacity) and can
-// expand into an inline edit form. Cancelling/restoring posts directly to a
-// server action; editing reuses the shared SessionForm, so the row receives the
-// studio/class-type/instructor option arrays as props to hand straight through.
+// at-a-glance details (class/title, studio, when, instructor, live occupancy)
+// and can expand into an inline edit form. Cancelling/restoring posts directly
+// to a server action; editing reuses the shared SessionForm, so the row receives
+// the studio/class-type/instructor option arrays as props to hand straight
+// through.
+//
+// `booked` is the live seat count for this session, computed by the page (see
+// the companion bookings query there). It counts 'booked' + 'attended' rows, so
+// "3 of 4" here means the same thing the database means when it decides whether
+// the next booking gets a seat or the waitlist.
 //
 // Times are always rendered in the session's own studio timezone, so an admin in
 // London sees a Sydney class at its Sydney wall-clock.
@@ -23,11 +29,13 @@ import { setSessionStatusAction } from "./actions";
 
 export function SessionRow({
   session,
+  booked,
   studios,
   classTypes,
   instructors,
 }: {
   session: SessionWithRelations;
+  booked: number;
   studios: StudioOption[];
   classTypes: ClassTypeOption[];
   instructors: InstructorOption[];
@@ -70,7 +78,7 @@ export function SessionRow({
             {" · "}
             {session.instructor?.display_name ?? "Unassigned"}
             {" · "}
-            {session.capacity} spots
+            {booked} of {session.capacity} booked
             {session.room ? ` · ${session.room}` : ""}
           </p>
         </div>

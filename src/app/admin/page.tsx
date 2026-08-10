@@ -3,9 +3,12 @@
 // entities, the next few sessions, and anything waiting on the admin.
 // ============================================================================
 import Link from "next/link";
+import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import { createClient } from "@/lib/supabase/server";
 import type { SessionWithRelations } from "@/lib/types";
-import { formatSessionWhen } from "@/lib/format";
+import { formatSessionWhen, formatMoney } from "@/lib/format";
+
+const STUDIO_TZ = "Asia/Ho_Chi_Minh";
 
 // Count helper — uses a head-only count query so we don't pull rows we discard.
 async function countOf(
@@ -23,23 +26,64 @@ export default async function AdminOverviewPage() {
   const supabase = await createClient();
   const nowIso = new Date().toISOString();
 
+  // Today's window, anchored to the studio's wall clock (Vietnam has no DST, so
+  // the day is exactly 24h long and we can add a fixed offset for the end.)
+  const todayKey = formatInTimeZone(new Date(), STUDIO_TZ, "yyyy-MM-dd");
+  const dayStart = fromZonedTime(`${todayKey}T00:00:00`, STUDIO_TZ);
+  const dayStartIso = dayStart.toISOString();
+  const dayEndIso = new Date(dayStart.getTime() + 86_400_000).toISOString();
+
   const [
-    studioCount,
     classTypeCount,
-    instructorCount,
     customerCount,
     upcomingCount,
     pendingPayrollCount,
+    attendanceRes,
+    revenueRes,
   ] = await Promise.all([
-    countOf(supabase, "studios", (q) => q.eq("active", true)),
     countOf(supabase, "class_types", (q) => q.eq("active", true)),
-    countOf(supabase, "instructors", (q) => q.eq("active", true)),
     countOf(supabase, "customers"),
     countOf(supabase, "sessions", (q) =>
       q.gte("starts_at", nowIso).eq("status", "scheduled"),
     ),
     countOf(supabase, "session_payroll", (q) => q.eq("status", "pending")),
+    // Bookings carry no session time of their own, so join through to sessions
+    // and filter on the embedded alias. Cancelled seats don't count either way.
+    supabase
+      .from("bookings")
+      .select("status, session:sessions!inner(starts_at)")
+      .gte("session.starts_at", dayStartIso)
+      .lt("session.starts_at", dayEndIso)
+      .in("status", ["booked", "attended", "no_show"]),
+    // Money lives on the package, not the ledger row. reason='purchase' keeps
+    // signup starter credits (reason='adjustment') out of the takings.
+    supabase
+      .from("credit_ledger")
+      .select("package:packages(price_cents,currency)")
+      .eq("reason", "purchase")
+      .gte("created_at", dayStartIso)
+      .lt("created_at", dayEndIso),
   ]);
+
+  const attendanceRows = (attendanceRes.data ?? []) as { status: string }[];
+  const attendanceTotal = attendanceRows.length;
+  const attendedCount = attendanceRows.filter(
+    (b) => b.status === "attended",
+  ).length;
+  const attendancePct =
+    attendanceTotal === 0
+      ? null
+      : Math.round((attendedCount / attendanceTotal) * 100);
+
+  const revenueRows = (revenueRes.data ?? []) as {
+    package: { price_cents: number; currency: string } | null;
+  }[];
+  const revenueTotal = revenueRows.reduce(
+    (sum, r) => sum + (r.package?.price_cents ?? 0),
+    0,
+  );
+  const revenueCurrency =
+    revenueRows.find((r) => r.package?.currency)?.package?.currency ?? "VND";
 
   const { data: nextSessions } = await supabase
     .from("sessions")
@@ -53,10 +97,18 @@ export default async function AdminOverviewPage() {
 
   const sessions = (nextSessions ?? []) as SessionWithRelations[];
 
-  const stats = [
-    { label: "Active studios", value: studioCount, href: "/admin/studios" },
+  const stats: { label: string; value: string | number; href: string }[] = [
+    {
+      label: `Attendance today (${attendedCount}/${attendanceTotal})`,
+      value: attendancePct === null ? "—" : `${attendancePct}%`,
+      href: "/admin/sessions",
+    },
+    {
+      label: "Revenue today",
+      value: formatMoney(revenueTotal, revenueCurrency),
+      href: "/admin/payments",
+    },
     { label: "Class types", value: classTypeCount, href: "/admin/class-types" },
-    { label: "Instructors", value: instructorCount, href: "/admin/instructors" },
     { label: "Customers", value: customerCount, href: "/admin/customers" },
     { label: "Upcoming sessions", value: upcomingCount, href: "/admin/sessions" },
     { label: "Payroll pending", value: pendingPayrollCount, href: "/admin/payroll" },
