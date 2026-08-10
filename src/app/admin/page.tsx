@@ -75,7 +75,7 @@ export default async function AdminOverviewPage() {
       ? null
       : Math.round((attendedCount / attendanceTotal) * 100);
 
-  const revenueRows = (revenueRes.data ?? []) as {
+  const revenueRows = (revenueRes.data ?? []) as unknown as {
     package: { price_cents: number; currency: string } | null;
   }[];
   const revenueTotal = revenueRows.reduce(
