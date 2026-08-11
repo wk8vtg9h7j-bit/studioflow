@@ -66,6 +66,17 @@ export function RegisterPanel({ sessionId }: { sessionId: string }) {
   );
   const [apState, apAction] = useFormState(setClassApprovalAction, initial);
 
+  // Success pop-up. Checking someone in (or taking a door payment) reloads the
+  // register, which redraws the whole panel — easy to miss. The toast is the
+  // visible confirmation that the command actually ran. It clears itself so a
+  // stale confirmation never sits over the next action.
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
   const exDone = useRef(false);
   const wkDone = useRef(false);
   const stDone = useRef(false);
@@ -74,6 +85,7 @@ export function RegisterPanel({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     if (exState.ok && !exDone.current) {
       exDone.current = true;
+      setToast("Checked in — the class is updated.");
       setReload((n) => n + 1);
     }
     if (!exState.ok) exDone.current = false;
@@ -81,6 +93,7 @@ export function RegisterPanel({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     if (wkState.ok && !wkDone.current) {
       wkDone.current = true;
+      setToast("Payment taken — now find them above to check in.");
       setReload((n) => n + 1);
     }
     if (!wkState.ok) wkDone.current = false;
@@ -116,6 +129,15 @@ export function RegisterPanel({ sessionId }: { sessionId: string }) {
 
   return (
     <div className="space-y-6">
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed left-1/2 top-6 z-50 -translate-x-1/2 rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white shadow-lg"
+        >
+          {toast}
+        </div>
+      )}
       {/* Status strip — capacity, the live counts, and class state at a glance */}
       <div className="rounded-xl border border-stone-200 bg-white p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -287,11 +309,6 @@ export function RegisterPanel({ sessionId }: { sessionId: string }) {
             {exState.error}
           </p>
         )}
-        {exState.ok && (
-          <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
-            Checked in.
-          </p>
-        )}
       </section>
 
       {/* New customer + door payment */}
@@ -339,11 +356,6 @@ export function RegisterPanel({ sessionId }: { sessionId: string }) {
         {wkState.error && (
           <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">
             {wkState.error}
-          </p>
-        )}
-        {wkState.ok && (
-          <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
-            Payment taken &amp; balance added. Now find them above to check in.
           </p>
         )}
         <SubmitButton>Take payment</SubmitButton>
