@@ -1,10 +1,15 @@
 // ============================================================================
 // SessionRow — one scheduled class on the admin calendar list. It shows the
 // at-a-glance details (class/title, studio, when, instructor, live occupancy)
-// and can expand into an inline edit form. Cancelling/restoring posts directly
-// to a server action; editing reuses the shared SessionForm, so the row receives
-// the studio/class-type/instructor option arrays as props to hand straight
-// through.
+// and can expand into one of two inline panels: an edit form, or the register
+// ("Fill class") where reception checks people in. Cancelling/restoring posts
+// directly to a server action; editing reuses the shared SessionForm, so the row
+// receives the studio/class-type/instructor option arrays as props to hand
+// straight through. RegisterPanel needs only the session id — it fetches its own
+// roster — so it takes nothing else from here.
+//
+// Only one panel is open at a time: opening either closes the other, so the row
+// never grows two stacked forms.
 //
 // `booked` is the live seat count for this session, computed by the page (see
 // the companion bookings query there). It counts 'booked' + 'attended' rows, so
@@ -25,6 +30,7 @@ import type {
   ClassTypeOption,
   InstructorOption,
 } from "./SessionForm";
+import { RegisterPanel } from "./RegisterPanel";
 import { setSessionStatusAction } from "./actions";
 
 export function SessionRow({
@@ -40,7 +46,9 @@ export function SessionRow({
   classTypes: ClassTypeOption[];
   instructors: InstructorOption[];
 }) {
-  const [editing, setEditing] = useState(false);
+  const [panel, setPanel] = useState<"none" | "edit" | "register">("none");
+  const editing = panel === "edit";
+  const filling = panel === "register";
 
   const cancelled = session.status === "cancelled";
   const tz = session.studio?.timezone;
@@ -86,7 +94,17 @@ export function SessionRow({
         <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
-            onClick={() => setEditing((v) => !v)}
+            onClick={() =>
+              setPanel((p) => (p === "register" ? "none" : "register"))
+            }
+            className="btn-secondary"
+          >
+            {filling ? "Close" : "Fill class"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setPanel((p) => (p === "edit" ? "none" : "edit"))}
             className="btn-secondary"
           >
             {editing ? "Close" : "Edit"}
@@ -117,8 +135,14 @@ export function SessionRow({
             studios={studios}
             classTypes={classTypes}
             instructors={instructors}
-            onDone={() => setEditing(false)}
+            onDone={() => setPanel("none")}
           />
+        </div>
+      )}
+
+      {filling && (
+        <div className="border-t border-stone-200 bg-stone-50 px-5 py-4">
+          <RegisterPanel sessionId={session.id} />
         </div>
       )}
     </li>
