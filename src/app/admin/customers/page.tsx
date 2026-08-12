@@ -12,10 +12,17 @@ import { createClient } from "@/lib/supabase/server";
 import type { Package } from "@/lib/types";
 import { CustomerRow, type CustomerWithProfile } from "./CustomerRow";
 import { AddCustomer } from "./AddCustomer";
+import { CustomerFilters } from "./CustomerFilters";
 
 export const dynamic = "force-dynamic";
 
-export default async function CustomersPage() {
+export default async function CustomersPage({
+  searchParams,
+}: {
+  searchParams?: { q?: string; status?: string };
+}) {
+  const q = searchParams?.q?.trim() ?? "";
+  const status = searchParams?.status?.trim() ?? "";
   const supabase = await createClient();
 
   const { data } = await supabase
@@ -24,6 +31,25 @@ export default async function CustomersPage() {
     .order("created_at", { ascending: false });
 
   const customers = (data ?? []) as CustomerWithProfile[];
+
+  // Search matches the same fields the row displays: the profile values when a
+  // login exists, otherwise the details stored directly on the walk-in record.
+  // This runs in JS because PostgREST cannot filter an embedded relation
+  // without !inner, which would silently drop every walk-in (profile is null).
+  const needle = q.toLowerCase();
+  const visible = customers.filter((c) => {
+    if (status && c.status !== status) return false;
+    if (!needle) return true;
+    const haystack = [
+      c.profile?.full_name ?? c.name,
+      c.profile?.email ?? c.email,
+      c.profile?.phone ?? c.phone,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(needle);
+  });
 
   // Active packages an admin can grant (sell) to a customer as a clip-card.
   const { data: packageData } = await supabase
@@ -71,9 +97,10 @@ export default async function CustomersPage() {
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
         <section className="space-y-4 lg:col-span-2">
           <AddCustomer />
-          {customers.length > 0 ? (
+          <CustomerFilters q={q || undefined} status={status || undefined} />
+          {visible.length > 0 ? (
             <ul className="space-y-3">
-              {customers.map((customer) => (
+              {visible.map((customer) => (
                 <CustomerRow
                   key={customer.id}
                   customer={customer}
@@ -84,8 +111,17 @@ export default async function CustomersPage() {
             </ul>
           ) : (
             <div className="card px-5 py-12 text-center text-sm text-ink-muted">
-              No customers yet. They&apos;ll appear here as soon as people sign
-              up and start booking classes.
+              {customers.length > 0 ? (
+                <>
+                  No customers match that search. Try a different name, email,
+                  or phone number.
+                </>
+              ) : (
+                <>
+                  No customers yet. They&apos;ll appear here as soon as people
+                  sign up and start booking classes.
+                </>
+              )}
             </div>
           )}
         </section>

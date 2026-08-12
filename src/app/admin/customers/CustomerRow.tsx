@@ -15,6 +15,7 @@ import { CustomerForm } from "./CustomerForm";
 import {
   grantPackageAction,
   attachLoginAction,
+  deleteCustomerAction,
   type CustomerActionState,
   type AddCustomerState,
 } from "./actions";
@@ -27,6 +28,7 @@ export type CustomerWithProfile = Customer & {
 };
 
 const attachInitialState: AddCustomerState = {};
+const deleteInitialState: AddCustomerState = {};
 
 const STATUS_STYLES: Record<string, string> = {
   active: "bg-emerald-50 text-emerald-700",
@@ -109,6 +111,7 @@ export function CustomerRow({
             <AttachLogin customerId={customer.id} defaultName={name} />
           )}
           <GrantPackage customerId={customer.id} packages={packages} />
+          <DeleteCustomer customerId={customer.id} name={name} />
         </div>
       )}
     </li>
@@ -250,6 +253,83 @@ function GrantPackage({
 
         <SubmitButton>Grant package</SubmitButton>
       </form>
+    </div>
+  );
+}
+
+function DeleteCustomer({
+  customerId,
+  name,
+}: {
+  customerId: string;
+  name: string;
+}) {
+  const [state, formAction] = useFormState(
+    deleteCustomerAction,
+    deleteInitialState,
+  );
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="border-t border-stone-200 pt-4">
+      <h3 className="mb-3 text-sm font-semibold text-rose-700">
+        Delete customer
+      </h3>
+
+      {!open ? (
+        <div>
+          <p className="mb-3 text-xs text-ink-soft">
+            Permanently removes {name}, along with their credits and booking
+            history. This cannot be undone.
+          </p>
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="btn-secondary text-rose-700"
+          >
+            Delete this customer
+          </button>
+        </div>
+      ) : (
+        <form action={formAction} className="space-y-3">
+          <input type="hidden" name="id" value={customerId} />
+          <div>
+            <label className="label" htmlFor={`del-${customerId}`}>
+              Type DELETE to confirm
+            </label>
+            <input
+              id={`del-${customerId}`}
+              name="confirm"
+              className="input"
+              placeholder="DELETE"
+              autoComplete="off"
+              required
+            />
+          </div>
+
+          {state.error && (
+            <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              {state.error}
+            </p>
+          )}
+          {state.ok && (
+            <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+              {state.message ?? "Customer deleted."}
+            </p>
+          )}
+
+          <div className="flex items-center gap-3">
+            <SubmitButton>Delete permanently</SubmitButton>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="btn-secondary"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }

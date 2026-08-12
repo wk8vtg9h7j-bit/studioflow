@@ -289,6 +289,52 @@ export async function attachLoginAction(
   };
 }
 
+// ----------------------------------------------------------------------------
+// Delete a customer outright.
+//
+// Reception occasionally creates a duplicate or mistyped walk-in; this removes
+// the CRM record and everything hanging off it. The customer's own auth user is
+// left alone — deleting a login is a separate, heavier decision.
+//
+// Uses the service client because RLS on customers/credit_ledger/bookings does
+// not grant admins a blanket delete (same approach as attachLoginAction).
+// ----------------------------------------------------------------------------
+const DeleteCustomerSchema = z.object({
+  id: z.string().uuid("Could not identify which customer to delete."),
+  confirm: z.literal("DELETE", {
+    errorMap: () => ({ message: "Type DELETE to confirm." }),
+  }),
+});
+
+export async function deleteCustomerAction(
+  _prev: AddCustomerState,
+  formData: FormData,
+): Promise<AddCustomerState> {
+  await requireRole("admin", "/admin/customers");
+
+  const parsed = DeleteCustomerSchema.safeParse({
+    id: formData.get("id"),
+    confirm: formData.get("confirm"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Check the form." };
+  }
+
+  const { id } = parsed.data;
+  const svc = createServiceClient();
+
+  // There is no ON DELETE CASCADE from customers, so clear the dependent rows
+  // first or the delete fails on a foreign-key violation.
+  await svc.from("credit_ledger").delete().eq("customer_id", id);
+  await svc.from("bookings").delete().eq("customer_id", id);
+
+  const { error } = await svc.from("customers").delete().eq("id", id);
+  if (error) return { error: error.message };
+
+  revalidatePath("/admin/customers");
+  return { ok: true, message: "Customer deleted." };
+}
+
 export async function updateCustomerAction(
   _prev: CustomerActionState,
   formData: FormData,
