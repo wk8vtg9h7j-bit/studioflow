@@ -6,6 +6,7 @@
 // the class is full the button becomes a "Join waitlist" call to action.
 // ============================================================================
 import type { SessionWithRelations } from "@/lib/types";
+import type { Dict } from "@/lib/i18n";
 import { formatSessionWhen } from "@/lib/format";
 import { SubmitButton } from "@/app/(auth)/SubmitButton";
 import { bookSessionAction } from "./actions";
@@ -14,9 +15,10 @@ type Props = {
   session: SessionWithRelations;
   booked: number;
   myStatus: "booked" | "waitlisted" | null;
+  dict: Dict;
 };
 
-export function BookSessionRow({ session, booked, myStatus }: Props) {
+export function BookSessionRow({ session, booked, myStatus, dict }: Props) {
   const capacity = session.capacity ?? 0;
   const available = Math.max(0, capacity - booked);
   const isFull = available <= 0;
@@ -36,7 +38,7 @@ export function BookSessionRow({ session, booked, myStatus }: Props) {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <p className="truncate text-sm font-semibold text-ink">
-              {session.title || session.class_type?.name || "Class"}
+              {session.title || session.class_type?.name || dict.session_fallback}
             </p>
             {myStatus && (
               <span
@@ -46,7 +48,9 @@ export function BookSessionRow({ session, booked, myStatus }: Props) {
                     : "bg-amber-50 text-amber-700"
                 }`}
               >
-                {myStatus === "booked" ? "Booked" : "Waitlisted"}
+                {myStatus === "booked"
+                  ? dict.status_booked
+                  : dict.status_waitlisted}
               </span>
             )}
           </div>
@@ -66,22 +70,22 @@ export function BookSessionRow({ session, booked, myStatus }: Props) {
 
         <div className="shrink-0 text-right">
           <p className="text-sm font-semibold text-ink">
-            {isFull ? "Full" : `${available} left`}
+            {isFull ? dict.seats_full : dict.seats_left(available)}
           </p>
-          <p className="text-xs text-ink-muted">
-            {cost} credit{cost === 1 ? "" : "s"}
-          </p>
+          <p className="text-xs text-ink-muted">{dict.cost_credits(cost)}</p>
         </div>
 
         <div className="w-32 shrink-0">
           {myStatus ? (
             <p className="text-center text-xs text-ink-muted">
-              You&apos;re {myStatus === "booked" ? "in" : "on the list"}
+              {myStatus === "booked" ? dict.youre_in : dict.youre_on_list}
             </p>
           ) : (
             <form action={bookSessionAction}>
               <input type="hidden" name="session_id" value={session.id} />
-              <SubmitButton>{isFull ? "Join waitlist" : "Book"}</SubmitButton>
+              <SubmitButton>
+                {isFull ? dict.action_join_waitlist : dict.action_book}
+              </SubmitButton>
             </form>
           )}
         </div>

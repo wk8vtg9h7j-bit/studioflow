@@ -141,6 +141,51 @@ export async function grantPackageAction(
 }
 
 // ----------------------------------------------------------------------------
+// Correct how an existing purchase was paid. Reception sometimes records the
+// wrong method at the till, so admins can fix it after the fact. Only the
+// payment_method column moves — credits, expiry and the package link stay put.
+// Uses the service client because credit_ledger RLS allows admin inserts but is
+// not proven to allow updates.
+// ----------------------------------------------------------------------------
+const PaymentMethodSchema = z.object({
+  ledger_id: z.string().uuid("Could not identify which purchase to update."),
+  payment_method: z.enum(PAYMENT_METHODS, {
+    errorMap: () => ({ message: "Choose how it was paid (QR, card, or cash)." }),
+  }),
+});
+
+export async function updatePaymentMethodAction(
+  _prev: CustomerActionState,
+  formData: FormData,
+): Promise<CustomerActionState> {
+  await requireRole("admin", "/admin/customers");
+
+  const parsed = PaymentMethodSchema.safeParse({
+    ledger_id: formData.get("ledger_id"),
+    payment_method: formData.get("payment_method"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Check the form." };
+  }
+
+  const { ledger_id, payment_method } = parsed.data;
+  const service = createServiceClient();
+
+  const { error } = await service
+    .from("credit_ledger")
+    .update({ payment_method })
+    .eq("id", ledger_id)
+    .eq("reason", "purchase");
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidatePath("/admin/customers");
+  return { ok: true };
+}
+
+// ----------------------------------------------------------------------------
 // Add a customer manually (reception).
 //   • Walk-in   → a CRM record with no login (profile_id null), basic contact
 //     details stored on the customer row.

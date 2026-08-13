@@ -16,6 +16,7 @@ import {
   grantPackageAction,
   attachLoginAction,
   deleteCustomerAction,
+  updatePaymentMethodAction,
   type CustomerActionState,
   type AddCustomerState,
 } from "./actions";
@@ -25,6 +26,18 @@ export type CustomerWithProfile = Customer & {
   email?: string | null;
   phone?: string | null;
   profile?: Pick<Profile, "full_name" | "email" | "phone"> | null;
+};
+
+// One clip-card sale, read from credit_ledger by the customers page. Kept here
+// so the page and the row agree on the shape without a round trip through a
+// generated database type.
+export type PurchaseRow = {
+  id: string;
+  customer_id: string;
+  delta: number;
+  payment_method: string | null;
+  created_at: string;
+  package?: { name: string } | null;
 };
 
 const attachInitialState: AddCustomerState = {};
@@ -37,15 +50,18 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 const grantInitialState: CustomerActionState = {};
+const paymentMethodInitialState: CustomerActionState = {};
 
 export function CustomerRow({
   customer,
   creditBalance,
   packages,
+  purchases,
 }: {
   customer: CustomerWithProfile;
   creditBalance: number;
   packages: Package[];
+  purchases: PurchaseRow[];
 }) {
   const [editing, setEditing] = useState(false);
   const isWalkIn = !customer.profile;
@@ -111,6 +127,7 @@ export function CustomerRow({
             <AttachLogin customerId={customer.id} defaultName={name} />
           )}
           <GrantPackage customerId={customer.id} packages={packages} />
+          <PurchaseHistory purchases={purchases} />
           <DeleteCustomer customerId={customer.id} name={name} />
         </div>
       )}
@@ -331,6 +348,92 @@ function DeleteCustomer({
         </form>
       )}
     </div>
+  );
+}
+
+// Past clip-card sales, each with an inline control to correct how it was paid.
+// Reception sometimes records the wrong method at the till; everything else on
+// the ledger row (credits, expiry, package) stays untouched.
+function PurchaseHistory({ purchases }: { purchases: PurchaseRow[] }) {
+  if (purchases.length === 0) {
+    return (
+      <div className="border-t border-stone-200 pt-4">
+        <h3 className="mb-2 text-sm font-semibold text-ink">Purchases</h3>
+        <p className="text-xs text-ink-muted">
+          No packages sold to this customer yet.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-t border-stone-200 pt-4">
+      <h3 className="mb-3 text-sm font-semibold text-ink">Purchases</h3>
+      <ul className="space-y-2">
+        {purchases.map((purchase) => (
+          <EditPaymentMethod key={purchase.id} purchase={purchase} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function EditPaymentMethod({ purchase }: { purchase: PurchaseRow }) {
+  const [state, formAction] = useFormState(
+    updatePaymentMethodAction,
+    paymentMethodInitialState,
+  );
+
+  const sold = new Date(purchase.created_at).toLocaleDateString();
+
+  return (
+    <li className="rounded-lg border border-stone-200 bg-white px-3 py-2">
+      <form action={formAction} className="flex flex-wrap items-end gap-3">
+        <input type="hidden" name="ledger_id" value={purchase.id} />
+
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-ink">
+            {purchase.package?.name ?? "Package"}
+          </p>
+          <p className="text-xs text-ink-muted">
+            {purchase.delta} credit{purchase.delta === 1 ? "" : "s"} · {sold}
+          </p>
+        </div>
+
+        <div>
+          <label className="label" htmlFor={`pm-${purchase.id}`}>
+            Paid by
+          </label>
+          <select
+            id={`pm-${purchase.id}`}
+            name="payment_method"
+            className="input"
+            defaultValue={purchase.payment_method ?? ""}
+            required
+          >
+            <option value="" disabled>
+              How was it paid?…
+            </option>
+            <option value="qr">QR transfer</option>
+            <option value="card">Card</option>
+            <option value="cash">Cash</option>
+          </select>
+        </div>
+
+        <SubmitButton>Save</SubmitButton>
+      </form>
+
+      {state.error && (
+        <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {state.error}
+        </p>
+      )}
+      {state.ok && (
+        <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+          Payment method updated.
+        </p>
+      )}
+    </li>
   );
 }
 

@@ -104,6 +104,7 @@ export interface CreditLedgerEntry {
   package_id: string | null;
   booking_id: string | null;
   expires_at: string | null;
+  payment_method: string | null;
   created_at: string;
 }
 

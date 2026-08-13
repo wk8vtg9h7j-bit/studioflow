@@ -8,9 +8,13 @@
 // Each row shows a live credit balance, computed per-customer through the
 // credit_balance() security-definer RPC (sum of non-expired ledger deltas).
 // ============================================================================
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import type { Package } from "@/lib/types";
-import { CustomerRow, type CustomerWithProfile } from "./CustomerRow";
+import {
+  CustomerRow,
+  type CustomerWithProfile,
+  type PurchaseRow,
+} from "./CustomerRow";
 import { AddCustomer } from "./AddCustomer";
 import { CustomerFilters } from "./CustomerFilters";
 
@@ -71,6 +75,29 @@ export default async function CustomersPage({
   );
   const balanceById = new Map<string, number>(balances);
 
+  // Purchase rows (one per clip-card sold) so admins can correct how each was
+  // paid. Read with the service client: credit_ledger RLS is proven for admin
+  // inserts but not for reads from this page.
+  const purchasesByCustomer = new Map<string, PurchaseRow[]>();
+  if (customers.length > 0) {
+    const service = createServiceClient();
+    const { data: purchases } = await service
+      .from("credit_ledger")
+      .select("id,customer_id,delta,payment_method,created_at,package:packages(name)")
+      .eq("reason", "purchase")
+      .in(
+        "customer_id",
+        customers.map((c) => c.id),
+      )
+      .order("created_at", { ascending: false });
+
+    for (const row of (purchases ?? []) as unknown as PurchaseRow[]) {
+      const list = purchasesByCustomer.get(row.customer_id) ?? [];
+      list.push(row);
+      purchasesByCustomer.set(row.customer_id, list);
+    }
+  }
+
   const counts = customers.reduce(
     (acc, c) => {
       acc.total += 1;
@@ -106,6 +133,7 @@ export default async function CustomersPage({
                   customer={customer}
                   creditBalance={balanceById.get(customer.id) ?? 0}
                   packages={packages}
+                  purchases={purchasesByCustomer.get(customer.id) ?? []}
                 />
               ))}
             </ul>

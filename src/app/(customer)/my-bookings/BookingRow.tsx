@@ -5,6 +5,7 @@
 // cancelBookingAction. Past or already-cancelled bookings show no action.
 // ============================================================================
 import type { Session, Studio, ClassType, Instructor } from "@/lib/types";
+import type { Dict } from "@/lib/i18n";
 import { formatSessionWhen } from "@/lib/format";
 import { SubmitButton } from "@/app/(auth)/SubmitButton";
 import { cancelBookingAction } from "./actions";
@@ -39,26 +40,32 @@ const STATUS_BADGE: Record<BookingWithSession["status"], string> = {
   no_show: "bg-zinc-100 text-zinc-600",
 };
 
-const STATUS_LABEL: Record<BookingWithSession["status"], string> = {
-  booked: "Booked",
-  waitlisted: "Waitlisted",
-  cancelled: "Cancelled",
-  attended: "Attended",
-  no_show: "No show",
-};
+// Status labels are locale-dependent, so they're built from the dictionary
+// inside the component rather than held in a module-level constant.
+const statusLabels = (
+  dict: Dict,
+): Record<BookingWithSession["status"], string> => ({
+  booked: dict.booking_status_booked,
+  waitlisted: dict.booking_status_waitlisted,
+  cancelled: dict.booking_status_cancelled,
+  attended: dict.booking_status_attended,
+  no_show: dict.booking_status_no_show,
+});
 
 export function BookingRow({
   booking,
   cancellable,
+  dict,
 }: {
   booking: BookingWithSession;
   cancellable: boolean;
+  dict: Dict;
 }) {
   const session = booking.session;
   const accent = session?.class_type?.color ?? "#7c3aed";
   const tz = session?.studio?.timezone;
   const title =
-    session?.title || session?.class_type?.name || "Class";
+    session?.title || session?.class_type?.name || dict.session_fallback;
 
   return (
     <li className="card overflow-hidden">
@@ -73,11 +80,13 @@ export function BookingRow({
           <div className="flex items-center gap-2">
             <p className="truncate text-sm font-semibold text-ink">{title}</p>
             <span className={`badge ${STATUS_BADGE[booking.status]}`}>
-              {STATUS_LABEL[booking.status]}
+              {statusLabels(dict)[booking.status]}
             </span>
           </div>
           <p className="mt-0.5 truncate text-sm text-ink-muted">
-            {session ? formatSessionWhen(session.starts_at, tz) : "Class removed"}
+            {session
+              ? formatSessionWhen(session.starts_at, tz)
+              : dict.booking_class_removed}
             {session?.studio?.name ? ` · ${session.studio.name}` : ""}
             {session?.instructor?.display_name
               ? ` · ${session.instructor.display_name}`
@@ -89,7 +98,7 @@ export function BookingRow({
           {cancellable ? (
             <form action={cancelBookingAction}>
               <input type="hidden" name="booking_id" value={booking.id} />
-              <SubmitButton>Cancel</SubmitButton>
+              <SubmitButton>{dict.booking_cancel}</SubmitButton>
             </form>
           ) : (
             <p className="text-center text-xs text-ink-muted">—</p>
