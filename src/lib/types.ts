@@ -193,6 +193,9 @@ export interface GoogleSyncLogEntry {
 // ----------------------------------------------------------------------------
 export interface SessionWithRelations extends Session {
   studio?: Pick<Studio, "id" | "name" | "slug" | "brand_color" | "timezone">;
-  class_type?: Pick<ClassType, "id" | "name" | "color" | "credits_cost">;
+  class_type?: Pick<
+    ClassType,
+    "id" | "name" | "color" | "credits_cost" | "description"
+  >;
   instructor?: Pick<Instructor, "id" | "display_name"> | null;
 }

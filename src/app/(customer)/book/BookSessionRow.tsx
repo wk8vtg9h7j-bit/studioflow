@@ -57,6 +57,11 @@ export function BookSessionRow({ session, booked, myStatus }: Props) {
               ? ` · ${session.instructor.display_name}`
               : ""}
           </p>
+          {session.class_type?.description ? (
+            <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-ink-soft">
+              {session.class_type.description}
+            </p>
+          ) : null}
         </div>
 
         <div className="shrink-0 text-right">

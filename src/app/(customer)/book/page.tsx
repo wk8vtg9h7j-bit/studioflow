@@ -31,7 +31,7 @@ export default async function BookPage({
   const sessionsRes = await supabase
     .from("sessions")
     .select(
-      "*, studio:studios(id,name,slug,brand_color,timezone), class_type:class_types(id,name,color,credits_cost), instructor:instructors(id,display_name)",
+      "*, studio:studios(id,name,slug,brand_color,timezone), class_type:class_types(id,name,color,credits_cost,description), instructor:instructors(id,display_name)",
     )
     .eq("status", "scheduled")
     .gt("starts_at", nowIso)

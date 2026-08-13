@@ -1,72 +1,128 @@
 // ============================================================================
 // Public landing page. Signed-in users are sent straight to their dashboard.
+// Signed-out visitors get the interactive Recharged landing, seeded with each
+// studio's real upcoming lineup. The query runs on the service client because
+// this page is unauthenticated — RLS would otherwise hide the schedule from an
+// anonymous visitor. Only public class info is read (no personal data).
 // ============================================================================
-import Link from "next/link";
 import { redirect } from "next/navigation";
+import { formatInTimeZone } from "date-fns-tz";
 import { getProfile, homePathForRole } from "@/lib/auth";
+import { createServiceClient } from "@/lib/supabase/server";
+import LandingExperience, {
+  type LandingClass,
+  type LandingStudio,
+} from "./LandingExperience";
+
+export const dynamic = "force-dynamic";
+
+// Copy that has no home in the database yet. Keyed by studio slug so a new
+// studio still renders (it just falls back to a generic blurb).
+const STUDIO_COPY: Record<string, { short: string; blurb: string }> = {
+  default: {
+    short: "Studio",
+    blurb:
+      "Small-group reformer Pilates with hands-on coaching. Book a mat, move with intention, leave recharged.",
+  },
+};
+
+type SessionRow = {
+  id: string;
+  starts_at: string;
+  studio: {
+    id: string;
+    name: string;
+    slug: string | null;
+    brand_color: string | null;
+    timezone: string | null;
+    address: string | null;
+  } | null;
+  class_type: {
+    id: string;
+    name: string;
+    color: string | null;
+    credits_cost: number | null;
+    description: string | null;
+  } | null;
+};
 
 export default async function HomePage() {
   const profile = await getProfile();
   if (profile) redirect(homePathForRole(profile.role));
 
-  return (
-    <main className="min-h-screen">
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
-        <span className="text-lg font-semibold tracking-tight text-ink">
-          Studio<span className="text-brand-600">Flow</span>
-        </span>
-        <nav className="flex items-center gap-2">
-          <Link href="/login" className="btn-ghost">
-            Log in
-          </Link>
-          <Link href="/signup" className="btn-primary">
-            Get started
-          </Link>
-        </nav>
-      </header>
+  const service = createServiceClient();
+  const { data } = await service
+    .from("sessions")
+    .select(
+      "id,starts_at, studio:studios(id,name,slug,brand_color,timezone,address), class_type:class_types(id,name,color,credits_cost,description)",
+    )
+    .eq("status", "scheduled")
+    .gt("starts_at", new Date().toISOString())
+    .order("starts_at", { ascending: true })
+    .limit(200);
 
-      <section className="mx-auto max-w-3xl px-6 pb-16 pt-20 text-center">
-        <p className="mb-4 inline-flex items-center rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700">
-          For boutique Pilates studios
-        </p>
-        <h1 className="text-balance text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
-          Run your studio, not your spreadsheets.
-        </h1>
-        <p className="mx-auto mt-5 max-w-xl text-pretty text-lg text-ink-muted">
-          Class bookings, customer CRM, instructor payroll by attendance, and
-          per-studio Google Calendar sync — in one place.
-        </p>
-        <div className="mt-8 flex items-center justify-center gap-3">
-          <Link href="/signup" className="btn-primary">
-            Create an account
-          </Link>
-          <Link href="/login" className="btn-secondary">
-            I already have one
-          </Link>
-        </div>
-      </section>
+  const rows = (data ?? []) as unknown as SessionRow[];
 
-      <section className="mx-auto grid max-w-5xl gap-4 px-6 pb-24 sm:grid-cols-3">
-        {[
-          {
-            title: "Smart bookings",
-            body: "Credit packages, capacity limits, and automatic waitlist promotion.",
-          },
-          {
-            title: "Instructor payroll",
-            body: "Pay rules by class, studio, and headcount — confirmed by instructors.",
-          },
-          {
-            title: "Calendar sync",
-            body: "Each studio mirrors its schedule to its own Google Calendar.",
-          },
-        ].map((f) => (
-          <div key={f.title} className="card p-5">
-            <h3 className="text-sm font-semibold text-ink">{f.title}</h3>
-            <p className="mt-1.5 text-sm text-ink-muted">{f.body}</p>
-          </div>
-        ))}
-      </section>
-    </main>
-  );
+  // Group by studio, then keep only the first upcoming day per studio so the
+  // landing shows one clean lineup rather than every future class.
+  const byStudio = new Map<string, LandingStudio>();
+  const dayByStudio = new Map<string, string>();
+
+  for (const row of rows) {
+    const studio = row.studio;
+    const classType = row.class_type;
+    if (!studio || !classType) continue;
+
+    const key = studio.slug ?? studio.id;
+    const tz = studio.timezone ?? "Asia/Ho_Chi_Minh";
+    const day = formatInTimeZone(row.starts_at, tz, "yyyy-MM-dd");
+
+    let entry = byStudio.get(key);
+    if (!entry) {
+      const copy = STUDIO_COPY[key] ?? STUDIO_COPY.default;
+      entry = {
+        key,
+        name: studio.name,
+        short: copy.short === "Studio" ? studio.name : copy.short,
+        address: studio.address ?? "",
+        accent: studio.brand_color ?? "#7c3aed",
+        blurb: copy.blurb,
+        classes: [],
+        scheduleLabel: formatInTimeZone(row.starts_at, tz, "EEE d MMM"),
+      };
+      byStudio.set(key, entry);
+      dayByStudio.set(key, day);
+    }
+
+    // Only the first upcoming day, capped so the grid stays tidy.
+    if (dayByStudio.get(key) !== day || entry.classes.length >= 8) continue;
+
+    const cls: LandingClass = {
+      name: classType.name,
+      description: classType.description ?? "",
+      credits: classType.credits_cost ?? 1,
+      color: classType.color ?? entry.accent,
+      time: formatInTimeZone(row.starts_at, tz, "HH:mm"),
+    };
+    entry.classes.push(cls);
+  }
+
+  const studios = [...byStudio.values()];
+
+  // No schedule yet? Still render the landing with a placeholder studio so the
+  // hero, pricing, and sign-up calls to action stay live.
+  if (studios.length === 0) {
+    studios.push({
+      key: "recharged",
+      name: "Recharged Da Nang",
+      short: "Da Nang",
+      address: "",
+      accent: "#7c3aed",
+      blurb: STUDIO_COPY.default.blurb,
+      classes: [],
+      scheduleLabel: "",
+    });
+  }
+
+  return <LandingExperience studios={studios} />;
 }

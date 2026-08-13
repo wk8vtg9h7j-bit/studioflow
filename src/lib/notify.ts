@@ -124,6 +124,50 @@ async function notifyBooking(
   }
 }
 
+// ----------------------------------------------------------------------------
+// Password reset — the studio's Supabase project has no custom SMTP, so
+// resetPasswordForEmail never delivers. We mint the recovery link with the
+// service role and send it through Resend instead. Returns false when the mail
+// couldn't be sent so the caller can tell the user rather than silently failing.
+// ----------------------------------------------------------------------------
+export async function notifyPasswordReset(
+  to: string,
+  link: string,
+): Promise<boolean> {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) return false;
+
+  const from =
+    process.env.NOTIFY_FROM_EMAIL ||
+    "Pilates by Recharged <onboarding@resend.dev>";
+
+  const html = `
+    <p>Hi,</p>
+    <p>Use the link below to set a new password. It expires shortly, so open it soon.</p>
+    <p><a href="${escapeHtml(link)}">Set a new password</a></p>
+    <p>If you didn't request this, you can safely ignore this email.</p>
+  `;
+
+  try {
+    const res = await fetch(RESEND_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from,
+        to: [to],
+        subject: "Reset your password",
+        html,
+      }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 function escapeHtml(v: string): string {
   return v
     .replace(/&/g, "&amp;")

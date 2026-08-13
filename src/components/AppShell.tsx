@@ -5,18 +5,26 @@
 import Link from "next/link";
 import { SignOutButton } from "@/components/SignOutButton";
 import { NavLink } from "@/components/NavLink";
+import { LanguageToggle } from "@/components/LanguageToggle";
+import type { Locale } from "@/lib/i18n";
 
 export type NavItem = { href: string; label: string };
 
+// `locale` is optional: only the customer and auth surfaces are translated, so
+// the admin and instructor layouts render the shell without a language toggle.
 export function AppShell({
   navItems,
   user,
   roleLabel,
+  locale,
+  notifications,
   children,
 }: {
   navItems: NavItem[];
   user: string;
   roleLabel: string;
+  locale?: Locale;
+  notifications?: { count: number; href: string };
   children: React.ReactNode;
 }) {
   return (
@@ -40,6 +48,37 @@ export function AppShell({
               <p className="text-sm font-medium leading-tight text-ink">{user}</p>
               <p className="text-xs leading-tight text-ink-soft">{roleLabel}</p>
             </div>
+            {notifications ? (
+              <Link
+                href={notifications.href}
+                aria-label={
+                  notifications.count > 0
+                    ? `${notifications.count} new notifications`
+                    : "Notifications"
+                }
+                className="relative grid h-9 w-9 place-items-center rounded-full text-ink-soft transition hover:bg-stone-100 hover:text-ink"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-5 w-5"
+                  aria-hidden="true"
+                >
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                  <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+                </svg>
+                {notifications.count > 0 ? (
+                  <span className="absolute -right-0.5 -top-0.5 grid min-w-[1.15rem] place-items-center rounded-full bg-brand-600 px-1 text-[0.65rem] font-semibold leading-[1.15rem] text-white">
+                    {notifications.count > 99 ? "99+" : notifications.count}
+                  </span>
+                ) : null}
+              </Link>
+            ) : null}
+            {locale ? <LanguageToggle locale={locale} /> : null}
             <SignOutButton />
           </div>
         </div>

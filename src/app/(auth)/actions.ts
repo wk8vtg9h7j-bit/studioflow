@@ -12,6 +12,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getProfile, homePathForRole } from "@/lib/auth";
 import { PREVIEW_MODE, PREVIEW_COOKIE } from "@/lib/preview";
 import { siteOrigin } from "@/lib/site";
+import { notifyPasswordReset } from "@/lib/notify";
 
 export type AuthState = { error: string | null };
 
@@ -143,10 +144,34 @@ export async function requestPasswordResetAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid email." };
   }
 
-  const supabase = await createClient();
-  await supabase.auth.resetPasswordForEmail(parsed.data.email, {
-    redirectTo: `${siteOrigin()}/auth/callback?next=/reset-password`,
+  // The project has no custom SMTP, so Supabase's own resetPasswordForEmail
+  // never delivers. Mint the recovery link with the service role and send it
+  // through Resend (same channel as the booking notifications).
+  const admin = createServiceClient();
+  const { data, error } = await admin.auth.admin.generateLink({
+    type: "recovery",
+    email: parsed.data.email,
+    options: {
+      redirectTo: `${siteOrigin()}/auth/callback?next=/reset-password`,
+    },
   });
+
+  // Unknown address: report success anyway so the form never reveals whether
+  // an email is registered.
+  if (error || !data?.properties?.action_link) {
+    return { ok: true };
+  }
+
+  const sent = await notifyPasswordReset(
+    parsed.data.email,
+    data.properties.action_link,
+  );
+  if (!sent) {
+    return {
+      error:
+        "We couldn't send the reset email right now. Please contact the studio.",
+    };
+  }
 
   return { ok: true };
 }
