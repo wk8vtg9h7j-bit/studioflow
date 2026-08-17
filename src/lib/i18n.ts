@@ -79,6 +79,9 @@ export type Dict = {
   booking_status_no_show: string;
   booking_class_removed: string;
   booking_cancel: string;
+  booking_cancelled_refunded: string;
+  booking_cancelled_no_refund: string;
+  booking_cancel_warning: string;
 
   // My packages
   packages_title: string;
@@ -186,6 +189,11 @@ const en: Dict = {
   booking_status_no_show: "No show",
   booking_class_removed: "Class removed",
   booking_cancel: "Cancel",
+  booking_cancelled_refunded: "Booking cancelled and credits refunded.",
+  booking_cancelled_no_refund:
+    "Booking cancelled. The class starts within 3 hours, so your credit was not refunded.",
+  booking_cancel_warning:
+    "This class starts in less than 3 hours.\n\nIf you cancel now your credit will NOT be refunded.\n\nCancel anyway?",
 
   packages_title: "My packages",
   packages_intro:
@@ -288,6 +296,11 @@ const vi: Dict = {
   booking_status_no_show: "Vắng mặt",
   booking_class_removed: "Lớp đã bị xóa",
   booking_cancel: "Hủy",
+  booking_cancelled_refunded: "Đã hủy đặt lớp và hoàn lại tín dụng.",
+  booking_cancelled_no_refund:
+    "Đã hủy đặt lớp. Lớp bắt đầu trong vòng 3 giờ nên tín dụng của bạn không được hoàn lại.",
+  booking_cancel_warning:
+    "Lớp này bắt đầu trong chưa đầy 3 giờ.\n\nNếu bạn hủy bây giờ, tín dụng của bạn sẽ KHÔNG được hoàn lại.\n\nVẫn hủy?",
 
   packages_title: "Gói của tôi",
   packages_intro:

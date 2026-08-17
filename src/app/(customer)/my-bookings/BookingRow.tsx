@@ -7,8 +7,11 @@
 import type { Session, Studio, ClassType, Instructor } from "@/lib/types";
 import type { Dict } from "@/lib/i18n";
 import { formatSessionWhen } from "@/lib/format";
-import { SubmitButton } from "@/app/(auth)/SubmitButton";
-import { cancelBookingAction } from "./actions";
+import { CancelBookingForm } from "./CancelBookingForm";
+
+// Cancelling this close to the start forfeits the credit (migration 0012), so
+// the member gets a confirm dialog spelling that out before the action runs.
+const REFUND_WINDOW_MS = 3 * 60 * 60 * 1000;
 
 // The joined shape we read on the my-bookings page: a booking with its session
 // and that session's studio / class type / instructor. There's no shared
@@ -96,10 +99,15 @@ export function BookingRow({
 
         <div className="w-32 shrink-0">
           {cancellable ? (
-            <form action={cancelBookingAction}>
-              <input type="hidden" name="booking_id" value={booking.id} />
-              <SubmitButton>{dict.booking_cancel}</SubmitButton>
-            </form>
+            <CancelBookingForm
+              bookingId={booking.id}
+              warnNoRefund={
+                (booking.credits_spent ?? 0) > 0 &&
+                !!session &&
+                Date.parse(session.starts_at) < Date.now() + REFUND_WINDOW_MS
+              }
+              dict={dict}
+            />
           ) : (
             <p className="text-center text-xs text-ink-muted">—</p>
           )}

@@ -6,34 +6,30 @@
 // ============================================================================
 "use client";
 
+import type { Dict } from "@/lib/i18n";
 import { SubmitButton } from "@/app/(auth)/SubmitButton";
 import { cancelBookingAction } from "./actions";
 
 export function CancelBookingForm({
   bookingId,
   warnNoRefund,
+  dict,
 }: {
   bookingId: string;
   warnNoRefund: boolean;
+  dict: Dict;
 }) {
   return (
     <form
       action={cancelBookingAction}
       onSubmit={(e) => {
-        if (
-          warnNoRefund &&
-          !window.confirm(
-            "This class starts in less than 3 hours.\n\n" +
-              "If you cancel now your credit will NOT be refunded.\n\n" +
-              "Cancel anyway?",
-          )
-        ) {
+        if (warnNoRefund && !window.confirm(dict.booking_cancel_warning)) {
           e.preventDefault();
         }
       }}
     >
       <input type="hidden" name="booking_id" value={bookingId} />
-      <SubmitButton>Cancel</SubmitButton>
+      <SubmitButton>{dict.booking_cancel}</SubmitButton>
     </form>
   );
 }
