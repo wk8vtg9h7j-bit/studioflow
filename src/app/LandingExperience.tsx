@@ -92,7 +92,7 @@ export default function LandingExperience({
             Log in
           </Link>
           <Link
-            href="/signup"
+            href="/book"
             className="press inline-flex items-center justify-center rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors duration-500 hover:opacity-90"
           >
             Book a class
@@ -141,7 +141,7 @@ export default function LandingExperience({
         </p>
         <div className="reveal reveal-5 mt-8 flex items-center justify-center gap-3">
           <Link
-            href="/signup"
+            href="/book"
             className="press inline-flex items-center justify-center rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors duration-500 hover:opacity-90"
           >
             Book your first class
@@ -289,7 +289,7 @@ export default function LandingExperience({
             </p>
           </div>
           <Link
-            href="/signup"
+            href="/book"
             className="press inline-flex shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors duration-500 hover:opacity-90"
           >
             Get {pkg.credits} credit{pkg.credits > 1 ? "s" : ""}

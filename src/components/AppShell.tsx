@@ -5,6 +5,7 @@
 import Link from "next/link";
 import { SignOutButton } from "@/components/SignOutButton";
 import { NavLink } from "@/components/NavLink";
+import { NavMenu, type NavMenuItem } from "@/components/NavMenu";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import type { Locale } from "@/lib/i18n";
 
@@ -12,8 +13,12 @@ export type NavItem = { href: string; label: string };
 
 // `locale` is optional: only the customer and auth surfaces are translated, so
 // the admin and instructor layouts render the shell without a language toggle.
+// `navMenu` is also optional: sections with more destinations than fit on a phone
+// collapse their secondary links behind one dropdown instead of letting the bar
+// scroll sideways.
 export function AppShell({
   navItems,
+  navMenu,
   user,
   roleLabel,
   locale,
@@ -21,6 +26,7 @@ export function AppShell({
   children,
 }: {
   navItems: NavItem[];
+  navMenu?: { label: string; items: NavMenuItem[] };
   user: string;
   roleLabel: string;
   locale?: Locale;
@@ -41,6 +47,9 @@ export function AppShell({
                 {item.label}
               </NavLink>
             ))}
+            {navMenu ? (
+              <NavMenu label={navMenu.label} items={navMenu.items} />
+            ) : null}
           </nav>
 
           <div className="flex items-center gap-3">

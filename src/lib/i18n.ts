@@ -53,6 +53,16 @@ export type Dict = {
   credits_available: (n: number) => string;
   book_credits_help: string;
 
+  // Book page — day picker + filters
+  day_previous: string;
+  day_next: string;
+  day_today: string;
+  filter_studio: string;
+  filter_all_studios: string;
+  filter_class: string;
+  filter_all_classes: string;
+  filter_clear: string;
+
   // Book session row
   session_fallback: string;
   status_booked: string;
@@ -164,6 +174,15 @@ const en: Dict = {
   book_credits_help:
     "Each class costs the number of credits shown on it. Out of credits? Purchase a package to top up.",
 
+  day_previous: "Previous day",
+  day_next: "Next day",
+  day_today: "Today",
+  filter_studio: "Studio",
+  filter_all_studios: "All studios",
+  filter_class: "Class",
+  filter_all_classes: "All classes",
+  filter_clear: "Clear",
+
   session_fallback: "Class",
   status_booked: "Booked",
   status_waitlisted: "Waitlisted",
@@ -270,6 +289,15 @@ const vi: Dict = {
   credits_available: (n) => `Còn ${n} tín dụng`,
   book_credits_help:
     "Mỗi lớp trừ số tín dụng hiển thị trên lớp đó. Hết tín dụng? Mua gói để nạp thêm.",
+
+  day_previous: "Ngày trước",
+  day_next: "Ngày sau",
+  day_today: "Hôm nay",
+  filter_studio: "Studio",
+  filter_all_studios: "Tất cả studio",
+  filter_class: "Lớp học",
+  filter_all_classes: "Tất cả lớp",
+  filter_clear: "Xóa bộ lọc",
 
   session_fallback: "Lớp học",
   status_booked: "Đã đặt",

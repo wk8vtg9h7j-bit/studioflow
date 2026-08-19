@@ -22,15 +22,23 @@ export default async function CustomerLayout({
   const locale = localeFromCookieString(cookieStore.toString());
   const dict = getDict(locale);
 
-  const navItems: NavItem[] = [
-    { href: "/book", label: dict.nav_book },
-    { href: "/my-bookings", label: dict.nav_bookings },
-    { href: "/my-packages", label: dict.nav_packages },
-  ];
+  // Booking is the one destination members reach for constantly, so it stays a
+  // top-level tab. The account-related pages sit behind a single dropdown so the
+  // bar never scrolls sideways on a phone.
+  const navItems: NavItem[] = [{ href: "/book", label: dict.nav_book }];
+
+  const navMenu = {
+    label: dict.nav_account,
+    items: [
+      { href: "/my-bookings", label: dict.nav_bookings },
+      { href: "/my-packages", label: dict.nav_packages },
+    ],
+  };
 
   return (
     <AppShell
       navItems={navItems}
+      navMenu={navMenu}
       user={profile.full_name ?? profile.email ?? dict.role_member}
       roleLabel={dict.role_member}
       locale={locale}
