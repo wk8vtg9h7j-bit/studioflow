@@ -41,7 +41,7 @@ export function AppShell({
             Studio<span className="text-brand-600">Flow</span>
           </Link>
 
-          <nav className="flex flex-1 items-center gap-1 overflow-x-auto">
+          <nav className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
             {navItems.map((item) => (
               <NavLink key={item.href} href={item.href}>
                 {item.label}
