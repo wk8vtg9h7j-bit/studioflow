@@ -50,9 +50,13 @@ const STATUS_LABEL: Record<BookingWithSession["status"], string> = {
 export function BookingRow({
   booking,
   cancellable,
+  locked = false,
 }: {
   booking: BookingWithSession;
   cancellable: boolean;
+  // Upcoming and still held, but inside the three-hour window — the cancel
+  // button is gone and we say why instead of showing a bare dash.
+  locked?: boolean;
 }) {
   const session = booking.session;
   const accent = session?.class_type?.color ?? "#7c3aed";
@@ -60,41 +64,62 @@ export function BookingRow({
   const title =
     session?.title || session?.class_type?.name || "Class";
 
+  const where = [session?.studio?.name, session?.instructor?.display_name]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
     <li className="card overflow-hidden">
-      <div className="flex items-center gap-4 px-5 py-4">
-        <span
-          className="h-10 w-1.5 shrink-0 rounded-full"
-          style={{ backgroundColor: accent }}
-          aria-hidden
-        />
+      {/* Class-type colour as a top stripe, so the title gets the full width of
+          the card on a phone instead of sharing the row with a bar. */}
+      <div
+        className="h-1 w-full"
+        style={{ backgroundColor: accent }}
+        aria-hidden
+      />
 
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <p className="truncate text-sm font-semibold text-ink">{title}</p>
-            <span className={`badge ${STATUS_BADGE[booking.status]}`}>
-              {STATUS_LABEL[booking.status]}
-            </span>
-          </div>
-          <p className="mt-0.5 truncate text-sm text-ink-muted">
-            {session ? formatSessionWhen(session.starts_at, tz) : "Class removed"}
-            {session?.studio?.name ? ` · ${session.studio.name}` : ""}
-            {session?.instructor?.display_name
-              ? ` · ${session.instructor.display_name}`
-              : ""}
+      <div className="space-y-3 px-5 py-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-base font-semibold leading-snug text-ink">
+            {title}
+          </h3>
+          <span className={`badge ${STATUS_BADGE[booking.status]}`}>
+            {STATUS_LABEL[booking.status]}
+          </span>
+        </div>
+
+        <div className="space-y-0.5 text-sm text-ink-muted">
+          <p className="font-medium text-ink">
+            {session
+              ? formatSessionWhen(session.starts_at, tz)
+              : "Class removed"}
           </p>
+          {where && <p className="break-words">{where}</p>}
         </div>
 
-        <div className="w-32 shrink-0">
-          {cancellable ? (
-            <form action={cancelBookingAction}>
-              <input type="hidden" name="booking_id" value={booking.id} />
-              <SubmitButton>Cancel</SubmitButton>
-            </form>
-          ) : (
-            <p className="text-center text-xs text-ink-muted">—</p>
-          )}
-        </div>
+        {(cancellable || locked) && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 pt-3">
+            {locked ? (
+              <p className="text-sm text-ink-muted">
+                Cancellation closed — this class starts within 3 hours, so the
+                credit stays used.
+              </p>
+            ) : (
+              <p className="text-sm text-ink-muted">
+                Free to cancel until 3 hours before the start.
+              </p>
+            )}
+
+            {cancellable && (
+              <div className="w-full sm:w-40">
+                <form action={cancelBookingAction}>
+                  <input type="hidden" name="booking_id" value={booking.id} />
+                  <SubmitButton>Cancel</SubmitButton>
+                </form>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </li>
   );
