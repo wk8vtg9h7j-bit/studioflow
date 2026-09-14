@@ -16,42 +16,54 @@ const AUTH_PAGES = ["/login", "/signup"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
+  const { pathname } = request.nextUrl;
 
-  // Preview mode: skip the network call to getUser(). Treat the presence of the
-  // role cookie as "signed in" so the same gating logic below still applies.
+  // Default to signed-out. If Supabase configuration is missing or auth is
+  // temporarily unavailable, public routes should still render instead of
+  // crashing the entire routing middleware. Protected routes still fail closed
+  // and redirect to login below.
   let user: unknown = null;
+
   if (PREVIEW_MODE) {
     user = request.cookies.get(PREVIEW_COOKIE) ? {} : null;
   } else {
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return request.cookies.getAll();
-          },
-          setAll(cookiesToSet: CookieToSet[]) {
-            cookiesToSet.forEach(({ name, value }) =>
-              request.cookies.set(name, value),
-            );
-            response = NextResponse.next({ request });
-            cookiesToSet.forEach(({ name, value, options }) =>
-              response.cookies.set(name, value, options),
-            );
-          },
-        },
-      },
-    );
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-    // IMPORTANT: getUser() refreshes the token and must run before any redirect.
-    const {
-      data: { user: authUser },
-    } = await supabase.auth.getUser();
-    user = authUser;
+    if (supabaseUrl && supabaseAnonKey) {
+      try {
+        const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+          cookies: {
+            getAll() {
+              return request.cookies.getAll();
+            },
+            setAll(cookiesToSet: CookieToSet[]) {
+              cookiesToSet.forEach(({ name, value }) =>
+                request.cookies.set(name, value),
+              );
+              response = NextResponse.next({ request });
+              cookiesToSet.forEach(({ name, value, options }) =>
+                response.cookies.set(name, value, options),
+              );
+            },
+          },
+        });
+
+        // getUser() refreshes the token and must run before any redirect.
+        const {
+          data: { user: authUser },
+        } = await supabase.auth.getUser();
+        user = authUser;
+      } catch (error) {
+        // Do not let an auth/network/configuration failure crash every request at
+        // the edge. Public pages remain available; protected routes fail closed.
+        console.error("Supabase middleware auth failed", error);
+      }
+    } else {
+      console.error("Supabase middleware env is missing");
+    }
   }
 
-  const { pathname } = request.nextUrl;
   const isProtected = PROTECTED_PREFIXES.some(
     (p) => pathname === p || pathname.startsWith(p + "/"),
   );
