@@ -9,7 +9,6 @@
 import { useRouter, useSearchParams } from "next/navigation";
 
 function addDays(yyyyMmDd: string, n: number): string {
-  // Anchor at noon UTC so day arithmetic never slips across a timezone edge.
   const d = new Date(`${yyyyMmDd}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
@@ -19,10 +18,16 @@ export function DayNav({
   date,
   today,
   label,
+  previousLabel,
+  nextLabel,
+  todayLabel,
 }: {
   date: string;
   today: string;
   label: string;
+  previousLabel: string;
+  nextLabel: string;
+  todayLabel: string;
 }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -40,7 +45,7 @@ export function DayNav({
       <button
         type="button"
         onClick={() => go(addDays(date, -1))}
-        aria-label="Previous day"
+        aria-label={previousLabel}
         className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-ink-muted transition hover:bg-stone-100 hover:text-ink active:scale-95"
       >
         ‹
@@ -65,14 +70,14 @@ export function DayNav({
           onClick={() => go(today)}
           className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium text-ink-muted transition hover:bg-stone-100 hover:text-ink active:scale-95"
         >
-          Today
+          {todayLabel}
         </button>
       )}
 
       <button
         type="button"
         onClick={() => go(addDays(date, 1))}
-        aria-label="Next day"
+        aria-label={nextLabel}
         className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-ink-muted transition hover:bg-stone-100 hover:text-ink active:scale-95"
       >
         ›
