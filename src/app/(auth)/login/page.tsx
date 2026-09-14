@@ -11,8 +11,6 @@ import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { signInAction, type AuthState } from "../actions";
 import { SubmitButton } from "../SubmitButton";
-import { getDict } from "@/lib/i18n";
-import { useLocale } from "@/components/LocaleProvider";
 
 const initial: AuthState = { error: null };
 
@@ -51,21 +49,22 @@ function PreviewRolePicker({ next }: { next: string }) {
 function LoginForm() {
   const [state, formAction] = useFormState(signInAction, initial);
   const next = useSearchParams().get("next") ?? "";
-  const dict = getDict(useLocale());
 
   return (
     <div className="card p-6">
       <h1 className="text-xl font-semibold tracking-tight text-ink">
-        {dict.login_title}
+        Welcome back
       </h1>
-      <p className="mt-1 text-sm text-ink-muted">{dict.login_intro}</p>
+      <p className="mt-1 text-sm text-ink-muted">
+        Log in to manage your studio or book a class.
+      </p>
 
       <form action={formAction} className="mt-6 space-y-4">
         <input type="hidden" name="next" value={next} />
 
         <div>
           <label htmlFor="email" className="label">
-            {dict.auth_email}
+            Email
           </label>
           <input
             id="email"
@@ -74,13 +73,13 @@ function LoginForm() {
             autoComplete="email"
             required
             className="input"
-            placeholder={dict.email_placeholder}
+            placeholder="you@studio.com"
           />
         </div>
 
         <div>
           <label htmlFor="password" className="label">
-            {dict.auth_password}
+            Password
           </label>
           <input
             id="password"
@@ -89,7 +88,7 @@ function LoginForm() {
             autoComplete="current-password"
             required
             className="input"
-            placeholder={dict.password_placeholder}
+            placeholder="••••••••"
           />
         </div>
 
@@ -99,15 +98,15 @@ function LoginForm() {
           </p>
         ) : null}
 
-        <SubmitButton>{dict.login_submit}</SubmitButton>
+        <SubmitButton>Log in</SubmitButton>
       </form>
 
       <PreviewRolePicker next={next} />
 
       <p className="mt-6 text-center text-sm text-ink-muted">
-        {dict.login_new_here}{" "}
+        New here?{" "}
         <Link href="/signup" className="font-medium text-brand-600 hover:text-brand-700">
-          {dict.login_create_account}
+          Create an account
         </Link>
       </p>
     </div>

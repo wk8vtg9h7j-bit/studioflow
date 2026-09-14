@@ -104,7 +104,6 @@ export interface CreditLedgerEntry {
   package_id: string | null;
   booking_id: string | null;
   expires_at: string | null;
-  payment_method: string | null;
   created_at: string;
 }
 
@@ -194,9 +193,6 @@ export interface GoogleSyncLogEntry {
 // ----------------------------------------------------------------------------
 export interface SessionWithRelations extends Session {
   studio?: Pick<Studio, "id" | "name" | "slug" | "brand_color" | "timezone">;
-  class_type?: Pick<
-    ClassType,
-    "id" | "name" | "color" | "credits_cost" | "description"
-  >;
+  class_type?: Pick<ClassType, "id" | "name" | "color" | "credits_cost">;
   instructor?: Pick<Instructor, "id" | "display_name"> | null;
 }

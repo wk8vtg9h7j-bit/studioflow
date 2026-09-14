@@ -12,8 +12,6 @@ import { updateSession } from "@/lib/supabase/middleware";
 const LANDING_BY_HOST: Record<string, string> = {
   "hideawaypilates.com": "/hideaway.html",
   "www.hideawaypilates.com": "/hideaway.html",
-  "downtownpilatesdn.com": "/downtown.html",
-  "www.downtownpilatesdn.com": "/downtown.html",
 };
 
 export async function middleware(request: NextRequest) {

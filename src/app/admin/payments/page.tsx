@@ -15,8 +15,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { formatMoney } from "@/lib/format";
 import { formatInTimeZone } from "date-fns-tz";
-import { PaymentFilters, type MonthOption } from "./PaymentFilters";
-import { RemovePayment } from "./RemovePayment";
 
 export const dynamic = "force-dynamic";
 
@@ -93,12 +91,7 @@ function nameOf(c: CustomerRef | null) {
   );
 }
 
-export default async function PaymentsPage({
-  searchParams,
-}: {
-  searchParams: { month?: string };
-}) {
-  const month = searchParams.month;
+export default async function PaymentsPage() {
   const supabase = await createClient();
 
   const [{ data: purchaseData }, { data: attendData }] = await Promise.all([
@@ -190,20 +183,6 @@ export default async function PaymentsPage({
     d.attendees.sort((a, b) => (a.time < b.time ? -1 : 1));
   }
 
-  // Only months that actually have takings, newest first (days is already desc).
-  const months: MonthOption[] = [];
-  const seenMonths = new Set<string>();
-  for (const d of days) {
-    const key = d.date.slice(0, 7);
-    if (seenMonths.has(key)) continue;
-    seenMonths.add(key);
-    months.push({
-      value: key,
-      label: formatInTimeZone(new Date(`${d.date}T00:00:00Z`), TZ, "MMMM yyyy"),
-    });
-  }
-  const visibleDays = month ? days.filter((d) => d.date.startsWith(month)) : days;
-
   const currency = purchases.at(-1)?.package?.currency ?? "VND";
   const grandTotal = purchases.reduce(
     (s, p) => s + (p.package?.price_cents ?? 0),
@@ -238,18 +217,14 @@ export default async function PaymentsPage({
         </p>
       </header>
 
-      <PaymentFilters month={month} months={months} />
-
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
         <section className="space-y-6 lg:col-span-2">
-          {visibleDays.length === 0 ? (
+          {days.length === 0 ? (
             <div className="card px-5 py-12 text-center text-sm text-ink-muted">
-              {month
-                ? "No payments or attendance for this month."
-                : "No payments or attendance recorded yet."}
+              No payments or attendance recorded yet.
             </div>
           ) : (
-            visibleDays.map((day) => (
+            days.map((day) => (
               <div key={day.date} className="card overflow-hidden">
                 <div className="flex items-center justify-between border-b border-stone-200 bg-stone-50 px-5 py-3">
                   <h2 className="text-sm font-semibold text-ink">{day.label}</h2>
@@ -297,7 +272,6 @@ export default async function PaymentsPage({
                           <span className="text-sm font-semibold tabular-nums text-ink">
                             {formatMoney(p.amount, p.currency)}
                           </span>
-                          <RemovePayment paymentId={p.id} name={p.name} />
                         </div>
                       </li>
                     ))}

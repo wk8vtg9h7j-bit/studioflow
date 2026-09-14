@@ -141,51 +141,6 @@ export async function grantPackageAction(
 }
 
 // ----------------------------------------------------------------------------
-// Correct how an existing purchase was paid. Reception sometimes records the
-// wrong method at the till, so admins can fix it after the fact. Only the
-// payment_method column moves — credits, expiry and the package link stay put.
-// Uses the service client because credit_ledger RLS allows admin inserts but is
-// not proven to allow updates.
-// ----------------------------------------------------------------------------
-const PaymentMethodSchema = z.object({
-  ledger_id: z.string().uuid("Could not identify which purchase to update."),
-  payment_method: z.enum(PAYMENT_METHODS, {
-    errorMap: () => ({ message: "Choose how it was paid (QR, card, or cash)." }),
-  }),
-});
-
-export async function updatePaymentMethodAction(
-  _prev: CustomerActionState,
-  formData: FormData,
-): Promise<CustomerActionState> {
-  await requireRole("admin", "/admin/customers");
-
-  const parsed = PaymentMethodSchema.safeParse({
-    ledger_id: formData.get("ledger_id"),
-    payment_method: formData.get("payment_method"),
-  });
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Check the form." };
-  }
-
-  const { ledger_id, payment_method } = parsed.data;
-  const service = createServiceClient();
-
-  const { error } = await service
-    .from("credit_ledger")
-    .update({ payment_method })
-    .eq("id", ledger_id)
-    .eq("reason", "purchase");
-
-  if (error) {
-    return { error: error.message };
-  }
-
-  revalidatePath("/admin/customers");
-  return { ok: true };
-}
-
-// ----------------------------------------------------------------------------
 // Add a customer manually (reception).
 //   • Walk-in   → a CRM record with no login (profile_id null), basic contact
 //     details stored on the customer row.
@@ -332,52 +287,6 @@ export async function attachLoginAction(
     ok: true,
     message: `Login attached — ${email} can now sign in (via "forgot password").`,
   };
-}
-
-// ----------------------------------------------------------------------------
-// Delete a customer outright.
-//
-// Reception occasionally creates a duplicate or mistyped walk-in; this removes
-// the CRM record and everything hanging off it. The customer's own auth user is
-// left alone — deleting a login is a separate, heavier decision.
-//
-// Uses the service client because RLS on customers/credit_ledger/bookings does
-// not grant admins a blanket delete (same approach as attachLoginAction).
-// ----------------------------------------------------------------------------
-const DeleteCustomerSchema = z.object({
-  id: z.string().uuid("Could not identify which customer to delete."),
-  confirm: z.literal("DELETE", {
-    errorMap: () => ({ message: "Type DELETE to confirm." }),
-  }),
-});
-
-export async function deleteCustomerAction(
-  _prev: AddCustomerState,
-  formData: FormData,
-): Promise<AddCustomerState> {
-  await requireRole("admin", "/admin/customers");
-
-  const parsed = DeleteCustomerSchema.safeParse({
-    id: formData.get("id"),
-    confirm: formData.get("confirm"),
-  });
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Check the form." };
-  }
-
-  const { id } = parsed.data;
-  const svc = createServiceClient();
-
-  // There is no ON DELETE CASCADE from customers, so clear the dependent rows
-  // first or the delete fails on a foreign-key violation.
-  await svc.from("credit_ledger").delete().eq("customer_id", id);
-  await svc.from("bookings").delete().eq("customer_id", id);
-
-  const { error } = await svc.from("customers").delete().eq("id", id);
-  if (error) return { error: error.message };
-
-  revalidatePath("/admin/customers");
-  return { ok: true, message: "Customer deleted." };
 }
 
 export async function updateCustomerAction(

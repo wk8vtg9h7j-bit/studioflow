@@ -10,10 +10,8 @@
 // are read through their normal authed client so each row knows whether they're
 // already booked or waitlisted.
 // ============================================================================
-import { cookies } from "next/headers";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import type { SessionWithRelations } from "@/lib/types";
-import { LOCALE_COOKIE, getDict, normalizeLocale } from "@/lib/i18n";
 import { BookSessionRow } from "./BookSessionRow";
 
 type MyStatus = "booked" | "waitlisted";
@@ -24,9 +22,6 @@ export default async function BookPage({
   searchParams: Promise<{ error?: string; notice?: string }>;
 }) {
   const { error, notice } = await searchParams;
-  const cookieStore = await cookies();
-  const locale = normalizeLocale(cookieStore.get(LOCALE_COOKIE)?.value);
-  const dict = getDict(locale);
   const supabase = await createClient();
 
   const nowIso = new Date().toISOString();
@@ -36,7 +31,7 @@ export default async function BookPage({
   const sessionsRes = await supabase
     .from("sessions")
     .select(
-      "*, studio:studios(id,name,slug,brand_color,timezone), class_type:class_types(id,name,color,credits_cost,description), instructor:instructors(id,display_name)",
+      "*, studio:studios(id,name,slug,brand_color,timezone), class_type:class_types(id,name,color,credits_cost), instructor:instructors(id,display_name)",
     )
     .eq("status", "scheduled")
     .gt("starts_at", nowIso)
@@ -92,9 +87,12 @@ export default async function BookPage({
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-ink">
-          {dict.book_title}
+          Book a class
         </h1>
-        <p className="mt-1 text-sm text-ink-muted">{dict.book_intro}</p>
+        <p className="mt-1 text-sm text-ink-muted">
+          Upcoming classes across our studios. Times are shown in each
+          studio&apos;s local timezone. Booking spends credits from your balance.
+        </p>
       </div>
 
       {error && (
@@ -112,7 +110,7 @@ export default async function BookPage({
         <section className="lg:col-span-2">
           {sessions.length === 0 ? (
             <div className="card px-5 py-12 text-center text-sm text-ink-muted">
-              {dict.book_empty}
+              No upcoming classes are open for booking right now. Check back soon.
             </div>
           ) : (
             <ul className="space-y-3">
@@ -122,7 +120,6 @@ export default async function BookPage({
                   session={session}
                   booked={bookedBySession.get(session.id) ?? 0}
                   myStatus={myStatusBySession.get(session.id) ?? null}
-                  dict={dict}
                 />
               ))}
             </ul>
@@ -131,17 +128,16 @@ export default async function BookPage({
 
         <aside className="lg:col-span-1">
           <div className="card sticky top-24 p-5">
-            <h2 className="text-sm font-semibold text-ink">
-              {dict.book_credits_heading}
-            </h2>
+            <h2 className="text-sm font-semibold text-ink">Your credits</h2>
             <p className="mt-2 text-3xl font-semibold tracking-tight text-ink">
               {credits}
             </p>
             <p className="mt-1 text-xs text-ink-muted">
-              {dict.credits_available(credits)}
+              credit{credits === 1 ? "" : "s"} available
             </p>
             <p className="mt-4 text-xs leading-relaxed text-ink-muted">
-              {dict.book_credits_help}
+              Each class costs the number of credits shown on it. Out of credits?
+              Purchase a package to top up.
             </p>
           </div>
         </aside>

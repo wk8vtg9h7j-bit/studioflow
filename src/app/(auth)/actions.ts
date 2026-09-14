@@ -8,16 +8,11 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { z } from "zod";
-import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 import { getProfile, homePathForRole } from "@/lib/auth";
 import { PREVIEW_MODE, PREVIEW_COOKIE } from "@/lib/preview";
-import { siteOrigin } from "@/lib/site";
-import { notifyPasswordReset } from "@/lib/notify";
 
 export type AuthState = { error: string | null };
-
-// Result shape shared by the forgot-password and reset-password forms.
-export type ResetState = { ok?: boolean; error?: string };
 
 // Only allow relative, same-origin paths as post-login redirect targets so a
 // crafted `next` value can't bounce the user to another site.
@@ -73,33 +68,26 @@ export async function signUpAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid details." };
   }
 
-  // Create the account already-confirmed via the service role so customers can
-  // start booking immediately. The studio's Supabase project has no custom SMTP
-  // configured, so confirmation emails don't reliably deliver — auto-confirming
-  // removes that dependency for new sign-ups. The `handle_new_user` trigger
-  // reads user_metadata to stamp the profile role.
-  const admin = createServiceClient();
-  const { error: createError } = await admin.auth.admin.createUser({
+  const supabase = await createClient();
+  // New public sign-ups are always customers; the `handle_new_user` trigger
+  // reads this metadata to stamp the profile role.
+  const { data, error } = await supabase.auth.signUp({
     email: parsed.data.email,
     password: parsed.data.password,
-    email_confirm: true,
-    user_metadata: { full_name: parsed.data.fullName, role: "customer" },
+    options: {
+      data: { full_name: parsed.data.fullName, role: "customer" },
+    },
   });
-  if (createError) {
-    const msg = /already|registered|exists/i.test(createError.message)
-      ? "That email is already registered. Try logging in instead."
-      : createError.message;
-    return { error: msg };
+  if (error) {
+    return { error: error.message };
   }
 
-  // Establish the session cookie by signing in with the just-set password.
-  const supabase = await createClient();
-  const { error: signInError } = await supabase.auth.signInWithPassword({
-    email: parsed.data.email,
-    password: parsed.data.password,
-  });
-  if (signInError) {
-    return { error: "Account created. Please log in to start booking." };
+  // If email confirmation is on, there's no session yet — tell the user.
+  if (!data.session) {
+    return {
+      error:
+        "Check your inbox to confirm your email, then log in to start booking.",
+    };
   }
 
   revalidatePath("/", "layout");
@@ -121,81 +109,4 @@ export async function signOutAction(): Promise<void> {
   await supabase.auth.signOut();
   revalidatePath("/", "layout");
   redirect("/login");
-}
-
-const emailOnly = z.object({
-  email: z.string().email("Enter a valid email address."),
-});
-
-const passwordOnly = z.object({
-  password: z.string().min(8, "Password must be at least 8 characters."),
-});
-
-// Send a password-reset email. We always report success so the form never
-// reveals whether an address is registered. The recovery link points at
-// /auth/callback, which exchanges the code for a session and forwards the user
-// to the reset-password page.
-export async function requestPasswordResetAction(
-  _prev: ResetState,
-  formData: FormData,
-): Promise<ResetState> {
-  const parsed = emailOnly.safeParse({ email: formData.get("email") });
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid email." };
-  }
-
-  // The project has no custom SMTP, so Supabase's own resetPasswordForEmail
-  // never delivers. Mint the recovery link with the service role and send it
-  // through Resend (same channel as the booking notifications).
-  const admin = createServiceClient();
-  const { data, error } = await admin.auth.admin.generateLink({
-    type: "recovery",
-    email: parsed.data.email,
-    options: {
-      redirectTo: `${siteOrigin()}/auth/callback?next=/reset-password`,
-    },
-  });
-
-  // Unknown address: report success anyway so the form never reveals whether
-  // an email is registered.
-  if (error || !data?.properties?.action_link) {
-    return { ok: true };
-  }
-
-  const sent = await notifyPasswordReset(
-    parsed.data.email,
-    data.properties.action_link,
-  );
-  if (!sent) {
-    return {
-      error:
-        "We couldn't send the reset email right now. Please contact the studio.",
-    };
-  }
-
-  return { ok: true };
-}
-
-// Set a new password for the currently-authenticated recovery session, then
-// send the user to their role home.
-export async function updatePasswordAction(
-  _prev: ResetState,
-  formData: FormData,
-): Promise<ResetState> {
-  const parsed = passwordOnly.safeParse({ password: formData.get("password") });
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid password." };
-  }
-
-  const supabase = await createClient();
-  const { error } = await supabase.auth.updateUser({
-    password: parsed.data.password,
-  });
-  if (error) {
-    return { error: error.message };
-  }
-
-  const profile = await getProfile();
-  revalidatePath("/", "layout");
-  redirect(profile ? homePathForRole(profile.role) : "/dashboard");
 }

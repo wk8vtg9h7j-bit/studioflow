@@ -7,9 +7,7 @@
 // (booked or waitlisted) on a class that hasn't started yet — that mirrors what
 // the cancel_booking RPC will actually allow, so we don't show a dead button.
 // ============================================================================
-import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
-import { LOCALE_COOKIE, getDict, normalizeLocale } from "@/lib/i18n";
 import { BookingRow, type BookingWithSession } from "./BookingRow";
 
 export default async function MyBookingsPage({
@@ -18,9 +16,6 @@ export default async function MyBookingsPage({
   searchParams: Promise<{ error?: string; notice?: string }>;
 }) {
   const { error, notice } = await searchParams;
-  const cookieStore = await cookies();
-  const locale = normalizeLocale(cookieStore.get(LOCALE_COOKIE)?.value);
-  const dict = getDict(locale);
   const supabase = await createClient();
 
   // RLS limits this to the member's own bookings. We pull the full session
@@ -65,9 +60,12 @@ export default async function MyBookingsPage({
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-ink">
-          {dict.bookings_title}
+          My bookings
         </h1>
-        <p className="mt-1 text-sm text-ink-muted">{dict.bookings_intro}</p>
+        <p className="mt-1 text-sm text-ink-muted">
+          Your upcoming classes and booking history. Cancel an upcoming class to
+          get your credits back.
+        </p>
       </div>
 
       {error && (
@@ -82,25 +80,19 @@ export default async function MyBookingsPage({
       )}
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-ink">
-          {dict.bookings_upcoming}
-        </h2>
+        <h2 className="text-sm font-semibold text-ink">Upcoming</h2>
         {upcoming.length === 0 ? (
           <div className="card px-5 py-10 text-center text-sm text-ink-muted">
-            {dict.bookings_none_upcoming}{" "}
+            You have no upcoming classes.{" "}
             <a href="/book" className="font-medium text-ink underline">
-              {dict.bookings_book_now}
+              Book one now
             </a>
+            .
           </div>
         ) : (
           <ul className="space-y-3">
             {upcoming.map((b) => (
-              <BookingRow
-                key={b.id}
-                booking={b}
-                cancellable={canCancel(b)}
-                dict={dict}
-              />
+              <BookingRow key={b.id} booking={b} cancellable={canCancel(b)} />
             ))}
           </ul>
         )}
@@ -108,15 +100,10 @@ export default async function MyBookingsPage({
 
       {past.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-ink">{dict.bookings_past}</h2>
+          <h2 className="text-sm font-semibold text-ink">Past</h2>
           <ul className="space-y-3">
             {past.map((b) => (
-              <BookingRow
-                key={b.id}
-                booking={b}
-                cancellable={false}
-                dict={dict}
-              />
+              <BookingRow key={b.id} booking={b} cancellable={false} />
             ))}
           </ul>
         </section>

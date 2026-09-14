@@ -5,13 +5,9 @@
 // cancelBookingAction. Past or already-cancelled bookings show no action.
 // ============================================================================
 import type { Session, Studio, ClassType, Instructor } from "@/lib/types";
-import type { Dict } from "@/lib/i18n";
 import { formatSessionWhen } from "@/lib/format";
-import { CancelBookingForm } from "./CancelBookingForm";
-
-// Cancelling this close to the start forfeits the credit (migration 0012), so
-// the member gets a confirm dialog spelling that out before the action runs.
-const REFUND_WINDOW_MS = 3 * 60 * 60 * 1000;
+import { SubmitButton } from "@/app/(auth)/SubmitButton";
+import { cancelBookingAction } from "./actions";
 
 // The joined shape we read on the my-bookings page: a booking with its session
 // and that session's studio / class type / instructor. There's no shared
@@ -43,32 +39,26 @@ const STATUS_BADGE: Record<BookingWithSession["status"], string> = {
   no_show: "bg-zinc-100 text-zinc-600",
 };
 
-// Status labels are locale-dependent, so they're built from the dictionary
-// inside the component rather than held in a module-level constant.
-const statusLabels = (
-  dict: Dict,
-): Record<BookingWithSession["status"], string> => ({
-  booked: dict.booking_status_booked,
-  waitlisted: dict.booking_status_waitlisted,
-  cancelled: dict.booking_status_cancelled,
-  attended: dict.booking_status_attended,
-  no_show: dict.booking_status_no_show,
-});
+const STATUS_LABEL: Record<BookingWithSession["status"], string> = {
+  booked: "Booked",
+  waitlisted: "Waitlisted",
+  cancelled: "Cancelled",
+  attended: "Attended",
+  no_show: "No show",
+};
 
 export function BookingRow({
   booking,
   cancellable,
-  dict,
 }: {
   booking: BookingWithSession;
   cancellable: boolean;
-  dict: Dict;
 }) {
   const session = booking.session;
   const accent = session?.class_type?.color ?? "#7c3aed";
   const tz = session?.studio?.timezone;
   const title =
-    session?.title || session?.class_type?.name || dict.session_fallback;
+    session?.title || session?.class_type?.name || "Class";
 
   return (
     <li className="card overflow-hidden">
@@ -83,13 +73,11 @@ export function BookingRow({
           <div className="flex items-center gap-2">
             <p className="truncate text-sm font-semibold text-ink">{title}</p>
             <span className={`badge ${STATUS_BADGE[booking.status]}`}>
-              {statusLabels(dict)[booking.status]}
+              {STATUS_LABEL[booking.status]}
             </span>
           </div>
           <p className="mt-0.5 truncate text-sm text-ink-muted">
-            {session
-              ? formatSessionWhen(session.starts_at, tz)
-              : dict.booking_class_removed}
+            {session ? formatSessionWhen(session.starts_at, tz) : "Class removed"}
             {session?.studio?.name ? ` · ${session.studio.name}` : ""}
             {session?.instructor?.display_name
               ? ` · ${session.instructor.display_name}`
@@ -99,15 +87,10 @@ export function BookingRow({
 
         <div className="w-32 shrink-0">
           {cancellable ? (
-            <CancelBookingForm
-              bookingId={booking.id}
-              warnNoRefund={
-                (booking.credits_spent ?? 0) > 0 &&
-                !!session &&
-                Date.parse(session.starts_at) < Date.now() + REFUND_WINDOW_MS
-              }
-              dict={dict}
-            />
+            <form action={cancelBookingAction}>
+              <input type="hidden" name="booking_id" value={booking.id} />
+              <SubmitButton>Cancel</SubmitButton>
+            </form>
           ) : (
             <p className="text-center text-xs text-ink-muted">—</p>
           )}
