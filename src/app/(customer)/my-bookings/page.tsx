@@ -2,15 +2,13 @@
 // Customer "My bookings" page. Lists the member's own bookings joined to their
 // sessions, split into Upcoming and Past. RLS scopes the bookings query to the
 // signed-in member automatically, so a plain authed client is all we need here.
-//
-// Cancellation is only offered for bookings the member still actively holds
-// (booked or waitlisted) on a class that hasn't started yet — that mirrors what
-// the cancel_booking RPC will actually allow, so we don't show a dead button.
 // ============================================================================
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { LOCALE_COOKIE, getDict, normalizeLocale } from "@/lib/i18n";
 import { BookingRow, type BookingWithSession } from "./BookingRow";
+
+const CANCEL_WINDOW_MS = 3 * 60 * 60 * 1000;
 
 export default async function MyBookingsPage({
   searchParams,
@@ -23,9 +21,6 @@ export default async function MyBookingsPage({
   const dict = getDict(locale);
   const supabase = await createClient();
 
-  // RLS limits this to the member's own bookings. We pull the full session
-  // context for each so every row can render when/where/who without extra round
-  // trips, newest classes first.
   const { data } = await supabase
     .from("bookings")
     .select(
@@ -34,31 +29,27 @@ export default async function MyBookingsPage({
     .order("created_at", { ascending: false });
 
   const bookings = (data ?? []) as unknown as BookingWithSession[];
-
-  // Split into upcoming vs past by the session start time. Bookings whose class
-  // has been removed (no session) fall into past so they're out of the way.
   const nowMs = Date.now();
   const upcoming: BookingWithSession[] = [];
   const past: BookingWithSession[] = [];
+
   for (const b of bookings) {
     const startsMs = b.session ? Date.parse(b.session.starts_at) : 0;
-    if (b.session && startsMs > nowMs) {
-      upcoming.push(b);
-    } else {
-      past.push(b);
-    }
+    if (b.session && startsMs > nowMs) upcoming.push(b);
+    else past.push(b);
   }
 
-  // Show soonest-first within Upcoming (the query came back newest-first).
   upcoming.sort((a, b) =>
     a.session && b.session
       ? Date.parse(a.session.starts_at) - Date.parse(b.session.starts_at)
       : 0,
   );
 
+  // Customer-side version from Sept 14: the cancel action disappears inside
+  // the final three hours. Server-side policy still remains authoritative.
   const canCancel = (b: BookingWithSession) =>
     !!b.session &&
-    Date.parse(b.session.starts_at) > nowMs &&
+    Date.parse(b.session.starts_at) - nowMs > CANCEL_WINDOW_MS &&
     (b.status === "booked" || b.status === "waitlisted");
 
   return (
