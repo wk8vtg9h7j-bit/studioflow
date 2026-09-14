@@ -4,11 +4,16 @@
 // signed-in member automatically, so a plain authed client is all we need here.
 //
 // Cancellation is only offered for bookings the member still actively holds
-// (booked or waitlisted) on a class that hasn't started yet — that mirrors what
-// the cancel_booking RPC will actually allow, so we don't show a dead button.
+// (booked or waitlisted) on a class that is still more than three hours away.
+// The same window is re-checked server-side in cancelBookingAction, so hiding
+// the button here is a courtesy, not the enforcement.
 // ============================================================================
 import { createClient } from "@/lib/supabase/server";
 import { BookingRow, type BookingWithSession } from "./BookingRow";
+
+// Members may cancel up to three hours before the class starts. Inside that
+// window the spot is held for them and the credit stays spent.
+const CANCEL_WINDOW_MS = 3 * 60 * 60 * 1000;
 
 export default async function MyBookingsPage({
   searchParams,
@@ -51,10 +56,20 @@ export default async function MyBookingsPage({
       : 0,
   );
 
+  // A booking is still cancellable only while the class is more than the cancel
+  // window away. Inside that window the row stays visible but the button is
+  // replaced with a short note explaining why.
   const canCancel = (b: BookingWithSession) =>
     !!b.session &&
-    Date.parse(b.session.starts_at) > nowMs &&
+    Date.parse(b.session.starts_at) - nowMs > CANCEL_WINDOW_MS &&
     (b.status === "booked" || b.status === "waitlisted");
+
+  // Upcoming, still held, but inside the three-hour window — the credit is gone.
+  const isLocked = (b: BookingWithSession) =>
+    !!b.session &&
+    Date.parse(b.session.starts_at) > nowMs &&
+    (b.status === "booked" || b.status === "waitlisted") &&
+    !canCancel(b);
 
   return (
     <div className="space-y-8">
@@ -63,8 +78,18 @@ export default async function MyBookingsPage({
           My bookings
         </h1>
         <p className="mt-1 text-sm text-ink-muted">
-          Your upcoming classes and booking history. Cancel an upcoming class to
-          get your credits back.
+          Your upcoming classes and booking history.
+        </p>
+      </div>
+
+      <div className="card px-5 py-4">
+        <h2 className="text-sm font-semibold text-ink">Cancellation policy</h2>
+        <p className="mt-1.5 text-sm leading-relaxed text-ink-muted">
+          You can cancel a class up to{" "}
+          <span className="font-medium text-ink">3 hours before it starts</span>{" "}
+          and your credit goes straight back to your balance. After that the
+          spot is held for you and the credit is used, whether you make it or
+          not.
         </p>
       </div>
 
@@ -92,7 +117,12 @@ export default async function MyBookingsPage({
         ) : (
           <ul className="space-y-3">
             {upcoming.map((b) => (
-              <BookingRow key={b.id} booking={b} cancellable={canCancel(b)} />
+              <BookingRow
+                key={b.id}
+                booking={b}
+                cancellable={canCancel(b)}
+                locked={isLocked(b)}
+              />
             ))}
           </ul>
         )}
