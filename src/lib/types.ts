@@ -18,6 +18,7 @@ export type PayrollStatus =
   | "paid"
   | "disputed";
 export type GoogleTokenStatus = "disconnected" | "connected" | "error";
+export type CreditPool = "regular" | "private";
 
 export interface Profile {
   id: string;
@@ -55,6 +56,7 @@ export interface ClassType {
   default_capacity: number;
   credits_cost: number;
   color: string | null;
+  pool: CreditPool;
   active: boolean;
   created_at: string;
   updated_at: string;
@@ -92,6 +94,7 @@ export interface Package {
   price_cents: number;
   currency: string;
   validity_days: number;
+  pool: CreditPool;
   active: boolean;
   created_at: string;
 }
@@ -103,6 +106,7 @@ export interface CreditLedgerEntry {
   reason: string;
   package_id: string | null;
   booking_id: string | null;
+  pool: CreditPool;
   expires_at: string | null;
   payment_method: string | null;
   created_at: string;
@@ -196,7 +200,7 @@ export interface SessionWithRelations extends Session {
   studio?: Pick<Studio, "id" | "name" | "slug" | "brand_color" | "timezone">;
   class_type?: Pick<
     ClassType,
-    "id" | "name" | "color" | "credits_cost" | "description"
+    "id" | "name" | "description" | "color" | "credits_cost" | "pool"
   >;
   instructor?: Pick<Instructor, "id" | "display_name"> | null;
 }
