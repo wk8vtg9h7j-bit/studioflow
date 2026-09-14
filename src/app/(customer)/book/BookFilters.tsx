@@ -8,18 +8,28 @@ import { useRouter } from "next/navigation";
 
 type Opt = { id: string; name: string };
 
+type Labels = {
+  studio: string;
+  allStudios: string;
+  classType: string;
+  allClasses: string;
+  clear: string;
+};
+
 export function BookFilters({
   studios,
   classTypes,
   studio,
   type,
   date,
+  labels,
 }: {
   studios: Opt[];
   classTypes: Opt[];
   studio?: string;
   type?: string;
   date: string;
+  labels: Labels;
 }) {
   const router = useRouter();
   const hasFilters = Boolean(studio || type);
@@ -37,7 +47,7 @@ export function BookFilters({
     <div className="flex flex-wrap items-end gap-3">
       <div className="min-w-[9rem] flex-1">
         <label className="label" htmlFor="f-studio">
-          Studio
+          {labels.studio}
         </label>
         <select
           id="f-studio"
@@ -45,7 +55,7 @@ export function BookFilters({
           value={studio ?? ""}
           onChange={(e) => apply("studio", e.target.value)}
         >
-          <option value="">All studios</option>
+          <option value="">{labels.allStudios}</option>
           {studios.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name}
@@ -55,7 +65,7 @@ export function BookFilters({
       </div>
       <div className="min-w-[9rem] flex-1">
         <label className="label" htmlFor="f-type">
-          Class
+          {labels.classType}
         </label>
         <select
           id="f-type"
@@ -63,7 +73,7 @@ export function BookFilters({
           value={type ?? ""}
           onChange={(e) => apply("type", e.target.value)}
         >
-          <option value="">All classes</option>
+          <option value="">{labels.allClasses}</option>
           {classTypes.map((t) => (
             <option key={t.id} value={t.id}>
               {t.name}
@@ -73,7 +83,7 @@ export function BookFilters({
       </div>
       {hasFilters && (
         <a href={`/book?date=${date}`} className="btn-ghost">
-          Clear
+          {labels.clear}
         </a>
       )}
     </div>
