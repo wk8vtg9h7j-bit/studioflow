@@ -7,6 +7,7 @@
 import { cookies } from "next/headers";
 import { requireRole } from "@/lib/auth";
 import { AppShell, type NavItem } from "@/components/AppShell";
+import type { NavMenuItem } from "@/components/NavMenu";
 import { getDict, localeFromCookieString } from "@/lib/i18n";
 
 export default async function CustomerLayout({
@@ -16,24 +17,25 @@ export default async function CustomerLayout({
 }) {
   const profile = await requireRole("customer", "/book");
 
-  // Nav labels come from the dictionary so the whole customer shell follows the
-  // language toggle. The locale itself is passed down for the toggle's state.
   const cookieStore = await cookies();
   const locale = localeFromCookieString(cookieStore.toString());
   const dict = getDict(locale);
 
-  // All three customer destinations sit flat in the bar. They used to hide behind
-  // an "account" dropdown, which members reported as invisible — the nav wraps to
-  // a second line on narrow screens now, so there is no reason to bury them.
-  const navItems: NavItem[] = [
-    { href: "/book", label: dict.nav_book },
-    { href: "/my-bookings", label: dict.nav_bookings },
-    { href: "/my-packages", label: dict.nav_packages },
-  ];
+  // Keep booking visible as the primary action. Secondary customer destinations
+  // live under one account menu so the header stays usable on narrow screens.
+  const navItems: NavItem[] = [{ href: "/book", label: dict.nav_book }];
+  const navMenu: { label: string; items: NavMenuItem[] } = {
+    label: dict.nav_account,
+    items: [
+      { href: "/my-bookings", label: dict.nav_bookings },
+      { href: "/my-packages", label: dict.nav_packages },
+    ],
+  };
 
   return (
     <AppShell
       navItems={navItems}
+      navMenu={navMenu}
       user={profile.full_name ?? profile.email ?? dict.role_member}
       roleLabel={dict.role_member}
       locale={locale}
