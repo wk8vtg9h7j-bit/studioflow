@@ -14,6 +14,7 @@ import type { Customer, Package, Profile } from "@/lib/types";
 import { CustomerForm } from "./CustomerForm";
 import {
   grantPackageAction,
+  adjustCreditsAction,
   attachLoginAction,
   type CustomerActionState,
   type AddCustomerState,
@@ -35,6 +36,7 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 const grantInitialState: CustomerActionState = {};
+const adjustInitialState: CustomerActionState = {};
 
 export function CustomerRow({
   customer,
@@ -109,6 +111,7 @@ export function CustomerRow({
             <AttachLogin customerId={customer.id} defaultName={name} />
           )}
           <GrantPackage customerId={customer.id} packages={packages} />
+          <AdjustCredits customerId={customer.id} />
         </div>
       )}
     </li>
@@ -249,6 +252,54 @@ function GrantPackage({
         )}
 
         <SubmitButton>Grant package</SubmitButton>
+      </form>
+    </div>
+  );
+}
+
+function AdjustCredits({ customerId }: { customerId: string }) {
+  const [state, formAction] = useFormState(
+    adjustCreditsAction,
+    adjustInitialState,
+  );
+
+  return (
+    <div className="border-t border-stone-200 pt-4">
+      <h3 className="mb-3 text-sm font-semibold text-ink">Adjust credits</h3>
+      <form action={formAction} className="space-y-3">
+        <input type="hidden" name="customer_id" value={customerId} />
+        <div>
+          <label className="label" htmlFor={`adj-${customerId}`}>
+            Credits
+          </label>
+          <input
+            id={`adj-${customerId}`}
+            name="delta"
+            type="number"
+            step="1"
+            className="input"
+            placeholder="e.g. 1 or -1"
+            required
+          />
+        </div>
+        <p className="text-xs text-ink-soft">
+          Positive adds credits, negative removes them — for corrections, comped
+          classes, and goodwill. Adjustments never expire and are excluded from
+          revenue reporting.
+        </p>
+
+        {state.error && (
+          <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            {state.error}
+          </p>
+        )}
+        {state.ok && (
+          <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+            Credits adjusted.
+          </p>
+        )}
+
+        <SubmitButton>Apply adjustment</SubmitButton>
       </form>
     </div>
   );

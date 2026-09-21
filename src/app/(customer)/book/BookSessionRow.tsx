@@ -3,7 +3,8 @@
 // when/where the class is, what it's about, how many seats are left, what it
 // costs in credits, and a book button wired to the bookSessionAction. If the
 // member already has a booking we show their status instead of the button, and
-// when the class is full the button becomes a "Join waitlist" call to action.
+// when the class is full the button becomes a "Join waitlist" call to action —
+// unless reception has held the class full, in which case there is no queue.
 //
 // The layout is phone-first: everything stacks into one readable column and
 // nothing is truncated, because members need to actually read the time and the
@@ -25,6 +26,9 @@ export function BookSessionRow({ session, booked, myStatus }: Props) {
   const capacity = session.capacity ?? 0;
   const available = Math.max(0, capacity - booked);
   const isFull = available <= 0;
+  // A class held full by reception has no queue to join — book_session refuses
+  // the booking outright rather than waitlisting it — so don't offer one.
+  const heldFull = isFull && (session.filler_seats ?? 0) > 0;
   const cost = session.class_type?.credits_cost ?? 1;
   const accent = session.class_type?.color ?? "#7c3aed";
   const tz = session.studio?.timezone;
@@ -98,7 +102,9 @@ export function BookSessionRow({ session, booked, myStatus }: Props) {
             ) : (
               <form action={bookSessionAction}>
                 <input type="hidden" name="session_id" value={session.id} />
-                <SubmitButton>{isFull ? "Join waitlist" : "Book"}</SubmitButton>
+                <SubmitButton disabled={heldFull}>
+                  {heldFull ? "Full" : isFull ? "Join waitlist" : "Book"}
+                </SubmitButton>
               </form>
             )}
           </div>

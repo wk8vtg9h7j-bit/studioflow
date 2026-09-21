@@ -7,13 +7,13 @@
 // status allows. Each action is a tiny <form> posting a hidden id/session_id to
 // the matching server action — no client state beyond the recalc panel toggle.
 //
-// Pay amounts are numeric(10,2) DECIMALS (e.g. 25.00), not minor units, so we
-// format them with Intl.NumberFormat directly rather than the /100 formatMoney.
+// Pay amounts are numeric(10,2) DECIMALS (e.g. 25.00), not minor units, so they
+// go through formatMajorMoney, which converts before delegating to formatMoney.
 // ============================================================================
 "use client";
 
 import { useState } from "react";
-import { humanizeLabel } from "@/lib/format";
+import { formatMajorMoney, humanizeLabel } from "@/lib/format";
 import type { PayrollStatus } from "@/lib/types";
 import {
   approvePayrollAction,
@@ -60,7 +60,7 @@ export function PayrollRow({ row }: { row: PayrollListRow }) {
     row.session?.starts_at ?? null,
     row.session?.studio?.timezone ?? null,
   );
-  const amount = formatAmount(row.computed_amount, row.currency);
+  const amount = formatMajorMoney(row.computed_amount, row.currency);
   const statusClass = STATUS_STYLES[row.status] ?? "bg-stone-100 text-ink-muted";
 
   return (
@@ -179,17 +179,6 @@ export function PayrollRow({ row }: { row: PayrollListRow }) {
       )}
     </li>
   );
-}
-
-function formatAmount(amount: number, currency: string): string {
-  try {
-    return new Intl.NumberFormat("en-GB", {
-      style: "currency",
-      currency: currency || "GBP",
-    }).format(amount ?? 0);
-  } catch {
-    return `${(amount ?? 0).toFixed(2)} ${currency || "GBP"}`;
-  }
 }
 
 function formatWhen(startsAt: string | null, timezone: string | null): string {

@@ -13,12 +13,26 @@
 // "New" when it is that customer's first-ever purchase, otherwise "Returning".
 // ============================================================================
 import { createClient } from "@/lib/supabase/server";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, FALLBACK_TZ } from "@/lib/format";
 import { formatInTimeZone } from "date-fns-tz";
+import type { Product } from "@/lib/types";
+import { RecordSale } from "./RecordSale";
 
 export const dynamic = "force-dynamic";
 
-const TZ = "Asia/Ho_Chi_Minh";
+
+// How far back we look when the URL carries no explicit range.
+const DEFAULT_RANGE_DAYS = 30;
+
+const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
+
+// Shift a yyyy-MM-dd key by whole days. Parsed as UTC midnight so the arithmetic
+// never crosses a DST boundary in the studio's zone.
+function shiftDay(key: string, days: number): string {
+  const d = new Date(`${key}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
 
 type Method = "qr" | "card" | "cash" | "unrecorded";
 
@@ -44,6 +58,16 @@ type PurchaseRow = {
   customer: CustomerRef | null;
 };
 
+type SaleRow = {
+  id: string;
+  created_at: string;
+  total_cents: number;
+  currency: string;
+  payment_method: string | null;
+  customer: CustomerRef | null;
+  items: { name: string; qty: number }[] | null;
+};
+
 type CustomerRef = {
   name: string | null;
   email: string | null;
@@ -58,12 +82,15 @@ type AttendRow = {
 
 type Payment = {
   id: string;
+  kind: "package" | "retail";
   name: string;
-  packageName: string;
+  label: string;
   amount: number;
   currency: string;
   method: Method;
-  isNew: boolean;
+  // Derived from purchase history, which retail sales have no part in — so a
+  // retail row leaves this null rather than claiming the customer is returning.
+  isNew: boolean | null;
   time: string;
 };
 
@@ -73,10 +100,37 @@ type DayGroup = {
   date: string;
   label: string;
   payments: Payment[];
-  total: number;
-  currency: string;
+  // Takings bucketed by currency code. A day that mixed VND and USD keeps two
+  // entries rather than collapsing into one meaningless number.
+  totals: Totals;
   attendees: Attendee[];
 };
+
+// Money is only additive within a single currency, so every total on this page
+// is a map of currency code -> amount rather than a bare number.
+type Totals = Record<string, number>;
+
+function addTo(totals: Totals, currency: string | null, amount: number) {
+  const code = (currency || "VND").toUpperCase();
+  totals[code] = (totals[code] ?? 0) + amount;
+}
+
+function mergeInto(target: Totals, source: Totals) {
+  for (const [code, amount] of Object.entries(source)) {
+    target[code] = (target[code] ?? 0) + amount;
+  }
+}
+
+// Render as "₫1,200,000" for the common single-currency day, or join each
+// currency with a separator when a day genuinely mixed them.
+function formatTotals(totals: Totals): string {
+  const entries = Object.entries(totals).filter(([, amount]) => amount !== 0);
+  if (entries.length === 0) return formatMoney(0, "VND");
+  return entries
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([code, amount]) => formatMoney(amount, code))
+    .join(" + ");
+}
 
 function methodOf(raw: string | null): Method {
   return raw === "qr" || raw === "card" || raw === "cash" ? raw : "unrecorded";
@@ -91,10 +145,56 @@ function nameOf(c: CustomerRef | null) {
   );
 }
 
-export default async function PaymentsPage() {
+export default async function PaymentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ from?: string; to?: string }>;
+}) {
+  const { from: rawFrom, to: rawTo } = await searchParams;
   const supabase = await createClient();
 
-  const [{ data: purchaseData }, { data: attendData }] = await Promise.all([
+  // The studios are fetched *before* the main batch because the page's day axis
+  // depends on them: every grouping key, the SQL bounds, and the Today/This
+  // month stats are computed in one zone, and that zone comes from the studio.
+  // Aggregating across studios means a single axis is the only coherent choice,
+  // so we take the first active studio's zone and fall back to the shared one.
+  const { data: studioData } = await supabase
+    .from("studios")
+    .select("id, name, timezone")
+    .eq("active", true)
+    .order("name", { ascending: true });
+
+  const studioOptions = (studioData ?? []) as {
+    id: string;
+    name: string;
+    timezone: string | null;
+  }[];
+  const TZ = studioOptions[0]?.timezone || FALLBACK_TZ;
+
+  // Resolve the visible window as yyyy-MM-dd day keys in the studio's zone.
+  const todayKey = formatInTimeZone(new Date(), TZ, "yyyy-MM-dd");
+  const fromParam = rawFrom && DAY_KEY.test(rawFrom) ? rawFrom : null;
+  const toParam = rawTo && DAY_KEY.test(rawTo) ? rawTo : null;
+  const a = fromParam ?? shiftDay(todayKey, -(DEFAULT_RANGE_DAYS - 1));
+  const b = toParam ?? todayKey;
+  // Tolerate a reversed range rather than showing nothing.
+  const fromKey = a <= b ? a : b;
+  const toKey = a <= b ? b : a;
+
+  // SQL bounds are padded a day either side: created_at is a UTC instant while
+  // fromKey/toKey are wall-clock days in TZ, so the two never line up exactly.
+  // The padding over-fetches; the exact cut happens on day keys further down.
+  const lowerBound = `${shiftDay(fromKey, -1)}T00:00:00Z`;
+  const upperBound = `${shiftDay(toKey, 2)}T00:00:00Z`;
+
+  const [
+    { data: purchaseData },
+    { data: attendData },
+    { data: saleData },
+    { data: productData },
+    { data: customerData },
+    { data: priorBuyerData },
+  ] = await Promise.all([
     supabase
       .from("credit_ledger")
       .select(
@@ -103,6 +203,8 @@ export default async function PaymentsPage() {
          customer:customers ( name, email, profile:profiles ( full_name, email ) )`,
       )
       .eq("reason", "purchase")
+      .gte("created_at", lowerBound)
+      .lt("created_at", upperBound)
       .order("created_at", { ascending: true }),
     supabase
       .from("bookings")
@@ -111,14 +213,54 @@ export default async function PaymentsPage() {
          session:sessions ( starts_at, title ),
          customer:customers ( name, email, profile:profiles ( full_name, email ) )`,
       )
-      .in("status", ["booked", "attended"]),
+      .in("status", ["booked", "attended"])
+      .gte("session.starts_at", lowerBound)
+      .lt("session.starts_at", upperBound),
+    supabase
+      .from("sales")
+      .select(
+        `id, created_at, total_cents, currency, payment_method,
+         customer:customers ( name, email, profile:profiles ( full_name, email ) ),
+         items:sale_items ( name, qty )`,
+      )
+      .gte("created_at", lowerBound)
+      .lt("created_at", upperBound)
+      .order("created_at", { ascending: true }),
+    // The till form's price list.
+    supabase
+      .from("products")
+      .select("*")
+      .eq("active", true)
+      .order("name", { ascending: true }),
+    supabase
+      .from("customers")
+      .select(`id, name, email, profile:profiles ( full_name, email )`),
+    // Everyone who bought before the window opened. Without this the first
+    // purchase *inside* the window would look like a first purchase ever.
+    supabase
+      .from("credit_ledger")
+      .select("customer_id")
+      .eq("reason", "purchase")
+      .lt("created_at", lowerBound),
   ]);
 
   const purchases = (purchaseData ?? []) as unknown as PurchaseRow[];
   const attendance = (attendData ?? []) as unknown as AttendRow[];
+  const sales = (saleData ?? []) as unknown as SaleRow[];
+  const products = (productData ?? []) as Product[];
 
-  // First-purchase-per-customer => "New". Computed over the ascending list.
-  const seen = new Set<string>();
+  // A Customer row carries no display name of its own — it is either a profile
+  // or a walk-in — so flatten both into one label before handing it to the form.
+  const customerOptions = ((customerData ?? []) as unknown as (CustomerRef & {
+    id: string;
+  })[]).map((c) => ({ id: c.id, name: nameOf(c) }));
+
+  // First-purchase-per-customer => "New". Computed over the ascending list, but
+  // seeded with everyone who already bought before the window so a long-standing
+  // customer is never relabelled "New" just because we started looking late.
+  const seen = new Set<string>(
+    ((priorBuyerData ?? []) as { customer_id: string }[]).map((r) => r.customer_id),
+  );
   const isNew = new Map<string, boolean>();
   for (const p of purchases) {
     const first = !seen.has(p.customer_id);
@@ -128,6 +270,17 @@ export default async function PaymentsPage() {
 
   const groups = new Map<string, DayGroup>();
   const dayOf = (iso: string) => formatInTimeZone(new Date(iso), TZ, "yyyy-MM-dd");
+
+  // The padded SQL bounds over-fetch by a day either side; trim to the exact
+  // window here, on day keys in the studio's zone. Every figure below — the day
+  // groups, the totals, the method split, the counts — reads these two arrays.
+  const inRange = (iso: string) => {
+    const key = dayOf(iso);
+    return key >= fromKey && key <= toKey;
+  };
+  const visiblePurchases = purchases.filter((p) => inRange(p.created_at));
+  const visibleSales = sales.filter((s) => inRange(s.created_at));
+
   const ensureDay = (date: string, iso: string): DayGroup => {
     let g = groups.get(date);
     if (!g) {
@@ -135,8 +288,7 @@ export default async function PaymentsPage() {
         date,
         label: formatInTimeZone(new Date(iso), TZ, "EEEE, d MMM yyyy"),
         payments: [],
-        total: 0,
-        currency: "VND",
+        totals: {},
         attendees: [],
       };
       groups.set(date, g);
@@ -144,16 +296,16 @@ export default async function PaymentsPage() {
     return g;
   };
 
-  for (const row of purchases) {
+  for (const row of visiblePurchases) {
     const date = dayOf(row.created_at);
     const g = ensureDay(date, row.created_at);
     const amount = row.package?.price_cents ?? 0;
-    g.currency = row.package?.currency ?? g.currency;
-    g.total += amount;
+    addTo(g.totals, row.package?.currency ?? null, amount);
     g.payments.push({
       id: row.id,
+      kind: "package",
       name: nameOf(row.customer),
-      packageName: row.package?.name ?? "Package",
+      label: row.package?.name ?? "Package",
       amount,
       currency: row.package?.currency ?? "VND",
       method: methodOf(row.payment_method),
@@ -162,8 +314,32 @@ export default async function PaymentsPage() {
     });
   }
 
+  // Retail sits alongside packages in the same day group. Amounts come from the
+  // sale header, which was snapshotted at the till — never re-derived from the
+  // current price list.
+  for (const row of visibleSales) {
+    const date = dayOf(row.created_at);
+    const g = ensureDay(date, row.created_at);
+    addTo(g.totals, row.currency, row.total_cents);
+    g.payments.push({
+      id: row.id,
+      kind: "retail",
+      name: nameOf(row.customer),
+      label:
+        (row.items ?? []).map((i) => `${i.name} ×${i.qty}`).join(", ") ||
+        "Retail sale",
+      amount: row.total_cents,
+      currency: row.currency,
+      // New/returning is a purchase-history notion; retail has no part in it.
+      isNew: null,
+      method: methodOf(row.payment_method),
+      time: formatInTimeZone(new Date(row.created_at), TZ, "h:mm a"),
+    });
+  }
+
   for (const row of attendance) {
     if (!row.session) continue;
+    if (!inRange(row.session.starts_at)) continue;
     const date = dayOf(row.session.starts_at);
     const g = ensureDay(date, row.session.starts_at);
     g.attendees.push({
@@ -183,27 +359,46 @@ export default async function PaymentsPage() {
     d.attendees.sort((a, b) => (a.time < b.time ? -1 : 1));
   }
 
-  const currency = purchases.at(-1)?.package?.currency ?? "VND";
-  const grandTotal = purchases.reduce(
-    (s, p) => s + (p.package?.price_cents ?? 0),
-    0,
-  );
-  const todayKey = formatInTimeZone(new Date(), TZ, "yyyy-MM-dd");
+  const rangeTotals: Totals = {};
+  for (const p of visiblePurchases) {
+    addTo(rangeTotals, p.package?.currency ?? null, p.package?.price_cents ?? 0);
+  }
+  for (const r of visibleSales) {
+    addTo(rangeTotals, r.currency, r.total_cents);
+  }
+
   const monthKey = formatInTimeZone(new Date(), TZ, "yyyy-MM");
-  const todayTotal = groups.get(todayKey)?.total ?? 0;
-  const monthTotal = days
-    .filter((d) => d.date.startsWith(monthKey))
-    .reduce((s, d) => s + d.total, 0);
+  const todayTotals = groups.get(todayKey)?.totals ?? {};
+  const monthTotals: Totals = {};
+  for (const d of days) {
+    if (d.date.startsWith(monthKey)) mergeInto(monthTotals, d.totals);
+  }
 
   // Method breakdown + new/returning counts across all payments.
-  const byMethod: Record<Method, number> = { qr: 0, card: 0, cash: 0, unrecorded: 0 };
+  const byMethod: Record<Method, Totals> = {
+    qr: {},
+    card: {},
+    cash: {},
+    unrecorded: {},
+  };
   let newCount = 0;
   let returningCount = 0;
-  for (const p of purchases) {
-    byMethod[methodOf(p.payment_method)] += p.package?.price_cents ?? 0;
+  for (const p of visiblePurchases) {
+    addTo(
+      byMethod[methodOf(p.payment_method)],
+      p.package?.currency ?? null,
+      p.package?.price_cents ?? 0,
+    );
     if (isNew.get(p.id)) newCount++;
     else returningCount++;
   }
+
+  // Retail has no new/returning notion — it only moves the method split.
+  for (const r of visibleSales) {
+    addTo(byMethod[methodOf(r.payment_method)], r.currency, r.total_cents);
+  }
+
+  const hasUnrecorded = Object.values(byMethod.unrecorded).some((v) => v !== 0);
 
   return (
     <div className="space-y-8">
@@ -212,16 +407,55 @@ export default async function PaymentsPage() {
           Daily payments
         </h1>
         <p className="mt-1 text-sm text-ink-muted">
-          Package sales and class attendance, grouped by day — so takings can be
-          reconciled against who came in.
+          Package sales, retail sales and class attendance, grouped by day — so
+          takings can be reconciled against who came in.
         </p>
+
+        <form method="get" className="mt-4 flex flex-wrap items-end gap-3">
+          <div>
+            <label htmlFor="from" className="label">
+              From
+            </label>
+            <input
+              id="from"
+              name="from"
+              type="date"
+              defaultValue={fromKey}
+              className="input w-44"
+            />
+          </div>
+          <div>
+            <label htmlFor="to" className="label">
+              To
+            </label>
+            <input
+              id="to"
+              name="to"
+              type="date"
+              defaultValue={toKey}
+              className="input w-44"
+            />
+          </div>
+          <button type="submit" className="btn-secondary">
+            Apply
+          </button>
+          <a href="/admin/payments" className="btn-ghost">
+            Last {DEFAULT_RANGE_DAYS} days
+          </a>
+          <a
+            href={`/admin/payments/export?from=${fromKey}&to=${toKey}`}
+            className="btn-ghost"
+          >
+            Export CSV
+          </a>
+        </form>
       </header>
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
         <section className="space-y-6 lg:col-span-2">
           {days.length === 0 ? (
             <div className="card px-5 py-12 text-center text-sm text-ink-muted">
-              No payments or attendance recorded yet.
+              No payments or attendance in this date range.
             </div>
           ) : (
             days.map((day) => (
@@ -229,7 +463,7 @@ export default async function PaymentsPage() {
                 <div className="flex items-center justify-between border-b border-stone-200 bg-stone-50 px-5 py-3">
                   <h2 className="text-sm font-semibold text-ink">{day.label}</h2>
                   <span className="text-sm font-semibold tabular-nums text-ink">
-                    {formatMoney(day.total, day.currency)}
+                    {formatTotals(day.totals)}
                   </span>
                 </div>
 
@@ -255,14 +489,21 @@ export default async function PaymentsPage() {
                             <p className="truncate text-sm font-medium text-ink">
                               {p.name}
                             </p>
-                            <span
-                              className={`badge ${p.isNew ? "bg-emerald-50 text-emerald-700" : "bg-stone-100 text-ink-muted"}`}
-                            >
-                              {p.isNew ? "New" : "Returning"}
-                            </span>
+                            {p.isNew !== null && (
+                              <span
+                                className={`badge ${p.isNew ? "bg-emerald-50 text-emerald-700" : "bg-stone-100 text-ink-muted"}`}
+                              >
+                                {p.isNew ? "New" : "Returning"}
+                              </span>
+                            )}
+                            {p.kind === "retail" && (
+                              <span className="badge bg-amber-50 text-amber-700">
+                                Retail
+                              </span>
+                            )}
                           </div>
                           <p className="truncate text-xs text-ink-muted">
-                            {p.packageName} · {p.time}
+                            {p.label} · {p.time}
                           </p>
                         </div>
                         <div className="flex shrink-0 items-center gap-3">
@@ -312,9 +553,12 @@ export default async function PaymentsPage() {
           <div className="card sticky top-24 p-5">
             <h2 className="mb-4 text-sm font-semibold text-ink">At a glance</h2>
             <dl className="space-y-3">
-              <SummaryStat label="Today" value={formatMoney(todayTotal, currency)} />
-              <SummaryStat label="This month" value={formatMoney(monthTotal, currency)} />
-              <SummaryStat label="Payments" value={purchases.length} />
+              <SummaryStat label="Today" value={formatTotals(todayTotals)} />
+              <SummaryStat label="This month" value={formatTotals(monthTotals)} />
+              <SummaryStat
+                label="Payments"
+                value={visiblePurchases.length + visibleSales.length}
+              />
             </dl>
 
             <div className="my-5 h-px bg-stone-200" />
@@ -322,13 +566,13 @@ export default async function PaymentsPage() {
               By payment method
             </p>
             <dl className="space-y-3">
-              <SummaryStat label="QR" value={formatMoney(byMethod.qr, currency)} />
-              <SummaryStat label="Card" value={formatMoney(byMethod.card, currency)} />
-              <SummaryStat label="Cash" value={formatMoney(byMethod.cash, currency)} />
-              {byMethod.unrecorded > 0 && (
+              <SummaryStat label="QR" value={formatTotals(byMethod.qr)} />
+              <SummaryStat label="Card" value={formatTotals(byMethod.card)} />
+              <SummaryStat label="Cash" value={formatTotals(byMethod.cash)} />
+              {hasUnrecorded && (
                 <SummaryStat
                   label="Unrecorded"
-                  value={formatMoney(byMethod.unrecorded, currency)}
+                  value={formatTotals(byMethod.unrecorded)}
                 />
               )}
             </dl>
@@ -344,14 +588,28 @@ export default async function PaymentsPage() {
 
             <div className="my-5 h-px bg-stone-200" />
             <dl className="space-y-3">
-              <SummaryStat label="All time" value={formatMoney(grandTotal, currency)} />
+              <SummaryStat
+                label="Selected range"
+                value={formatTotals(rangeTotals)}
+              />
             </dl>
 
             <p className="mt-5 text-xs text-ink-soft">
-              Amounts come from each package&rsquo;s price. &ldquo;New&rdquo; means
-              the customer&rsquo;s first purchase. Refunds and manual credit
-              adjustments are not counted.
+              Package amounts come from each package&rsquo;s current price; retail
+              amounts are the total snapshotted at the till. &ldquo;New&rdquo;
+              means the customer&rsquo;s first package purchase — retail sales do
+              not count towards it. Refunds and manual credit adjustments are not
+              counted.
             </p>
+          </div>
+
+          <div className="card mt-6 p-5">
+            <h2 className="mb-4 text-sm font-semibold text-ink">Record a sale</h2>
+            <RecordSale
+              products={products}
+              customers={customerOptions}
+              studios={studioOptions}
+            />
           </div>
         </aside>
       </div>

@@ -8,7 +8,7 @@
 // ============================================================================
 import { formatInTimeZone } from "date-fns-tz";
 
-const FALLBACK_TZ = "Asia/Ho_Chi_Minh";
+export const FALLBACK_TZ = "Asia/Ho_Chi_Minh";
 
 // "Mon, 12 May · 9:00 AM" — the compact form used in lists and cards.
 export function formatSessionWhen(
@@ -108,6 +108,22 @@ export function formatMoney(
       ? `${amount} ${code}`
       : `${amount.toFixed(2)} ${code}`;
   }
+}
+
+// Some amounts are stored as major-unit decimals — payroll's numeric(10,2), e.g.
+// 25.00 — rather than integer minor units. Convert to whatever formatMoney
+// expects for the currency, then delegate, so exactly one place knows which
+// currencies are zero-decimal.
+export function formatMajorMoney(
+  amount: number | null | undefined,
+  currency = "VND",
+): string {
+  const code = currency.toUpperCase();
+  const value = amount ?? 0;
+  return formatMoney(
+    ZERO_DECIMAL_CURRENCIES.has(code) ? Math.round(value) : Math.round(value * 100),
+    code,
+  );
 }
 
 // "scheduled" -> "Scheduled", "no_show" -> "No show". Handy for enum-ish values.

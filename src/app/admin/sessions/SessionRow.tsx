@@ -19,22 +19,33 @@ import type {
   ClassTypeOption,
   InstructorOption,
 } from "./SessionForm";
-import { setSessionStatusAction } from "./actions";
+import { setSessionStatusAction, setFillerSeatsAction } from "./actions";
+import { RegisterPanel } from "./RegisterPanel";
 
 export function SessionRow({
   session,
+  booked,
   studios,
   classTypes,
   instructors,
 }: {
   session: SessionWithRelations;
+  // Seats taken right now, held seats included — tallied on the server because
+  // RLS hides other customers' bookings from a normal client.
+  booked: number;
   studios: StudioOption[];
   classTypes: ClassTypeOption[];
   instructors: InstructorOption[];
 }) {
   const [editing, setEditing] = useState(false);
+  // The roster is fetched by RegisterPanel only once it's opened, so this flag
+  // is also what keeps the sessions list from loading every booking on screen.
+  const [showRegister, setShowRegister] = useState(false);
 
   const cancelled = session.status === "cancelled";
+  // Seats reception is holding to close a quiet class. Included in `booked`.
+  const held = session.filler_seats ?? 0;
+  const openSeats = Math.max(0, session.capacity - booked);
   const tz = session.studio?.timezone;
   const heading = session.title ?? session.class_type?.name ?? "Class";
   const color = session.class_type?.color ?? "#d6d3d1";
@@ -70,7 +81,8 @@ export function SessionRow({
             {" · "}
             {session.instructor?.display_name ?? "Unassigned"}
             {" · "}
-            {session.capacity} spots
+            {booked}/{session.capacity} booked
+            {held > 0 ? ` · ${held} held` : ""}
             {session.room ? ` · ${session.room}` : ""}
           </p>
         </div>
@@ -78,11 +90,44 @@ export function SessionRow({
         <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
+            onClick={() => setShowRegister((v) => !v)}
+            className="btn-secondary"
+            title="Mark who attended and who didn't"
+          >
+            {showRegister ? "Hide register" : "Register"}
+          </button>
+
+          <button
+            type="button"
             onClick={() => setEditing((v) => !v)}
             className="btn-secondary"
           >
             {editing ? "Close" : "Edit"}
           </button>
+
+          {!cancelled && (
+            <form action={setFillerSeatsAction}>
+              <input type="hidden" name="id" value={session.id} />
+              {/* Hold every remaining seat, or release the hold entirely. */}
+              <input
+                type="hidden"
+                name="seats"
+                value={held > 0 ? 0 : openSeats}
+              />
+              <button
+                type="submit"
+                className="btn-ghost"
+                disabled={held === 0 && openSeats === 0}
+                title={
+                  held > 0
+                    ? "Release the held seats so customers can book again"
+                    : "Hold the remaining seats so customers see this class as full"
+                }
+              >
+                {held > 0 ? "Unfill" : "Fill"}
+              </button>
+            </form>
+          )}
 
           <form action={setSessionStatusAction}>
             <input type="hidden" name="id" value={session.id} />
@@ -101,6 +146,12 @@ export function SessionRow({
           </form>
         </div>
       </div>
+
+      {showRegister && (
+        <div className="border-t border-stone-200 bg-stone-50 px-5 py-4">
+          <RegisterPanel sessionId={session.id} />
+        </div>
+      )}
 
       {editing && (
         <div className="border-t border-stone-200 bg-stone-50 px-5 py-4">

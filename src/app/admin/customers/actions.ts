@@ -141,6 +141,78 @@ export async function grantPackageAction(
 }
 
 // ----------------------------------------------------------------------------
+// Adjust credits manually.
+//
+// A correction, goodwill gesture, or comped class — anything that moves a
+// balance without money changing hands. Writes one signed row with reason
+// 'adjustment', which is exactly what the signup trigger already does for the
+// starter credit (see 0004_customer_on_signup.sql). Two consequences:
+//
+//   • expires_at is null, so the adjustment never lapses. Package clips expire;
+//     a manual correction should not silently undo itself.
+//   • /admin/payments filters on reason = 'purchase', so adjustments stay out of
+//     revenue — they are credits, not income.
+//
+// Admin-only; credit_ledger RLS restricts writes to admins regardless.
+// ----------------------------------------------------------------------------
+const AdjustSchema = z.object({
+  customer_id: z.string().uuid("Could not identify which customer to adjust."),
+  delta: z.coerce
+    .number({ invalid_type_error: "Enter a whole number of credits." })
+    .int("Credits must be a whole number.")
+    .refine((n) => n !== 0, "Enter a non-zero number of credits.")
+    .refine((n) => Math.abs(n) <= 500, "That is too large an adjustment."),
+});
+
+export async function adjustCreditsAction(
+  _prev: CustomerActionState,
+  formData: FormData,
+): Promise<CustomerActionState> {
+  await requireRole("admin", "/admin/customers");
+
+  const parsed = AdjustSchema.safeParse({
+    customer_id: formData.get("customer_id"),
+    delta: formData.get("delta"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Check the form." };
+  }
+
+  const { customer_id, delta } = parsed.data;
+  const supabase = await createClient();
+
+  // Guard against pushing a balance negative — book_session would refuse to
+  // spend from it anyway, and a negative balance reads as a bug to reception.
+  if (delta < 0) {
+    const { data: balance } = await supabase.rpc("credit_balance", {
+      p_customer: customer_id,
+    });
+    const current = typeof balance === "number" ? balance : 0;
+    if (current + delta < 0) {
+      return {
+        error: `That would leave a negative balance (currently ${current}).`,
+      };
+    }
+  }
+
+  const { error } = await supabase.from("credit_ledger").insert({
+    customer_id,
+    delta,
+    reason: "adjustment",
+    package_id: null,
+    booking_id: null,
+    expires_at: null,
+  });
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidatePath("/admin/customers");
+  return { ok: true };
+}
+
+// ----------------------------------------------------------------------------
 // Add a customer manually (reception).
 //   • Walk-in   → a CRM record with no login (profile_id null), basic contact
 //     details stored on the customer row.

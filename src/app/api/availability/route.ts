@@ -45,6 +45,7 @@ type SessionRow = {
   starts_at: string;
   capacity: number;
   studio_id: string;
+  filler_seats: number;
   class_type: { id: string; name: string; credits_cost: number } | null;
 };
 
@@ -76,7 +77,7 @@ export async function GET(req: NextRequest) {
 
   let query = service
     .from("sessions")
-    .select("id,starts_at,capacity,studio_id,class_type:class_types(id,name,credits_cost)")
+    .select("id,starts_at,capacity,studio_id,filler_seats,class_type:class_types(id,name,credits_cost)")
     .eq("status", "scheduled")
     .gt("starts_at", nowIso);
 
@@ -114,7 +115,11 @@ export async function GET(req: NextRequest) {
   }
 
   const payload = sessions.map((s) => {
-    const booked = bookedBySession.get(s.id) ?? 0;
+    // Seats held by reception count as taken, so the marketing site shows the
+    // class as full. Folded into `booked` as well as `available` to keep
+    // capacity - booked === available true for consumers.
+    const booked =
+      (bookedBySession.get(s.id) ?? 0) + Math.max(0, s.filler_seats ?? 0);
     const available = Math.max(0, s.capacity - booked);
     return {
       id: s.id,

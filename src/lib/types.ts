@@ -21,6 +21,9 @@ export type GoogleTokenStatus = "disconnected" | "connected" | "error";
 // Credits live in one of two pools that never mix: private packages grant
 // private credits, and private class types spend them.
 export type CreditPool = "regular" | "private";
+// How reception took the money. Mirrors the SQL check constraints on
+// credit_ledger (0005) and sales (0008).
+export type PaymentMethod = "qr" | "card" | "cash";
 
 export interface Profile {
   id: string;
@@ -101,6 +104,43 @@ export interface Package {
   created_at: string;
 }
 
+// Retail goods sold at the counter. Prices are minor units like Package, so
+// formatMoney handles them identically. No stock tracking: this is a price list.
+export interface Product {
+  id: string;
+  name: string;
+  description: string | null;
+  sku: string | null;
+  price_cents: number;
+  currency: string;
+  active: boolean;
+  created_at: string;
+}
+
+export interface Sale {
+  id: string;
+  customer_id: string | null; // null = walk-in
+  studio_id: string | null;
+  total_cents: number;
+  currency: string;
+  payment_method: PaymentMethod | null;
+  notes: string | null;
+  sold_by: string | null;
+  created_at: string;
+}
+
+// name and unit_price_cents are snapshots taken at sale time, not joins.
+export interface SaleItem {
+  id: string;
+  sale_id: string;
+  product_id: string | null;
+  name: string;
+  unit_price_cents: number;
+  qty: number;
+  line_total_cents: number;
+  created_at: string;
+}
+
 export interface CreditLedgerEntry {
   id: string;
   customer_id: string;
@@ -148,6 +188,10 @@ export interface Session {
   status: SessionStatus;
   room: string | null;
   notes: string | null;
+  // Seats held by reception to close a quiet class. Counted against capacity on
+  // the customer side only — never written to bookings, so attendance, payroll
+  // and revenue are untouched. See 0009_fill_class.sql.
+  filler_seats: number;
   google_event_id: string | null;
   created_at: string;
   updated_at: string;

@@ -119,7 +119,12 @@ export default async function BookPage({
   // Booked-seat tallies for every listed session, counted with the service
   // client so we see everyone's seats (not just mine). Only "booked" rows take a
   // seat; waitlisted members don't.
+  // Seeded with any seats reception is holding (filler_seats), so a held class
+  // reads as full here without a single row being written to bookings.
   const bookedBySession = new Map<string, number>();
+  for (const s of sessions) {
+    if (s.filler_seats > 0) bookedBySession.set(s.id, s.filler_seats);
+  }
   if (sessions.length > 0) {
     const service = createServiceClient();
     const { data: seatRows } = await service

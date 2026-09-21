@@ -16,6 +16,7 @@ import { fromZonedTime } from "date-fns-tz";
 import { z } from "zod";
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import type { BookingStatus } from "@/lib/types";
 
 const SessionSchema = z.object({
   studio_id: z.string().uuid("Pick a studio"),
@@ -218,4 +219,152 @@ export async function setSessionStatusAction(formData: FormData) {
   const supabase = await createClient();
   await supabase.from("sessions").update({ status }).eq("id", id);
   revalidatePath("/admin/sessions");
+}
+
+// "Fill" a quiet class: reception holds the remaining seats so the class reads as
+// full to customers and book_session refuses new bookings outright (no waitlist —
+// there is no real seat to free up). Held seats are a counter on the session, never
+// rows in bookings, so attendance, payroll and revenue are untouched. Passing 0
+// releases the hold.
+export async function setFillerSeatsAction(formData: FormData) {
+  await requireRole("admin", "/admin/sessions");
+
+  const id = String(formData.get("id") ?? "");
+  const seats = Number(formData.get("seats") ?? "");
+  if (!id) return;
+  if (!Number.isInteger(seats) || seats < 0) return;
+
+  const supabase = await createClient();
+
+  // Never hold more seats than the class has: the customer-side tally counts
+  // held + booked as taken, so an oversized hold would only distort the numbers.
+  const { data: row } = await supabase
+    .from("sessions")
+    .select("capacity")
+    .eq("id", id)
+    .maybeSingle();
+  if (!row) return;
+
+  const capacity = (row as { capacity: number }).capacity;
+  await supabase
+    .from("sessions")
+    .update({ filler_seats: Math.min(seats, capacity) })
+    .eq("id", id);
+  revalidatePath("/admin/sessions");
+}
+
+// ----------------------------------------------------------------------------
+// Class register — who actually turned up. Attendance is recorded per booking,
+// and it feeds payroll: session_attendance() counts 'booked' and 'attended'
+// heads, so marking someone a no-show removes a head and changes what the
+// instructor is owed. Credits are never returned — a no-show still consumed the
+// seat and the clip.
+// ----------------------------------------------------------------------------
+
+export type RegisterRow = {
+  id: string;
+  name: string;
+  status: BookingStatus;
+  credits_spent: number;
+};
+
+export type RegisterData = {
+  capacity: number;
+  bookedCount: number;
+  attendedCount: number;
+  noShowCount: number;
+  creditsUsed: number;
+  roster: RegisterRow[];
+};
+
+// Walk-ins created at reception carry a name on the customer row; members get
+// theirs from the linked profile. Either can be missing, so fall back to a label
+// rather than rendering an empty cell.
+function resolveName(customer: unknown): string {
+  const c = customer as
+    | { name?: string | null; profile?: { full_name?: string | null } | null }
+    | null;
+  return c?.name || c?.profile?.full_name || "Member";
+}
+
+export async function getRegisterDataAction(
+  sessionId: string,
+): Promise<RegisterData> {
+  await requireRole("admin", "/admin/sessions");
+  const supabase = await createClient();
+
+  const { data: session } = await supabase
+    .from("sessions")
+    .select("capacity")
+    .eq("id", sessionId)
+    .maybeSingle();
+
+  // A cancelled booking gave its seat back, so it is not part of the register.
+  const { data: bookingRows } = await supabase
+    .from("bookings")
+    .select(
+      "id, status, credits_spent, customer:customers(name, profile:profiles(full_name))",
+    )
+    .eq("session_id", sessionId)
+    .neq("status", "cancelled")
+    .order("booked_at", { ascending: true });
+
+  const rows = (bookingRows ?? []) as unknown as {
+    id: string;
+    status: BookingStatus;
+    credits_spent: number | null;
+    customer: unknown;
+  }[];
+
+  const roster: RegisterRow[] = rows.map((r) => ({
+    id: r.id,
+    name: resolveName(r.customer),
+    status: r.status,
+    credits_spent: r.credits_spent ?? 0,
+  }));
+
+  return {
+    capacity: (session as { capacity: number } | null)?.capacity ?? 0,
+    // Matches session_attendance(): a seat counts whether or not the person has
+    // been marked in yet, and only a no-show hands it back.
+    bookedCount: roster.filter(
+      (r) => r.status === "booked" || r.status === "attended",
+    ).length,
+    attendedCount: roster.filter((r) => r.status === "attended").length,
+    noShowCount: roster.filter((r) => r.status === "no_show").length,
+    creditsUsed: roster.reduce((sum, r) => sum + r.credits_spent, 0),
+    roster,
+  };
+}
+
+// Change a roster row's attendance (booked / attended / no_show). Marking is
+// reversible — passing 'booked' clears the mark — which matters because the
+// cancel RPCs treat 'attended' and 'no_show' as terminal states.
+export async function setBookingStatusAction(
+  _prev: SessionActionState,
+  formData: FormData,
+): Promise<SessionActionState> {
+  await requireRole("admin", "/admin/sessions");
+
+  const bookingId = String(formData.get("booking_id") ?? "");
+  const status = String(formData.get("status") ?? "");
+  if (!bookingId) return { error: "Missing booking." };
+  if (!["booked", "attended", "no_show"].includes(status)) {
+    return { error: "Invalid status." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("bookings")
+    .update({
+      status,
+      // Only an attended booking has a real check-in moment; clearing the mark
+      // clears the timestamp with it.
+      checked_in_at: status === "attended" ? new Date().toISOString() : null,
+    })
+    .eq("id", bookingId);
+  if (error) return { error: error.message };
+
+  revalidatePath("/admin/sessions");
+  return { ok: true };
 }
