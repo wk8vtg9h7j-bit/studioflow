@@ -29,6 +29,7 @@ const STUDIO_COPY: Record<string, { short: string; blurb: string }> = {
 type SessionRow = {
   id: string;
   starts_at: string;
+  capacity: number;
   studio: {
     id: string;
     name: string;
@@ -54,7 +55,7 @@ export default async function HomePage() {
   const { data } = await service
     .from("sessions")
     .select(
-      "id,starts_at, studio:studios(id,name,slug,brand_color,timezone,address), class_type:class_types(id,name,color,credits_cost,description)",
+      "id,starts_at,capacity, studio:studios(id,name,slug,brand_color,timezone,address), class_type:class_types(id,name,color,credits_cost,description)",
     )
     .eq("status", "scheduled")
     .gt("starts_at", new Date().toISOString())
@@ -62,6 +63,28 @@ export default async function HomePage() {
     .limit(200);
 
   const rows = (data ?? []) as unknown as SessionRow[];
+
+  // Public landing cards also show live occupancy. The service client can count
+  // booked rows without exposing any customer details.
+  const bookedBySession = new Map<string, number>();
+  if (rows.length > 0) {
+    const { data: bookedRows } = await service
+      .from("bookings")
+      .select("session_id")
+      .eq("status", "booked")
+      .in(
+        "session_id",
+        rows.map((row) => row.id),
+      );
+
+    for (const booking of bookedRows ?? []) {
+      const sessionId = (booking as { session_id: string }).session_id;
+      bookedBySession.set(
+        sessionId,
+        (bookedBySession.get(sessionId) ?? 0) + 1,
+      );
+    }
+  }
 
   // Group by studio, then keep only the first upcoming day per studio so the
   // landing shows one clean lineup rather than every future class.
@@ -103,6 +126,8 @@ export default async function HomePage() {
       credits: classType.credits_cost ?? 1,
       color: classType.color ?? entry.accent,
       time: formatInTimeZone(row.starts_at, tz, "HH:mm"),
+      booked: bookedBySession.get(row.id) ?? 0,
+      capacity: row.capacity ?? 4,
     };
     entry.classes.push(cls);
   }
