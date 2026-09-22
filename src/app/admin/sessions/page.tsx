@@ -25,7 +25,7 @@ import type {
   ClassTypeOption,
   InstructorOption,
 } from "./SessionForm";
-import { SessionRow, type CustomerOption } from "./SessionRow";
+import { SessionRow } from "./SessionRow";
 
 const DAY_MS = 86_400_000;
 
@@ -50,7 +50,7 @@ export default async function SessionsPage({
 
   // The option lists come first: resolving a text search against class-type
   // names needs their ids before the sessions query can be built.
-  const [studiosRes, classTypesRes, instructorsRes, customersRes] = await Promise.all([
+  const [studiosRes, classTypesRes, instructorsRes] = await Promise.all([
     supabase
       .from("studios")
       .select("id,name,timezone")
@@ -66,35 +66,11 @@ export default async function SessionsPage({
       .select("id,display_name")
       .eq("active", true)
       .order("display_name", { ascending: true }),
-    service
-      .from("customers")
-      .select("id,name,email,profile:profiles(full_name,email)")
-      .order("created_at", { ascending: false })
-      .limit(1000),
   ]);
 
   const studios = (studiosRes.data ?? []) as StudioOption[];
   const classTypes = (classTypesRes.data ?? []) as ClassTypeOption[];
   const instructors = (instructorsRes.data ?? []) as InstructorOption[];
-  const customers = ((customersRes.data ?? []) as unknown as {
-    id: string;
-    name: string | null;
-    email: string | null;
-    profile: { full_name: string | null; email: string | null } | null;
-  }[])
-    .map(
-      (customer): CustomerOption => ({
-        id: customer.id,
-        name:
-          customer.profile?.full_name ??
-          customer.name ??
-          customer.profile?.email ??
-          customer.email ??
-          "Unnamed customer",
-        email: customer.profile?.email ?? customer.email ?? null,
-      }),
-    )
-    .sort((a, b) => a.name.localeCompare(b.name));
 
   // Week bounds, anchored on Monday in studio time. Vietnam has no DST, so the
   // day length is a constant and plain millisecond arithmetic is safe here.
@@ -226,7 +202,6 @@ export default async function SessionsPage({
                   studios={studios}
                   classTypes={classTypes}
                   instructors={instructors}
-                  customers={customers}
                 />
               ))}
             </ul>
