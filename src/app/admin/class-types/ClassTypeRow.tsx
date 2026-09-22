@@ -34,6 +34,9 @@ export function ClassTypeRow({ classType }: { classType: ClassType }) {
                 Inactive
               </span>
             )}
+            <span className="badge bg-brand-50 text-brand-700">
+              {classType.pool === "private" ? "Private" : "Regular"}
+            </span>
           </div>
           <p className="truncate text-xs text-ink-muted">
             {classType.default_duration_min} min · {classType.default_capacity}{" "}
