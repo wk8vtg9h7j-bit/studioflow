@@ -16,6 +16,7 @@ import {
   grantPackageAction,
   adjustCreditsAction,
   attachLoginAction,
+  deleteCustomerAction,
   type CustomerActionState,
   type AddCustomerState,
 } from "./actions";
@@ -28,6 +29,7 @@ export type CustomerWithProfile = Customer & {
 };
 
 const attachInitialState: AddCustomerState = {};
+const deleteInitialState: AddCustomerState = {};
 
 const STATUS_STYLES: Record<string, string> = {
   active: "bg-emerald-50 text-emerald-700",
@@ -48,6 +50,7 @@ export function CustomerRow({
   packages: Package[];
 }) {
   const [editing, setEditing] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
   const isWalkIn = !customer.profile;
   const name =
     customer.profile?.full_name ?? customer.name ?? "Unnamed customer";
@@ -96,13 +99,35 @@ export function CustomerRow({
           </div>
           <button
             type="button"
-            onClick={() => setEditing((v) => !v)}
+            onClick={() => {
+              setEditing((v) => !v);
+              setShowDelete(false);
+            }}
             className="btn-secondary"
           >
             {editing ? "Close" : "Edit"}
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowDelete((v) => !v);
+              setEditing(false);
+            }}
+            className="btn-ghost text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+          >
+            {showDelete ? "Close delete" : "Delete"}
+          </button>
         </div>
       </div>
+
+      {showDelete && (
+        <DeleteCustomer
+          customerId={customer.id}
+          name={name}
+          hasLogin={!isWalkIn}
+          onCancel={() => setShowDelete(false)}
+        />
+      )}
 
       {editing && (
         <div className="space-y-6 border-t border-stone-200 bg-stone-50 px-5 py-4">
@@ -300,6 +325,68 @@ function AdjustCredits({ customerId }: { customerId: string }) {
         )}
 
         <SubmitButton>Apply adjustment</SubmitButton>
+      </form>
+    </div>
+  );
+}
+
+function DeleteCustomer({
+  customerId,
+  name,
+  hasLogin,
+  onCancel,
+}: {
+  customerId: string;
+  name: string;
+  hasLogin: boolean;
+  onCancel: () => void;
+}) {
+  const [state, formAction] = useFormState(
+    deleteCustomerAction,
+    deleteInitialState,
+  );
+
+  return (
+    <div className="border-t border-rose-200 bg-rose-50/50 px-5 py-4">
+      <h3 className="text-sm font-semibold text-rose-800">
+        Permanently delete {name}?
+      </h3>
+      <p className="mt-1 text-xs leading-relaxed text-rose-700">
+        This removes the customer, credits, bookings, and purchase history.
+        {hasLogin
+          ? " Their linked login account will also be deleted so the customer cannot be recreated automatically."
+          : ""}{" "}
+        This cannot be undone.
+      </p>
+
+      <form action={formAction} className="mt-4 space-y-3">
+        <input type="hidden" name="id" value={customerId} />
+        <div className="max-w-sm">
+          <label className="label" htmlFor={`del-${customerId}`}>
+            Type DELETE to confirm
+          </label>
+          <input
+            id={`del-${customerId}`}
+            name="confirm"
+            className="input"
+            placeholder="DELETE"
+            autoComplete="off"
+            required
+          />
+        </div>
+
+        {state.error && (
+          <p className="rounded-lg bg-rose-100 px-3 py-2 text-sm text-rose-800">
+            {state.error}
+          </p>
+        )}
+
+        <div className="flex flex-wrap items-center gap-3">
+          <SubmitButton>Delete permanently</SubmitButton>
+          <button type="button" onClick={onCancel} className="btn-secondary">
+            Cancel
+          </button>
+        </div>
       </form>
     </div>
   );
