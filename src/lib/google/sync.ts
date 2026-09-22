@@ -262,18 +262,45 @@ export async function syncSessionToStudio(
       };
     }
 
-    // Create a new event and persist its id back on the session.
-    const res = await calendar.events.insert({
-      calendarId,
-      requestBody: eventBody(studio, session),
-    });
-    const eventId = res.data.id ?? null;
-    if (eventId) {
-      await service
-        .from("sessions")
-        .update({ google_event_id: eventId })
-        .eq("id", session.id);
+    // Create a new event with a deterministic ID derived from the StudioFlow
+    // session UUID. This makes bulk sync idempotent: even if two cron runs ever
+    // overlap, Google will not accept a duplicate event for the same class.
+    const deterministicEventId = `sf${session.id.replace(/-/g, "")}`;
+    let eventId = deterministicEventId;
+
+    try {
+      const res = await calendar.events.insert({
+        calendarId,
+        requestBody: {
+          ...eventBody(studio, session),
+          id: deterministicEventId,
+        },
+      });
+      eventId = res.data.id ?? deterministicEventId;
+    } catch (insertError) {
+      const status =
+        typeof insertError === "object" &&
+        insertError !== null &&
+        "code" in insertError
+          ? Number((insertError as { code?: unknown }).code)
+          : null;
+
+      if (status !== 409) throw insertError;
+
+      // The deterministic event already exists. Re-link and update it instead
+      // of creating a second copy.
+      await calendar.events.update({
+        calendarId,
+        eventId: deterministicEventId,
+        requestBody: eventBody(studio, session),
+      });
     }
+
+    await service
+      .from("sessions")
+      .update({ google_event_id: eventId })
+      .eq("id", session.id);
+
     await logSync(studio.id, session.id, "create", true, null);
     await stampSynced(studio.id);
     return { ok: true, action: "create", eventId, message: null };
