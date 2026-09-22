@@ -45,7 +45,15 @@ type SessionForSync = Pick<
   | "google_event_id"
   | "filler_seats"
 > & {
+  capacity?: number | null;
   class_type_name?: string | null;
+  calendar_bookings?: Array<{
+    name: string;
+    email: string | null;
+    phone: string | null;
+    status: "booked" | "waitlisted" | "attended" | "no_show" | "cancelled";
+    spots: number;
+  }>;
 };
 
 export class StudioNotConnectedError extends Error {
@@ -88,10 +96,47 @@ function eventBody(
     session.class_type_name?.trim() ||
     `${studio.name} class`;
   const isFilled = (session.filler_seats ?? 0) > 0;
-  const summary = isFilled ? `FILLED · ${baseSummary}` : baseSummary;
+  const bookings = session.calendar_bookings ?? [];
+  const booked = bookings.filter(
+    (booking) => booking.status === "booked" || booking.status === "attended",
+  );
+  const waitlisted = bookings.filter(
+    (booking) => booking.status === "waitlisted",
+  );
+  const bookedSpots = booked.reduce((sum, booking) => sum + booking.spots, 0);
+  const capacity = session.capacity ?? 0;
+  const occupied = bookedSpots + (session.filler_seats ?? 0);
+  const occupancy =
+    capacity > 0 ? ` · ${Math.min(occupied, capacity)}/${capacity} booked` : "";
+  const summary = isFilled
+    ? `FILLED · ${baseSummary}${occupancy}`
+    : `${baseSummary}${occupancy}`;
+
   const descriptionParts: string[] = [];
   if (session.room) descriptionParts.push(`Room: ${session.room}`);
   if (session.notes) descriptionParts.push(session.notes);
+
+  if (booked.length > 0) {
+    descriptionParts.push(
+      `Booked customers (${bookedSpots}${capacity > 0 ? `/${capacity}` : ""}):`,
+    );
+    for (const booking of booked) {
+      const contact = [booking.email, booking.phone].filter(Boolean).join(" · ");
+      descriptionParts.push(
+        `• ${booking.name} — ${booking.spots} spot${booking.spots === 1 ? "" : "s"}${contact ? ` · ${contact}` : ""}`,
+      );
+    }
+  }
+
+  if (waitlisted.length > 0) {
+    descriptionParts.push("Waitlist:");
+    for (const booking of waitlisted) {
+      descriptionParts.push(
+        `• ${booking.name} — ${booking.spots} spot${booking.spots === 1 ? "" : "s"}`,
+      );
+    }
+  }
+
   if (isFilled) {
     descriptionParts.push(
       `Filled by: ${studio.google_account_email ?? "info@rechargeddanang.com"}`,
@@ -251,7 +296,7 @@ export async function syncSessionById(sessionId: string): Promise<SyncResult> {
   const { data: session } = await service
     .from("sessions")
     .select(
-      "id,title,starts_at,ends_at,room,notes,status,google_event_id,studio_id,filler_seats,class_type:class_types(name)",
+      "id,title,starts_at,ends_at,room,notes,status,google_event_id,studio_id,filler_seats,capacity,class_type:class_types(name)",
     )
     .eq("id", sessionId)
     .single();
@@ -276,8 +321,52 @@ export async function syncSessionById(sessionId: string): Promise<SyncResult> {
     class_type?: { name: string | null } | null;
   };
 
+  const { data: bookingRows } = await service
+    .from("bookings")
+    .select(
+      "status,spots_count,customer:customers(name,email,phone,profile:profiles(full_name,email,phone))",
+    )
+    .eq("session_id", sessionId)
+    .in("status", ["booked", "attended", "waitlisted"])
+    .order("booked_at", { ascending: true });
+
+  const calendarBookings = (bookingRows ?? []).map((row) => {
+    const item = row as unknown as {
+      status: "booked" | "waitlisted" | "attended";
+      spots_count: number | null;
+      customer:
+        | {
+            name: string | null;
+            email: string | null;
+            phone: string | null;
+            profile:
+              | {
+                  full_name: string | null;
+                  email: string | null;
+                  phone: string | null;
+                }
+              | null;
+          }
+        | null;
+    };
+    const customer = item.customer;
+    return {
+      name:
+        customer?.profile?.full_name ||
+        customer?.name ||
+        customer?.profile?.email ||
+        customer?.email ||
+        "Member",
+      email: customer?.profile?.email ?? customer?.email ?? null,
+      phone: customer?.profile?.phone ?? customer?.phone ?? null,
+      status: item.status,
+      spots: item.spots_count ?? 1,
+    };
+  });
+
   return syncSessionToStudio(studio as StudioForSync, {
     ...sessionRow,
     class_type_name: sessionRow.class_type?.name ?? null,
+    calendar_bookings: calendarBookings,
   });
 }
