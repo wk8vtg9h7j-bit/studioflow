@@ -13,6 +13,8 @@ import LandingExperience, {
   type LandingClass,
   type LandingStudio,
 } from "./LandingExperience";
+import { getLocale } from "@/lib/locale-server";
+import { LanguageProvider } from "@/components/LanguageProvider";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +50,7 @@ type SessionRow = {
 };
 
 export default async function HomePage() {
+  const locale = await getLocale();
   const profile = await getProfile();
   if (profile) redirect(homePathForRole(profile.role));
 
@@ -149,5 +152,9 @@ export default async function HomePage() {
     });
   }
 
-  return <LandingExperience studios={studios} />;
+  return (
+    <LanguageProvider locale={locale}>
+      <LandingExperience studios={studios} />
+    </LanguageProvider>
+  );
 }
