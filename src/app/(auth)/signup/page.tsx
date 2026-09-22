@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useFormState } from "react-dom";
 import { signUpAction, type AuthState } from "../actions";
 import { SubmitButton } from "../SubmitButton";
+import { useLanguage } from "@/components/LanguageProvider";
 
 const initial: AuthState = { error: null };
 
@@ -44,20 +45,22 @@ function PreviewRolePicker() {
 
 export default function SignupPage() {
   const [state, formAction] = useFormState(signUpAction, initial);
+  const { locale } = useLanguage();
+  const vi = locale === "vi";
 
   return (
     <div className="card p-6">
       <h1 className="text-xl font-semibold tracking-tight text-ink">
-        Create your account
+        {vi ? "Tạo tài khoản" : "Create your account"}
       </h1>
       <p className="mt-1 text-sm text-ink-muted">
-        Book classes and manage your credits in one place.
+        {vi ? "Đặt lớp và quản lý tín dụng của bạn tại một nơi." : "Book classes and manage your credits in one place."}
       </p>
 
       <form action={formAction} className="mt-6 space-y-4">
         <div>
           <label htmlFor="fullName" className="label">
-            Full name
+            {vi ? "Họ và tên" : "Full name"}
           </label>
           <input
             id="fullName"
@@ -86,8 +89,24 @@ export default function SignupPage() {
         </div>
 
         <div>
+          <label htmlFor="phone" className="label">
+            {vi ? "Số điện thoại" : "Phone number"}
+          </label>
+          <input
+            id="phone"
+            name="phone"
+            type="tel"
+            inputMode="tel"
+            autoComplete="tel"
+            required
+            className="input"
+            placeholder="+84 90 123 4567"
+          />
+        </div>
+
+        <div>
           <label htmlFor="password" className="label">
-            Password
+            {vi ? "Mật khẩu" : "Password"}
           </label>
           <input
             id="password"
@@ -97,7 +116,7 @@ export default function SignupPage() {
             required
             minLength={8}
             className="input"
-            placeholder="At least 8 characters"
+            placeholder="{vi ? "Ít nhất 8 ký tự" : "At least 8 characters"}"
           />
         </div>
 
@@ -107,15 +126,15 @@ export default function SignupPage() {
           </p>
         ) : null}
 
-        <SubmitButton>Create account</SubmitButton>
+        <SubmitButton pendingLabel={vi ? "Vui lòng đợi…" : "Please wait…"}>{vi ? "Tạo tài khoản" : "Create account"}</SubmitButton>
       </form>
 
       <PreviewRolePicker />
 
       <p className="mt-6 text-center text-sm text-ink-muted">
-        Already have an account?{" "}
+        {vi ? "Đã có tài khoản?" : "Already have an account?"}{" "}
         <Link href="/login" className="font-medium text-brand-600 hover:text-brand-700">
-          Log in
+          {vi ? "Đăng nhập" : "Log in"}
         </Link>
       </p>
     </div>
