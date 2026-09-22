@@ -35,6 +35,9 @@ const ClassTypeSchema = z.object({
     .regex(/^#[0-9a-fA-F]{6}$/, "Use a hex colour like #0ea5e9")
     .optional()
     .or(z.literal("")),
+  pool: z.enum(["regular", "private"], {
+    errorMap: () => ({ message: "Choose regular or private credits." }),
+  }),
 });
 
 export type ClassTypeActionState = { error?: string; ok?: boolean };
@@ -47,6 +50,7 @@ function parseForm(formData: FormData) {
     default_capacity: formData.get("default_capacity"),
     credits_cost: formData.get("credits_cost"),
     color: formData.get("color"),
+    pool: formData.get("pool"),
   });
 }
 
@@ -69,6 +73,7 @@ export async function createClassTypeAction(
     default_capacity: parsed.data.default_capacity,
     credits_cost: parsed.data.credits_cost,
     color: parsed.data.color || "#0ea5e9",
+    pool: parsed.data.pool,
     active: true,
   });
 
@@ -109,6 +114,7 @@ export async function updateClassTypeAction(
       default_capacity: parsed.data.default_capacity,
       credits_cost: parsed.data.credits_cost,
       color: parsed.data.color || "#0ea5e9",
+      pool: parsed.data.pool,
     })
     .eq("id", id);
 
