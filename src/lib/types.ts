@@ -193,6 +193,7 @@ export interface Session {
   // and revenue are untouched. See 0009_fill_class.sql.
   filler_seats: number;
   google_event_id: string | null;
+  google_filler_event_ids: string[] | null;
   created_at: string;
   updated_at: string;
 }
@@ -207,6 +208,7 @@ export interface Booking {
   checked_in_at: string | null;
   credits_spent: number;
   spots_count: number;
+  google_event_ids: string[] | null;
   source: string;
   created_at: string;
   updated_at: string;
