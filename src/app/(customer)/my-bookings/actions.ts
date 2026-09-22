@@ -16,7 +16,6 @@ import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getLocale } from "@/lib/locale-server";
-import { syncSessionById } from "@/lib/google/sync";
 
 // Keep in step with CANCEL_WINDOW_MS on the my-bookings page.
 const CANCEL_WINDOW_MS = 3 * 60 * 60 * 1000;
@@ -66,10 +65,6 @@ export async function cancelBookingAction(formData: FormData) {
 
   if (error) {
     redirect(`/my-bookings?error=${encodeURIComponent(error.message)}`);
-  }
-
-  if (booking.session?.id) {
-    await syncSessionById(booking.session.id);
   }
 
   revalidatePath("/my-bookings");
