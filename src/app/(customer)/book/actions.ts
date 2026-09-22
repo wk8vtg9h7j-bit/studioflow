@@ -16,7 +16,6 @@ import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getLocale } from "@/lib/locale-server";
-import { syncSessionById } from "@/lib/google/sync";
 
 export async function bookSessionAction(formData: FormData) {
   await requireRole("customer", "/book");
@@ -47,10 +46,6 @@ export async function bookSessionAction(formData: FormData) {
     data && typeof data === "object" && "status" in data
       ? String((data as { status: unknown }).status)
       : "booked";
-
-  // Booking is authoritative even if Google is temporarily unavailable.
-  // Await the sync so the class roster appears on Calendar before we redirect.
-  await syncSessionById(sessionId);
 
   revalidatePath("/book");
   revalidatePath("/my-bookings");
