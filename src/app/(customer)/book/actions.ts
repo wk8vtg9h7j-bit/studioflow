@@ -15,17 +15,19 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { getLocale } from "@/lib/locale-server";
 
 export async function bookSessionAction(formData: FormData) {
   await requireRole("customer", "/book");
+  const vi = (await getLocale()) === "vi";
 
   const sessionId = String(formData.get("session_id") ?? "").trim();
   const spots = Number(formData.get("spots") ?? "1");
   if (!sessionId) {
-    redirect("/book?error=Missing+session");
+    redirect(`/book?error=${encodeURIComponent(vi ? "Thiếu thông tin lớp." : "Missing session.")}`);
   }
   if (!Number.isInteger(spots) || spots < 1 || spots > 2) {
-    redirect("/book?error=Choose+1+or+2+spots");
+    redirect(`/book?error=${encodeURIComponent(vi ? "Chọn 1 hoặc 2 chỗ." : "Choose 1 or 2 spots.")}`);
   }
 
   const supabase = await createClient();
@@ -50,7 +52,11 @@ export async function bookSessionAction(formData: FormData) {
 
   const notice =
     status === "waitlisted"
-      ? `Class is full — you're on the waitlist for ${spots} spot${spots === 1 ? "" : "s"}`
-      : `Booked ${spots} spot${spots === 1 ? "" : "s"}! See you in class`;
+      ? vi
+        ? `Lớp đã đầy — bạn đang trong danh sách chờ cho ${spots} chỗ.`
+        : `Class is full — you're on the waitlist for ${spots} spot${spots === 1 ? "" : "s"}`
+      : vi
+        ? `Đã đặt ${spots} chỗ. Hẹn gặp bạn tại lớp!`
+        : `Booked ${spots} spot${spots === 1 ? "" : "s"}! See you in class`;
   redirect(`/book?notice=${encodeURIComponent(notice)}`);
 }
