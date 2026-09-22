@@ -15,16 +15,18 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { getLocale } from "@/lib/locale-server";
 
 // Keep in step with CANCEL_WINDOW_MS on the my-bookings page.
 const CANCEL_WINDOW_MS = 3 * 60 * 60 * 1000;
 
 export async function cancelBookingAction(formData: FormData) {
   await requireRole("customer", "/book");
+  const vi = (await getLocale()) === "vi";
 
   const bookingId = String(formData.get("booking_id") ?? "").trim();
   if (!bookingId) {
-    redirect("/my-bookings?error=Missing+booking");
+    redirect(`/my-bookings?error=${encodeURIComponent(vi ? "Thiếu thông tin đặt lớp." : "Missing booking.")}`);
   }
 
   const supabase = await createClient();
@@ -43,14 +45,16 @@ export async function cancelBookingAction(formData: FormData) {
   } | null;
 
   if (!booking) {
-    redirect("/my-bookings?error=Booking+not+found");
+    redirect(`/my-bookings?error=${encodeURIComponent(vi ? "Không tìm thấy lượt đặt lớp." : "Booking not found.")}`);
   }
 
   const startsAt = booking.session?.starts_at;
   if (startsAt && Date.parse(startsAt) - Date.now() <= CANCEL_WINDOW_MS) {
     redirect(
       `/my-bookings?error=${encodeURIComponent(
-        "This class starts within 3 hours, so it can no longer be cancelled and the credit stays used.",
+        vi
+          ? "Lớp bắt đầu trong vòng 3 giờ nên không thể hủy nữa và tín dụng vẫn được tính."
+          : "This class starts within 3 hours, so it can no longer be cancelled and the credit stays used.",
       )}`,
     );
   }
@@ -65,5 +69,9 @@ export async function cancelBookingAction(formData: FormData) {
 
   revalidatePath("/my-bookings");
   revalidatePath("/book");
-  redirect("/my-bookings?notice=Booking+cancelled+and+credits+refunded");
+  redirect(
+    `/my-bookings?notice=${encodeURIComponent(
+      vi ? "Đã hủy đặt lớp và hoàn lại tín dụng." : "Booking cancelled and credits refunded.",
+    )}`,
+  );
 }
