@@ -119,6 +119,25 @@ export function ClassTypeForm({
       </div>
 
       <div>
+        <label className="label" htmlFor="pool">
+          Credit type
+        </label>
+        <select
+          id="pool"
+          name="pool"
+          className="input"
+          defaultValue={classType?.pool ?? "regular"}
+          required
+        >
+          <option value="regular">Regular credits</option>
+          <option value="private">Private credits</option>
+        </select>
+        <p className="mt-1 text-xs text-ink-soft">
+          Private classes spend private credits; regular classes spend regular credits.
+        </p>
+      </div>
+
+      <div>
         <label className="label" htmlFor="color">
           Schedule colour
         </label>
