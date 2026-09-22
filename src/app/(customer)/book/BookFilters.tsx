@@ -5,6 +5,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useLanguage } from "@/components/LanguageProvider";
 
 type Opt = { id: string; name: string };
 
@@ -22,6 +23,8 @@ export function BookFilters({
   date: string;
 }) {
   const router = useRouter();
+  const { locale } = useLanguage();
+  const vi = locale === "vi";
   const hasFilters = Boolean(studio || type);
 
   function apply(key: "studio" | "type", value: string) {
@@ -37,7 +40,7 @@ export function BookFilters({
     <div className="flex flex-wrap items-end gap-3">
       <div className="min-w-[9rem] flex-1">
         <label className="label" htmlFor="f-studio">
-          Studio
+          {vi ? "Studio" : "Studio"}
         </label>
         <select
           id="f-studio"
@@ -45,7 +48,7 @@ export function BookFilters({
           value={studio ?? ""}
           onChange={(e) => apply("studio", e.target.value)}
         >
-          <option value="">All studios</option>
+          <option value="">{vi ? "Tất cả studio" : "All studios"}</option>
           {studios.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name}
@@ -55,7 +58,7 @@ export function BookFilters({
       </div>
       <div className="min-w-[9rem] flex-1">
         <label className="label" htmlFor="f-type">
-          Class
+          {vi ? "Lớp" : "Class"}
         </label>
         <select
           id="f-type"
@@ -63,7 +66,7 @@ export function BookFilters({
           value={type ?? ""}
           onChange={(e) => apply("type", e.target.value)}
         >
-          <option value="">All classes</option>
+          <option value="">{vi ? "Tất cả lớp" : "All classes"}</option>
           {classTypes.map((t) => (
             <option key={t.id} value={t.id}>
               {t.name}
@@ -73,7 +76,7 @@ export function BookFilters({
       </div>
       {hasFilters && (
         <a href={`/book?date=${date}`} className="btn-ghost">
-          Clear
+          {vi ? "Xóa lọc" : "Clear"}
         </a>
       )}
     </div>
