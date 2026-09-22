@@ -17,6 +17,7 @@ import { z } from "zod";
 import { requireRole } from "@/lib/auth";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import type { BookingStatus } from "@/lib/types";
+import { syncSessionById } from "@/lib/google/sync";
 
 const SessionSchema = z.object({
   studio_id: z.string().uuid("Pick a studio"),
@@ -257,15 +258,35 @@ export async function setFillerSeatsAction(
   if (!row) return { error: "That session could not be found." };
 
   const capacity = (row as { capacity: number }).capacity;
+  const nextHeldSeats = Math.min(seats, capacity);
   const { error: updateError } = await supabase
     .from("sessions")
-    .update({ filler_seats: Math.min(seats, capacity) })
+    .update({ filler_seats: nextHeldSeats })
     .eq("id", id);
 
   if (updateError) return { error: updateError.message };
 
+  const calendarSync = await syncSessionById(id);
+
   revalidatePath("/admin/sessions");
-  return { ok: true };
+
+  if (!calendarSync.ok) {
+    return {
+      ok: true,
+      message:
+        nextHeldSeats > 0
+          ? `Class filled, but Google Calendar could not be updated: ${calendarSync.message ?? "sync failed"}`
+          : `Class reopened, but Google Calendar could not be updated: ${calendarSync.message ?? "sync failed"}`,
+    };
+  }
+
+  return {
+    ok: true,
+    message:
+      nextHeldSeats > 0
+        ? "Class filled and Google Calendar updated."
+        : "Class reopened and Google Calendar updated.",
+  };
 }
 
 // ----------------------------------------------------------------------------
@@ -673,7 +694,7 @@ export async function getRegisterDataAction(
 
   const { data: session } = await supabase
     .from("sessions")
-    .select("capacity")
+    .select("capacity,starts_at")
     .eq("id", sessionId)
     .maybeSingle();
 
