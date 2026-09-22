@@ -206,6 +206,7 @@ export interface Booking {
   cancelled_at: string | null;
   checked_in_at: string | null;
   credits_spent: number;
+  spots_count: number;
   source: string;
   created_at: string;
   updated_at: string;
