@@ -42,11 +42,13 @@ const adjustInitialState: CustomerActionState = {};
 
 export function CustomerRow({
   customer,
-  creditBalance,
+  regularBalance,
+  privateBalance,
   packages,
 }: {
   customer: CustomerWithProfile;
-  creditBalance: number;
+  regularBalance: number;
+  privateBalance: number;
   packages: Package[];
 }) {
   const [editing, setEditing] = useState(false);
@@ -91,11 +93,19 @@ export function CustomerRow({
         </div>
 
         <div className="flex shrink-0 items-center gap-4">
-          <div className="text-right">
-            <p className="text-sm font-semibold text-ink">{creditBalance}</p>
-            <p className="text-[11px] uppercase tracking-wide text-ink-soft">
-              credits
-            </p>
+          <div className="flex items-center gap-3 text-right">
+            <div>
+              <p className="text-sm font-semibold text-ink">{regularBalance}</p>
+              <p className="text-[10px] uppercase tracking-wide text-ink-soft">
+                regular
+              </p>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-brand-700">{privateBalance}</p>
+              <p className="text-[10px] uppercase tracking-wide text-ink-soft">
+                private
+              </p>
+            </div>
           </div>
           <button
             type="button"
@@ -238,7 +248,7 @@ function GrantPackage({
             </option>
             {packages.map((pkg) => (
               <option key={pkg.id} value={pkg.id}>
-                {pkg.name} — {pkg.credits} credits ·{" "}
+                {pkg.name} — {pkg.credits} {pkg.pool === "private" ? "private" : "regular"} credits ·{" "}
                 {formatMoney(pkg.price_cents, pkg.currency)}
               </option>
             ))}
@@ -294,6 +304,21 @@ function AdjustCredits({ customerId }: { customerId: string }) {
       <form action={formAction} className="space-y-3">
         <input type="hidden" name="customer_id" value={customerId} />
         <div>
+          <label className="label" htmlFor={`adj-pool-${customerId}`}>
+            Credit type
+          </label>
+          <select
+            id={`adj-pool-${customerId}`}
+            name="pool"
+            className="input"
+            defaultValue="regular"
+            required
+          >
+            <option value="regular">Regular credits</option>
+            <option value="private">Private credits</option>
+          </select>
+        </div>
+        <div>
           <label className="label" htmlFor={`adj-${customerId}`}>
             Credits
           </label>
@@ -308,9 +333,9 @@ function AdjustCredits({ customerId }: { customerId: string }) {
           />
         </div>
         <p className="text-xs text-ink-soft">
-          Positive adds credits, negative removes them — for corrections, comped
-          classes, and goodwill. Adjustments never expire and are excluded from
-          revenue reporting.
+          Choose regular or private credits. Positive adds credits and negative
+          removes them. The two balances stay separate; adjustments never expire
+          and are excluded from revenue reporting.
         </p>
 
         {state.error && (
