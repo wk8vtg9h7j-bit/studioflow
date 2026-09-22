@@ -34,16 +34,33 @@ export default async function CustomersPage() {
 
   const packages = (packageData ?? []) as Package[];
 
-  // Resolve every customer's live credit balance in parallel via the RPC.
+  // Resolve both credit pools for every customer. Regular and private credits
+  // are intentionally separate and must never be mixed.
   const balances = await Promise.all(
     customers.map(async (customer) => {
-      const { data: balance } = await supabase.rpc("credit_balance", {
-        p_customer: customer.id,
-      });
-      return [customer.id, typeof balance === "number" ? balance : 0] as const;
+      const [regularRes, privateRes] = await Promise.all([
+        supabase.rpc("credit_balance", {
+          p_customer: customer.id,
+          p_pool: "regular",
+        }),
+        supabase.rpc("credit_balance", {
+          p_customer: customer.id,
+          p_pool: "private",
+        }),
+      ]);
+
+      return [
+        customer.id,
+        {
+          regular:
+            typeof regularRes.data === "number" ? regularRes.data : 0,
+          private:
+            typeof privateRes.data === "number" ? privateRes.data : 0,
+        },
+      ] as const;
     }),
   );
-  const balanceById = new Map<string, number>(balances);
+  const balanceById = new Map(balances);
 
   const counts = customers.reduce(
     (acc, c) => {
@@ -77,7 +94,8 @@ export default async function CustomersPage() {
                 <CustomerRow
                   key={customer.id}
                   customer={customer}
-                  creditBalance={balanceById.get(customer.id) ?? 0}
+                  regularBalance={balanceById.get(customer.id)?.regular ?? 0}
+                  privateBalance={balanceById.get(customer.id)?.private ?? 0}
                   packages={packages}
                 />
               ))}
