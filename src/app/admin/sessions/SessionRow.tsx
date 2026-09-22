@@ -59,6 +59,7 @@ export function SessionRow({
   const [privateBookPending, startPrivateBookTransition] = useTransition();
   const [showPrivateBooking, setShowPrivateBooking] = useState(false);
   const [privateCustomerId, setPrivateCustomerId] = useState("");
+  const [privateCustomerQuery, setPrivateCustomerQuery] = useState("");
   const [fillNotice, setFillNotice] = useState<{
     kind: "success" | "error";
     text: string;
@@ -72,6 +73,13 @@ export function SessionRow({
   const tz = session.studio?.timezone;
   const heading = session.title ?? session.class_type?.name ?? "Class";
   const color = session.class_type?.color ?? "#d6d3d1";
+  const normalizedCustomerQuery = privateCustomerQuery.trim().toLowerCase();
+  const filteredCustomers = normalizedCustomerQuery
+    ? customers.filter((customer) => {
+        const haystack = `${customer.name} ${customer.email ?? ""}`.toLowerCase();
+        return haystack.includes(normalizedCustomerQuery);
+      })
+    : customers;
 
   function toggleFill() {
     const releasing = held > 0;
@@ -123,6 +131,7 @@ export function SessionRow({
       });
       setShowPrivateBooking(false);
       setPrivateCustomerId("");
+      setPrivateCustomerQuery("");
       router.refresh();
     });
   }
@@ -247,25 +256,52 @@ export function SessionRow({
               </p>
             </div>
 
-            <div>
-              <label className="label" htmlFor={`private-customer-${session.id}`}>
-                Customer
-              </label>
-              <select
-                id={`private-customer-${session.id}`}
-                className="input"
-                value={privateCustomerId}
-                onChange={(e) => setPrivateCustomerId(e.target.value)}
-                disabled={privateBookPending}
-              >
-                <option value="">Choose a customer…</option>
-                {customers.map((customer) => (
-                  <option key={customer.id} value={customer.id}>
-                    {customer.name}
-                    {customer.email ? ` — ${customer.email}` : ""}
+            <div className="space-y-2">
+              <div>
+                <label
+                  className="label"
+                  htmlFor={`private-customer-filter-${session.id}`}
+                >
+                  Find customer
+                </label>
+                <input
+                  id={`private-customer-filter-${session.id}`}
+                  type="search"
+                  className="input"
+                  value={privateCustomerQuery}
+                  onChange={(e) => setPrivateCustomerQuery(e.target.value)}
+                  placeholder="Search by name or email…"
+                  disabled={privateBookPending}
+                />
+              </div>
+
+              <div>
+                <label className="label" htmlFor={`private-customer-${session.id}`}>
+                  Customer
+                </label>
+                <select
+                  id={`private-customer-${session.id}`}
+                  className="input"
+                  value={privateCustomerId}
+                  onChange={(e) => setPrivateCustomerId(e.target.value)}
+                  disabled={privateBookPending}
+                >
+                  <option value="">
+                    {filteredCustomers.length === 0
+                      ? "No matching customers"
+                      : "Choose a customer…"}
                   </option>
-                ))}
-              </select>
+                  {filteredCustomers.map((customer) => (
+                    <option key={customer.id} value={customer.id}>
+                      {customer.name}
+                      {customer.email ? ` — ${customer.email}` : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-ink-soft">
+                  {filteredCustomers.length} of {customers.length} customers shown
+                </p>
+              </div>
             </div>
 
             <button
