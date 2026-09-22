@@ -116,7 +116,7 @@ export default function SignupPage() {
             required
             minLength={8}
             className="input"
-            placeholder="{vi ? "Ít nhất 8 ký tự" : "At least 8 characters"}"
+            placeholder={vi ? "Ít nhất 8 ký tự" : "At least 8 characters"}
           />
         </div>
 
