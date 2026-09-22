@@ -361,6 +361,73 @@ export async function attachLoginAction(
   };
 }
 
+// ----------------------------------------------------------------------------
+// Permanently delete a customer.
+//
+// This is deliberately admin-only and requires an explicit DELETE confirmation.
+// Walk-ins have no auth account, so deleting the customer row is enough.
+// Customers with a login are removed through Supabase Auth; profiles.id matches
+// the auth user id, and the existing ON DELETE CASCADE chain removes the linked
+// profile, customer, bookings, and credit ledger so ensure_customer() cannot
+// silently recreate the account on the next booking attempt.
+// ----------------------------------------------------------------------------
+const DeleteCustomerSchema = z.object({
+  id: z.string().uuid("Could not identify which customer to delete."),
+  confirm: z.literal("DELETE", {
+    errorMap: () => ({ message: "Type DELETE to confirm." }),
+  }),
+});
+
+export async function deleteCustomerAction(
+  _prev: AddCustomerState,
+  formData: FormData,
+): Promise<AddCustomerState> {
+  await requireRole("admin", "/admin/customers");
+
+  const parsed = DeleteCustomerSchema.safeParse({
+    id: formData.get("id"),
+    confirm: formData.get("confirm"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Check the form." };
+  }
+
+  const { id } = parsed.data;
+  const svc = createServiceClient();
+
+  const { data: customer, error: lookupError } = await svc
+    .from("customers")
+    .select("id, profile_id")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (lookupError) return { error: lookupError.message };
+  if (!customer) return { error: "That customer no longer exists." };
+
+  const profileId = (customer as { profile_id: string | null }).profile_id;
+
+  if (profileId) {
+    const { error: authError } = await svc.auth.admin.deleteUser(profileId);
+    if (authError) {
+      return {
+        error:
+          "Could not delete the linked login account. Nothing was removed. " +
+          authError.message,
+      };
+    }
+  } else {
+    const { error: deleteError } = await svc
+      .from("customers")
+      .delete()
+      .eq("id", id);
+
+    if (deleteError) return { error: deleteError.message };
+  }
+
+  revalidatePath("/admin/customers");
+  return { ok: true, message: "Customer permanently deleted." };
+}
+
 export async function updateCustomerAction(
   _prev: CustomerActionState,
   formData: FormData,
