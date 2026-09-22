@@ -271,94 +271,65 @@ export async function setFillerSeatsAction(
 // ----------------------------------------------------------------------------
 // Admin booking for a private class.
 //
-// Admins can attach an existing customer directly to a private session. This is
-// a real booking: it consumes the class type's private credits, appears in the
-// register, notifications feed, attendance, and booked-seat count. We use the
-// service client only after re-checking the admin role server-side.
+// Creates a real booking for an existing customer and spends private credits.
+// Admin authorization is checked before the service-role client is used.
 // ----------------------------------------------------------------------------
-const AdminPrivateBookingSchema = z.object({
-  session_id: z.string().uuid("Could not identify the private class."),
-  customer_id: z.string().uuid("Choose a customer."),
-});
-
 export async function adminBookPrivateCustomerAction(
   _prev: SessionActionState,
   formData: FormData,
 ): Promise<SessionActionState> {
   await requireRole("admin", "/admin/sessions");
 
-  const parsed = AdminPrivateBookingSchema.safeParse({
-    session_id: formData.get("session_id"),
-    customer_id: formData.get("customer_id"),
-  });
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Check the form." };
-  }
+  const sessionId = String(formData.get("session_id") ?? "").trim();
+  const customerId = String(formData.get("customer_id") ?? "").trim();
+  if (!sessionId) return { error: "Could not identify the private class." };
+  if (!customerId) return { error: "Choose a customer." };
 
-  const { session_id, customer_id } = parsed.data;
   const svc = createServiceClient();
 
-  const [{ data: session, error: sessionError }, { data: customer, error: customerError }] =
-    await Promise.all([
-      svc
-        .from("sessions")
-        .select(
-          "id,status,starts_at,capacity,class_type:class_types(name,credits_cost,pool)",
-        )
-        .eq("id", session_id)
-        .maybeSingle(),
-      svc
-        .from("customers")
-        .select("id,name,email,profile:profiles(full_name,email)")
-        .eq("id", customer_id)
-        .maybeSingle(),
-    ]);
+  const { data: session, error: sessionError } = await svc
+    .from("sessions")
+    .select("id,status,starts_at,capacity,class_type_id")
+    .eq("id", sessionId)
+    .maybeSingle();
 
   if (sessionError) return { error: sessionError.message };
   if (!session) return { error: "That private class could not be found." };
-  if (customerError) return { error: customerError.message };
-  if (!customer) return { error: "That customer could not be found." };
-
-  const classType = (
-    session as {
-      status: string;
-      starts_at: string;
-      capacity: number;
-      class_type:
-        | { name: string | null; credits_cost: number | null; pool: string | null }
-        | null;
-    }
-  ).class_type;
-
-  if (classType?.pool !== "private") {
-    return { error: "Customers can only be assigned here for private classes." };
-  }
-  if ((session as { status: string }).status !== "scheduled") {
+  if (session.status !== "scheduled") {
     return { error: "This class is not open for booking." };
   }
-  if (new Date((session as { starts_at: string }).starts_at).getTime() <= Date.now()) {
+  if (new Date(session.starts_at).getTime() <= Date.now()) {
     return { error: "This class has already started." };
   }
 
-  const { data: existingRows, error: existingError } = await svc
+  const { data: classType, error: typeError } = await svc
+    .from("class_types")
+    .select("credits_cost,pool")
+    .eq("id", session.class_type_id)
+    .maybeSingle();
+
+  if (typeError) return { error: typeError.message };
+  if (!classType || classType.pool !== "private") {
+    return { error: "Customers can only be assigned here for private classes." };
+  }
+
+  const { data: customer, error: customerError } = await svc
+    .from("customers")
+    .select("id")
+    .eq("id", customerId)
+    .maybeSingle();
+
+  if (customerError) return { error: customerError.message };
+  if (!customer) return { error: "That customer could not be found." };
+
+  const { data: existing, error: existingError } = await svc
     .from("bookings")
     .select("id,status,booked_at,cancelled_at,credits_spent,source")
-    .eq("session_id", session_id)
-    .eq("customer_id", customer_id)
-    .limit(1);
+    .eq("session_id", sessionId)
+    .eq("customer_id", customerId)
+    .maybeSingle();
+
   if (existingError) return { error: existingError.message };
-
-  const existing = (existingRows?.[0] ?? null) as
-    | {
-        id: string;
-        status: BookingStatus;
-        booked_at: string;
-        cancelled_at: string | null;
-        credits_spent: number;
-        source: string;
-      }
-    | null;
-
   if (existing && existing.status !== "cancelled") {
     return { error: "This customer is already booked into this class." };
   }
@@ -366,34 +337,37 @@ export async function adminBookPrivateCustomerAction(
   const { count: bookedCount, error: countError } = await svc
     .from("bookings")
     .select("id", { count: "exact", head: true })
-    .eq("session_id", session_id)
-    .in("status", ["booked", "attended"]);
+    .eq("session_id", sessionId)
+    .eq("status", "booked");
 
   if (countError) return { error: countError.message };
-  const capacity = (session as { capacity: number }).capacity ?? 1;
-  if ((bookedCount ?? 0) >= capacity) {
+  if ((bookedCount ?? 0) >= session.capacity) {
     return { error: "This private class is already full." };
   }
 
   const cost = classType.credits_cost ?? 1;
-  const { data: balance, error: balanceError } = await svc.rpc("credit_balance", {
-    p_customer: customer_id,
-    p_pool: "private",
-  });
-  if (balanceError) return { error: balanceError.message };
+  const { data: balance, error: balanceError } = await svc.rpc(
+    "credit_balance",
+    {
+      p_customer: customerId,
+      p_pool: "private",
+    },
+  );
 
+  if (balanceError) return { error: balanceError.message };
   const privateBalance = typeof balance === "number" ? balance : 0;
+
   if (privateBalance < cost) {
     return {
       error: `This customer needs ${cost} private credit${cost === 1 ? "" : "s"} but has ${privateBalance}.`,
     };
   }
 
-  let bookingId: string;
+  let bookingId = "";
   let createdNew = false;
 
   if (existing) {
-    const { data: updated, error: updateError } = await svc
+    const { data: restored, error: restoreError } = await svc
       .from("bookings")
       .update({
         status: "booked",
@@ -407,16 +381,16 @@ export async function adminBookPrivateCustomerAction(
       .select("id")
       .single();
 
-    if (updateError || !updated) {
-      return { error: updateError?.message ?? "Could not restore this booking." };
+    if (restoreError || !restored) {
+      return { error: restoreError?.message ?? "Could not restore this booking." };
     }
-    bookingId = (updated as { id: string }).id;
+    bookingId = restored.id;
   } else {
-    const { data: inserted, error: insertError } = await svc
+    const { data: created, error: createError } = await svc
       .from("bookings")
       .insert({
-        session_id,
-        customer_id,
+        session_id: sessionId,
+        customer_id: customerId,
         status: "booked",
         credits_spent: cost,
         source: "admin",
@@ -424,15 +398,15 @@ export async function adminBookPrivateCustomerAction(
       .select("id")
       .single();
 
-    if (insertError || !inserted) {
-      return { error: insertError?.message ?? "Could not create this booking." };
+    if (createError || !created) {
+      return { error: createError?.message ?? "Could not create this booking." };
     }
-    bookingId = (inserted as { id: string }).id;
+    bookingId = created.id;
     createdNew = true;
   }
 
   const { error: ledgerError } = await svc.from("credit_ledger").insert({
-    customer_id,
+    customer_id: customerId,
     delta: -cost,
     reason: "booking",
     booking_id: bookingId,
@@ -441,7 +415,6 @@ export async function adminBookPrivateCustomerAction(
     pool: "private",
   });
 
-  // Keep booking + credits consistent if the second write fails.
   if (ledgerError) {
     if (createdNew) {
       await svc.from("bookings").delete().eq("id", bookingId);
@@ -460,27 +433,12 @@ export async function adminBookPrivateCustomerAction(
     return { error: ledgerError.message };
   }
 
-  const customerRow = customer as {
-    name: string | null;
-    email: string | null;
-    profile: { full_name: string | null; email: string | null } | null;
-  };
-  const customerName =
-    customerRow.profile?.full_name ??
-    customerRow.name ??
-    customerRow.profile?.email ??
-    customerRow.email ??
-    "Customer";
-
   revalidatePath("/admin/sessions");
   revalidatePath("/admin/notifications");
   revalidatePath("/book");
   revalidatePath("/my-bookings");
 
-  return {
-    ok: true,
-    message: `${customerName} booked into the private class.`,
-  };
+  return { ok: true, message: "Customer booked into the private class." };
 }
 
 // ----------------------------------------------------------------------------
