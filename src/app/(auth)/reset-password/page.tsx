@@ -9,26 +9,30 @@ import Link from "next/link";
 import { useFormState } from "react-dom";
 import { updatePasswordAction, type ResetState } from "../actions";
 import { SubmitButton } from "../SubmitButton";
+import { useLanguage } from "@/components/LanguageProvider";
 
 const initial: ResetState = {};
 
 export default function ResetPasswordPage() {
   const [state, formAction] = useFormState(updatePasswordAction, initial);
+  const { locale } = useLanguage();
+  const vi = locale === "vi";
 
   return (
     <div className="card p-6">
       <h1 className="text-xl font-semibold tracking-tight text-ink">
-        Set a new password
+        {vi ? "Tạo mật khẩu mới" : "Set a new password"}
       </h1>
       <p className="mt-1 text-sm text-ink-muted">
-        Choose a new password for your account. You&apos;ll be signed in straight
-        away.
+        {vi
+          ? "Chọn mật khẩu mới cho tài khoản của bạn. Bạn sẽ được đăng nhập ngay sau đó."
+          : "Choose a new password for your account. You'll be signed in straight away."}
       </p>
 
       <form action={formAction} className="mt-6 space-y-4">
         <div>
           <label htmlFor="password" className="label">
-            New password
+            {vi ? "Mật khẩu mới" : "New password"}
           </label>
           <input
             id="password"
@@ -41,7 +45,7 @@ export default function ResetPasswordPage() {
             placeholder="••••••••"
           />
           <p className="mt-1 text-xs text-ink-soft">
-            At least 8 characters.
+            {vi ? "Ít nhất 8 ký tự." : "At least 8 characters."}
           </p>
         </div>
 
@@ -51,7 +55,7 @@ export default function ResetPasswordPage() {
           </p>
         ) : null}
 
-        <SubmitButton>Save password</SubmitButton>
+        <SubmitButton pendingLabel={vi ? "Vui lòng đợi…" : "Please wait…"}>{vi ? "Lưu mật khẩu" : "Save password"}</SubmitButton>
       </form>
 
       <p className="mt-6 text-center text-sm text-ink-muted">
@@ -59,7 +63,7 @@ export default function ResetPasswordPage() {
           href="/forgot-password"
           className="font-medium text-brand-600 hover:text-brand-700"
         >
-          Request a new link
+          {vi ? "Yêu cầu liên kết mới" : "Request a new link"}
         </Link>
       </p>
     </div>
