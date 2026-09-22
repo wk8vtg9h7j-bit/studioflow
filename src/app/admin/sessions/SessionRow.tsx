@@ -153,15 +153,23 @@ export function SessionRow({
             {formatSessionWhen(session.starts_at, tz)} ·{" "}
             {formatSessionTimeRange(session.starts_at, session.ends_at, tz)}
           </p>
-          <p className="mt-0.5 truncate text-xs text-ink-soft">
-            {session.studio?.name ?? "Unknown studio"}
-            {" · "}
-            {session.instructor?.display_name ?? "Unassigned"}
-            {" · "}
-            {booked}/{session.capacity} booked
-            {held > 0 ? ` · ${held} held` : ""}
-            {session.room ? ` · ${session.room}` : ""}
-          </p>
+          <div className="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-ink-soft">
+            <span className="min-w-0 truncate">
+              {session.studio?.name ?? "Unknown studio"}
+              {" · "}
+              {session.instructor?.display_name ?? "Unassigned"}
+              {session.room ? ` · ${session.room}` : ""}
+            </span>
+            <span className="shrink-0" aria-hidden>
+              ·
+            </span>
+            <span className="shrink-0 font-medium text-ink-muted">
+              {booked}/{session.capacity} booked
+            </span>
+            {held > 0 ? (
+              <span className="shrink-0">· {held} held</span>
+            ) : null}
+          </div>
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
