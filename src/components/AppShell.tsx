@@ -6,6 +6,8 @@ import Link from "next/link";
 import { SignOutButton } from "@/components/SignOutButton";
 import { NavLink } from "@/components/NavLink";
 import { NavMenu, type NavMenuItem } from "@/components/NavMenu";
+import { LanguageSwitcher } from "@/components/LanguageProvider";
+import type { Locale } from "@/lib/locale";
 
 export type NavItem = { href: string; label: string };
 
@@ -15,6 +17,7 @@ export function AppShell({
   user,
   roleLabel,
   notifications,
+  locale,
   children,
 }: {
   navItems: NavItem[];
@@ -22,6 +25,7 @@ export function AppShell({
   user: string;
   roleLabel: string;
   notifications?: { count: number; href: string };
+  locale?: Locale;
   children: React.ReactNode;
 }) {
   return (
@@ -48,6 +52,7 @@ export function AppShell({
               <p className="text-sm font-medium leading-tight text-ink">{user}</p>
               <p className="text-xs leading-tight text-ink-soft">{roleLabel}</p>
             </div>
+            {locale ? <LanguageSwitcher /> : null}
             {notifications ? (
               <Link
                 href={notifications.href}
@@ -78,7 +83,7 @@ export function AppShell({
                 ) : null}
               </Link>
             ) : null}
-            <SignOutButton />
+            <SignOutButton label={locale === "vi" ? "Đăng xuất" : "Sign out"} />
           </div>
         </div>
       </header>
