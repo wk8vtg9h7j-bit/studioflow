@@ -442,6 +442,189 @@ export async function adminBookPrivateCustomerAction(
 }
 
 // ----------------------------------------------------------------------------
+// Admin booking for private sessions.
+//
+// Lets reception/admin place an existing customer directly into a private class.
+// It uses the customer's private credit pool, refuses duplicates/full sessions,
+// and records a normal booking + ledger spend so registers/accounting stay
+// consistent with a customer-made booking.
+// ----------------------------------------------------------------------------
+const AdminPrivateBookingSchema = z.object({
+  session_id: z.string().uuid("Could not identify the private session."),
+  customer_id: z.string().uuid("Choose a customer."),
+});
+
+export async function bookCustomerIntoPrivateSessionAction(
+  _prev: SessionActionState,
+  formData: FormData,
+): Promise<SessionActionState> {
+  await requireRole("admin", "/admin/sessions");
+
+  const parsed = AdminPrivateBookingSchema.safeParse({
+    session_id: formData.get("session_id"),
+    customer_id: formData.get("customer_id"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Check the booking." };
+  }
+
+  const { session_id, customer_id } = parsed.data;
+  const svc = createServiceClient();
+
+  const { data: session, error: sessionError } = await svc
+    .from("sessions")
+    .select(
+      "id,capacity,status,starts_at,class_type:class_types(credits_cost,pool)",
+    )
+    .eq("id", session_id)
+    .maybeSingle();
+
+  if (sessionError) return { error: sessionError.message };
+  if (!session) return { error: "That session could not be found." };
+
+  const s = session as unknown as {
+    capacity: number;
+    status: string;
+    starts_at: string;
+    class_type: { credits_cost: number | null; pool: string | null } | null;
+  };
+
+  if (s.status !== "scheduled") {
+    return { error: "Only scheduled sessions can be booked." };
+  }
+  if (s.class_type?.pool !== "private") {
+    return { error: "This action is only available for private classes." };
+  }
+  if (new Date(s.starts_at).getTime() <= Date.now()) {
+    return { error: "This private session has already started." };
+  }
+
+  const { data: customer, error: customerError } = await svc
+    .from("customers")
+    .select("id")
+    .eq("id", customer_id)
+    .maybeSingle();
+
+  if (customerError) return { error: customerError.message };
+  if (!customer) return { error: "That customer could not be found." };
+
+  const { data: existing, error: existingError } = await svc
+    .from("bookings")
+    .select("id,status")
+    .eq("session_id", session_id)
+    .eq("customer_id", customer_id)
+    .maybeSingle();
+
+  if (existingError) return { error: existingError.message };
+  if (existing && existing.status !== "cancelled") {
+    return { error: "This customer is already booked into this class." };
+  }
+
+  const { count: occupied, error: countError } = await svc
+    .from("bookings")
+    .select("id", { count: "exact", head: true })
+    .eq("session_id", session_id)
+    .in("status", ["booked", "attended"]);
+
+  if (countError) return { error: countError.message };
+  if ((occupied ?? 0) >= s.capacity) {
+    return { error: "This private session is already full." };
+  }
+
+  const cost = s.class_type?.credits_cost ?? 1;
+  const { data: balance, error: balanceError } = await svc.rpc(
+    "credit_balance",
+    {
+      p_customer: customer_id,
+      p_pool: "private",
+    },
+  );
+
+  if (balanceError) return { error: balanceError.message };
+  const privateBalance = typeof balance === "number" ? balance : 0;
+  if (privateBalance < cost) {
+    return {
+      error: `Customer needs ${cost} private credit${cost === 1 ? "" : "s"} but has ${privateBalance}.`,
+    };
+  }
+
+  const bookedAt = new Date().toISOString();
+  let bookingId: string;
+  let restoredCancelled = false;
+
+  if (existing) {
+    const { data: updated, error: updateError } = await svc
+      .from("bookings")
+      .update({
+        status: "booked",
+        credits_spent: cost,
+        cancelled_at: null,
+        checked_in_at: null,
+        booked_at: bookedAt,
+        source: "admin",
+      })
+      .eq("id", existing.id)
+      .select("id")
+      .single();
+
+    if (updateError || !updated) {
+      return { error: updateError?.message ?? "Could not restore booking." };
+    }
+    bookingId = updated.id;
+    restoredCancelled = true;
+  } else {
+    const { data: created, error: createError } = await svc
+      .from("bookings")
+      .insert({
+        session_id,
+        customer_id,
+        status: "booked",
+        credits_spent: cost,
+        source: "admin",
+      })
+      .select("id")
+      .single();
+
+    if (createError || !created) {
+      return { error: createError?.message ?? "Could not create booking." };
+    }
+    bookingId = created.id;
+  }
+
+  const { error: ledgerError } = await svc.from("credit_ledger").insert({
+    customer_id,
+    delta: -cost,
+    reason: "booking",
+    package_id: null,
+    booking_id: bookingId,
+    pool: "private",
+    expires_at: null,
+  });
+
+  if (ledgerError) {
+    // Best-effort rollback so a failed credit spend never leaves a free booking.
+    if (restoredCancelled) {
+      await svc
+        .from("bookings")
+        .update({
+          status: "cancelled",
+          credits_spent: 0,
+          cancelled_at: new Date().toISOString(),
+        })
+        .eq("id", bookingId);
+    } else {
+      await svc.from("bookings").delete().eq("id", bookingId);
+    }
+    return { error: ledgerError.message };
+  }
+
+  revalidatePath("/admin/sessions");
+  revalidatePath("/book");
+  revalidatePath("/my-bookings");
+  return { ok: true };
+}
+
+// ----------------------------------------------------------------------------
 // Class register — who actually turned up. Attendance is recorded per booking,
 // and it feeds payroll: session_attendance() counts 'booked' and 'attended'
 // heads, so marking someone a no-show removes a head and changes what the
