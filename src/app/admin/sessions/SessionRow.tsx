@@ -10,7 +10,8 @@
 // ============================================================================
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { formatSessionWhen, formatSessionTimeRange } from "@/lib/format";
 import type { SessionWithRelations } from "@/lib/types";
 import { SessionForm } from "./SessionForm";
@@ -41,6 +42,12 @@ export function SessionRow({
   // The roster is fetched by RegisterPanel only once it's opened, so this flag
   // is also what keeps the sessions list from loading every booking on screen.
   const [showRegister, setShowRegister] = useState(false);
+  const router = useRouter();
+  const [fillPending, startFillTransition] = useTransition();
+  const [fillNotice, setFillNotice] = useState<{
+    kind: "success" | "error";
+    text: string;
+  } | null>(null);
 
   const cancelled = session.status === "cancelled";
   // Seats reception is holding to close a quiet class. Included in `booked`.
@@ -49,6 +56,32 @@ export function SessionRow({
   const tz = session.studio?.timezone;
   const heading = session.title ?? session.class_type?.name ?? "Class";
   const color = session.class_type?.color ?? "#d6d3d1";
+
+  function toggleFill() {
+    const releasing = held > 0;
+    const seats = releasing ? 0 : openSeats;
+    setFillNotice(null);
+
+    startFillTransition(async () => {
+      const form = new FormData();
+      form.set("id", session.id);
+      form.set("seats", String(seats));
+
+      const result = await setFillerSeatsAction({}, form);
+      if (result.error) {
+        setFillNotice({ kind: "error", text: result.error });
+        return;
+      }
+
+      setFillNotice({
+        kind: "success",
+        text: releasing
+          ? "Class reopened. Customers can book again."
+          : "Class filled. Remaining seats are now held.",
+      });
+      router.refresh();
+    });
+  }
 
   return (
     <li className="card overflow-hidden">
@@ -106,27 +139,19 @@ export function SessionRow({
           </button>
 
           {!cancelled && (
-            <form action={setFillerSeatsAction}>
-              <input type="hidden" name="id" value={session.id} />
-              {/* Hold every remaining seat, or release the hold entirely. */}
-              <input
-                type="hidden"
-                name="seats"
-                value={held > 0 ? 0 : openSeats}
-              />
-              <button
-                type="submit"
-                className="btn-ghost"
-                disabled={held === 0 && openSeats === 0}
-                title={
-                  held > 0
-                    ? "Release the held seats so customers can book again"
-                    : "Hold the remaining seats so customers see this class as full"
-                }
-              >
-                {held > 0 ? "Unfill" : "Fill"}
-              </button>
-            </form>
+            <button
+              type="button"
+              onClick={toggleFill}
+              className="btn-ghost"
+              disabled={fillPending || (held === 0 && openSeats === 0)}
+              title={
+                held > 0
+                  ? "Release the held seats so customers can book again"
+                  : "Hold the remaining seats so customers see this class as full"
+              }
+            >
+              {fillPending ? "Saving…" : held > 0 ? "Unfill" : "Fill"}
+            </button>
           )}
 
           <form action={setSessionStatusAction}>
@@ -146,6 +171,19 @@ export function SessionRow({
           </form>
         </div>
       </div>
+
+      {fillNotice && (
+        <div
+          role="status"
+          className={`border-t px-5 py-3 text-sm ${
+            fillNotice.kind === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-rose-200 bg-rose-50 text-rose-700"
+          }`}
+        >
+          {fillNotice.text}
+        </div>
+      )}
 
       {showRegister && (
         <div className="border-t border-stone-200 bg-stone-50 px-5 py-4">
