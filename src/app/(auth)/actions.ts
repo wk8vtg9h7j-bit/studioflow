@@ -11,6 +11,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { getProfile, homePathForRole } from "@/lib/auth";
 import { PREVIEW_MODE, PREVIEW_COOKIE } from "@/lib/preview";
+import { getLocale } from "@/lib/locale-server";
 
 export type AuthState = { error: string | null };
 
@@ -44,6 +45,7 @@ export async function signInAction(
   _prev: AuthState,
   formData: FormData,
 ): Promise<AuthState> {
+  const vi = (await getLocale()) === "vi";
   const parsed = credentials.safeParse({
     email: formData.get("email"),
     password: formData.get("password"),
@@ -55,7 +57,7 @@ export async function signInAction(
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword(parsed.data);
   if (error) {
-    return { error: "Email or password is incorrect." };
+    return { error: vi ? "Email hoặc mật khẩu không đúng." : "Email or password is incorrect." };
   }
 
   const next = safeNext(formData.get("next"));
@@ -68,6 +70,7 @@ export async function signUpAction(
   _prev: AuthState,
   formData: FormData,
 ): Promise<AuthState> {
+  const vi = (await getLocale()) === "vi";
   const parsed = signUpSchema.safeParse({
     email: formData.get("email"),
     password: formData.get("password"),
@@ -100,7 +103,9 @@ export async function signUpAction(
   if (!data.session) {
     return {
       error:
-        "Check your inbox to confirm your email, then log in to start booking.",
+        vi
+          ? "Hãy kiểm tra hộp thư để xác nhận email, sau đó đăng nhập để bắt đầu đặt lớp."
+          : "Check your inbox to confirm your email, then log in to start booking.",
     };
   }
 
