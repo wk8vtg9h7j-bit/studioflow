@@ -20,8 +20,18 @@ import type {
   ClassTypeOption,
   InstructorOption,
 } from "./SessionForm";
-import { setSessionStatusAction, setFillerSeatsAction } from "./actions";
+import {
+  setSessionStatusAction,
+  setFillerSeatsAction,
+  adminBookPrivateCustomerAction,
+} from "./actions";
 import { RegisterPanel } from "./RegisterPanel";
+
+export type CustomerOption = {
+  id: string;
+  name: string;
+  email: string | null;
+};
 
 export function SessionRow({
   session,
@@ -29,6 +39,7 @@ export function SessionRow({
   studios,
   classTypes,
   instructors,
+  customers,
 }: {
   session: SessionWithRelations;
   // Seats taken right now, held seats included — tallied on the server because
@@ -37,6 +48,7 @@ export function SessionRow({
   studios: StudioOption[];
   classTypes: ClassTypeOption[];
   instructors: InstructorOption[];
+  customers: CustomerOption[];
 }) {
   const [editing, setEditing] = useState(false);
   // The roster is fetched by RegisterPanel only once it's opened, so this flag
@@ -44,12 +56,16 @@ export function SessionRow({
   const [showRegister, setShowRegister] = useState(false);
   const router = useRouter();
   const [fillPending, startFillTransition] = useTransition();
+  const [privateBookPending, startPrivateBookTransition] = useTransition();
+  const [showPrivateBooking, setShowPrivateBooking] = useState(false);
+  const [privateCustomerId, setPrivateCustomerId] = useState("");
   const [fillNotice, setFillNotice] = useState<{
     kind: "success" | "error";
     text: string;
   } | null>(null);
 
   const cancelled = session.status === "cancelled";
+  const isPrivate = session.class_type?.pool === "private";
   // Seats reception is holding to close a quiet class. Included in `booked`.
   const held = session.filler_seats ?? 0;
   const openSeats = Math.max(0, session.capacity - booked);
@@ -79,6 +95,34 @@ export function SessionRow({
           ? "Class reopened. Customers can book again."
           : "Class filled. Remaining seats are now held.",
       });
+      router.refresh();
+    });
+  }
+
+  function bookPrivateCustomer() {
+    if (!privateCustomerId) {
+      setFillNotice({ kind: "error", text: "Choose a customer first." });
+      return;
+    }
+
+    setFillNotice(null);
+    startPrivateBookTransition(async () => {
+      const form = new FormData();
+      form.set("session_id", session.id);
+      form.set("customer_id", privateCustomerId);
+
+      const result = await adminBookPrivateCustomerAction({}, form);
+      if (result.error) {
+        setFillNotice({ kind: "error", text: result.error });
+        return;
+      }
+
+      setFillNotice({
+        kind: "success",
+        text: result.message ?? "Customer booked into the private class.",
+      });
+      setShowPrivateBooking(false);
+      setPrivateCustomerId("");
       router.refresh();
     });
   }
@@ -138,7 +182,17 @@ export function SessionRow({
             {editing ? "Close" : "Edit"}
           </button>
 
-          {!cancelled && (
+          {!cancelled && isPrivate ? (
+            <button
+              type="button"
+              onClick={() => setShowPrivateBooking((v) => !v)}
+              className="btn-ghost"
+              disabled={booked >= session.capacity}
+              title="Book an existing customer into this private class"
+            >
+              {showPrivateBooking ? "Close booking" : "Book customer"}
+            </button>
+          ) : !cancelled ? (
             <button
               type="button"
               onClick={toggleFill}
@@ -152,7 +206,7 @@ export function SessionRow({
             >
               {fillPending ? "Saving…" : held > 0 ? "Unfill" : "Fill"}
             </button>
-          )}
+          ) : null}
 
           <form action={setSessionStatusAction}>
             <input type="hidden" name="id" value={session.id} />
@@ -171,6 +225,56 @@ export function SessionRow({
           </form>
         </div>
       </div>
+
+      {showPrivateBooking && isPrivate && !cancelled && (
+        <div className="border-t border-stone-200 bg-stone-50 px-5 py-4">
+          <div className="max-w-xl space-y-3">
+            <div>
+              <h3 className="text-sm font-semibold text-ink">
+                Book an existing customer
+              </h3>
+              <p className="mt-1 text-xs text-ink-muted">
+                This creates a real private booking and deducts the class&apos;s
+                private credit cost from the selected customer.
+              </p>
+            </div>
+
+            <div>
+              <label className="label" htmlFor={`private-customer-${session.id}`}>
+                Customer
+              </label>
+              <select
+                id={`private-customer-${session.id}`}
+                className="input"
+                value={privateCustomerId}
+                onChange={(e) => setPrivateCustomerId(e.target.value)}
+                disabled={privateBookPending}
+              >
+                <option value="">Choose a customer…</option>
+                {customers.map((customer) => (
+                  <option key={customer.id} value={customer.id}>
+                    {customer.name}
+                    {customer.email ? ` — ${customer.email}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              type="button"
+              onClick={bookPrivateCustomer}
+              className="btn-primary"
+              disabled={
+                privateBookPending ||
+                !privateCustomerId ||
+                booked >= session.capacity
+              }
+            >
+              {privateBookPending ? "Booking…" : "Book into private class"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {fillNotice && (
         <div
