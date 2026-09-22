@@ -246,6 +246,11 @@ async function logSync(
   ok: boolean,
   message: string | null,
 ): Promise<void> {
+  // Success rows were growing this table by millions of records and added a
+  // write to every sync. Keep only failures; successful sync state already
+  // lives on bookings/sessions.
+  if (ok) return;
+
   try {
     const service = createServiceClient();
     await service.from("google_sync_log").insert({
