@@ -135,23 +135,36 @@ export async function createSessionAction(
   );
   if ("error" in instants) return { error: instants.error };
 
-  const { error } = await supabase.from("sessions").insert({
-    studio_id,
-    class_type_id,
-    instructor_id: instructor_id || null,
-    title: title || null,
-    starts_at: instants.starts_at,
-    ends_at: instants.ends_at,
-    capacity,
-    status: "scheduled",
-    room: room || null,
-    notes: notes || null,
-  });
+  const { data: created, error } = await supabase
+    .from("sessions")
+    .insert({
+      studio_id,
+      class_type_id,
+      instructor_id: instructor_id || null,
+      title: title || null,
+      starts_at: instants.starts_at,
+      ends_at: instants.ends_at,
+      capacity,
+      status: "scheduled",
+      room: room || null,
+      notes: notes || null,
+    })
+    .select("id")
+    .single();
 
-  if (error) return { error: error.message };
+  if (error || !created) {
+    return { error: error?.message ?? "Could not create this class." };
+  }
+
+  const calendarSync = await syncSessionById(created.id);
 
   revalidatePath("/admin/sessions");
-  return { ok: true };
+  return {
+    ok: true,
+    message: calendarSync.ok
+      ? "Class created and synced to Google Calendar."
+      : `Class created, but Google Calendar sync failed: ${calendarSync.message ?? "sync failed"}`,
+  };
 }
 
 export async function updateSessionAction(
@@ -206,8 +219,15 @@ export async function updateSessionAction(
 
   if (error) return { error: error.message };
 
+  const calendarSync = await syncSessionById(id);
+
   revalidatePath("/admin/sessions");
-  return { ok: true };
+  return {
+    ok: true,
+    message: calendarSync.ok
+      ? "Class updated in Google Calendar."
+      : `Class updated, but Google Calendar sync failed: ${calendarSync.message ?? "sync failed"}`,
+  };
 }
 
 // Sessions are referenced by bookings and payroll, so we never hard-delete from
@@ -222,7 +242,10 @@ export async function setSessionStatusAction(formData: FormData) {
   if (status !== "scheduled" && status !== "cancelled") return;
 
   const supabase = await createClient();
-  await supabase.from("sessions").update({ status }).eq("id", id);
+  const { error } = await supabase.from("sessions").update({ status }).eq("id", id);
+  if (error) return;
+
+  await syncSessionById(id);
   revalidatePath("/admin/sessions");
 }
 
@@ -459,12 +482,19 @@ export async function adminBookPrivateCustomerAction(
     return { error: ledgerError.message };
   }
 
+  const calendarSync = await syncSessionById(sessionId);
+
   revalidatePath("/admin/sessions");
   revalidatePath("/admin/notifications");
   revalidatePath("/book");
   revalidatePath("/my-bookings");
 
-  return { ok: true, message: "Customer booked into the private class." };
+  return {
+    ok: true,
+    message: calendarSync.ok
+      ? "Customer booked and Google Calendar updated."
+      : `Customer booked, but Google Calendar sync failed: ${calendarSync.message ?? "sync failed"}`,
+  };
 }
 
 // ----------------------------------------------------------------------------
@@ -644,6 +674,8 @@ export async function bookCustomerIntoPrivateSessionAction(
     return { error: ledgerError.message };
   }
 
+  await syncSessionById(session_id);
+
   revalidatePath("/admin/sessions");
   revalidatePath("/book");
   revalidatePath("/my-bookings");
@@ -765,19 +797,22 @@ export async function setBookingStatusAction(
 
   const supabase = await createClient();
 
-  if (status === "attended" || status === "no_show") {
-    const { data: booking } = await supabase
-      .from("bookings")
-      .select("session:sessions(starts_at)")
-      .eq("id", bookingId)
-      .maybeSingle();
+  const { data: booking } = await supabase
+    .from("bookings")
+    .select("session:sessions(id,starts_at)")
+    .eq("id", bookingId)
+    .maybeSingle();
 
-    const row = booking as unknown as
-      | { session: { starts_at: string } | null }
-      | null;
-    if (row?.session && Date.parse(row.session.starts_at) > Date.now()) {
-      return { error: "Attendance can only be marked once the class has started." };
-    }
+  const row = booking as unknown as
+    | { session: { id: string; starts_at: string } | null }
+    | null;
+
+  if (
+    (status === "attended" || status === "no_show") &&
+    row?.session &&
+    Date.parse(row.session.starts_at) > Date.now()
+  ) {
+    return { error: "Attendance can only be marked once the class has started." };
   }
 
   const { error } = await supabase
@@ -790,6 +825,10 @@ export async function setBookingStatusAction(
     })
     .eq("id", bookingId);
   if (error) return { error: error.message };
+
+  if (row?.session?.id) {
+    await syncSessionById(row.session.id);
+  }
 
   revalidatePath("/admin/sessions");
   return { ok: true };
