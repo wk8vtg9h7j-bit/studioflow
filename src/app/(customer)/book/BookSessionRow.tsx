@@ -86,7 +86,7 @@ export function BookSessionRow({ session, booked, myStatus }: Props) {
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 pt-3">
           <p className="text-sm">
             <span className="font-semibold text-ink">
-              {isFull ? "Full" : `${available} left`}
+              {booked} booked out of {capacity}
             </span>
             <span className="text-ink-muted">
               {" · "}
