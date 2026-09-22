@@ -249,7 +249,7 @@ export async function setFillerSeatsAction(
   // held + booked as taken, so an oversized hold would only distort the numbers.
   const { data: row, error: readError } = await supabase
     .from("sessions")
-    .select("capacity")
+    .select("capacity,starts_at")
     .eq("id", id)
     .maybeSingle();
 
@@ -637,6 +637,7 @@ export type RegisterRow = {
   name: string;
   status: BookingStatus;
   credits_spent: number;
+  spots_count: number;
 };
 
 export type RegisterData = {
@@ -645,6 +646,7 @@ export type RegisterData = {
   attendedCount: number;
   noShowCount: number;
   creditsUsed: number;
+  canMarkAttendance: boolean;
   roster: RegisterRow[];
 };
 
@@ -674,7 +676,7 @@ export async function getRegisterDataAction(
   const { data: bookingRows } = await supabase
     .from("bookings")
     .select(
-      "id, status, credits_spent, customer:customers(name, profile:profiles(full_name))",
+      "id, status, credits_spent, spots_count, customer:customers(name, profile:profiles(full_name))",
     )
     .eq("session_id", sessionId)
     .neq("status", "cancelled")
@@ -684,6 +686,7 @@ export async function getRegisterDataAction(
     id: string;
     status: BookingStatus;
     credits_spent: number | null;
+    spots_count: number | null;
     customer: unknown;
   }[];
 
@@ -692,18 +695,28 @@ export async function getRegisterDataAction(
     name: resolveName(r.customer),
     status: r.status,
     credits_spent: r.credits_spent ?? 0,
+    spots_count: r.spots_count ?? 1,
   }));
 
+  const sessionInfo = session as
+    | { capacity: number; starts_at: string }
+    | null;
+
   return {
-    capacity: (session as { capacity: number } | null)?.capacity ?? 0,
-    // Matches session_attendance(): a seat counts whether or not the person has
-    // been marked in yet, and only a no-show hands it back.
-    bookedCount: roster.filter(
-      (r) => r.status === "booked" || r.status === "attended",
-    ).length,
-    attendedCount: roster.filter((r) => r.status === "attended").length,
-    noShowCount: roster.filter((r) => r.status === "no_show").length,
+    capacity: sessionInfo?.capacity ?? 0,
+    bookedCount: roster
+      .filter((r) => r.status === "booked" || r.status === "attended")
+      .reduce((sum, r) => sum + r.spots_count, 0),
+    attendedCount: roster
+      .filter((r) => r.status === "attended")
+      .reduce((sum, r) => sum + r.spots_count, 0),
+    noShowCount: roster
+      .filter((r) => r.status === "no_show")
+      .reduce((sum, r) => sum + r.spots_count, 0),
     creditsUsed: roster.reduce((sum, r) => sum + r.credits_spent, 0),
+    canMarkAttendance: sessionInfo
+      ? Date.parse(sessionInfo.starts_at) <= Date.now()
+      : false,
     roster,
   };
 }
@@ -725,6 +738,22 @@ export async function setBookingStatusAction(
   }
 
   const supabase = await createClient();
+
+  if (status === "attended" || status === "no_show") {
+    const { data: booking } = await supabase
+      .from("bookings")
+      .select("session:sessions(starts_at)")
+      .eq("id", bookingId)
+      .maybeSingle();
+
+    const row = booking as unknown as
+      | { session: { starts_at: string } | null }
+      | null;
+    if (row?.session && Date.parse(row.session.starts_at) > Date.now()) {
+      return { error: "Attendance can only be marked once the class has started." };
+    }
+  }
+
   const { error } = await supabase
     .from("bookings")
     .update({
