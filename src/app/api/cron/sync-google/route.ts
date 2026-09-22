@@ -13,7 +13,7 @@ import { syncSessionById, type SyncResult } from "@/lib/google/sync";
 export const maxDuration = 60;
 
 const BATCH_SIZE = 300;
-const CONCURRENCY = 5;
+const CONCURRENCY = 15;
 
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;
