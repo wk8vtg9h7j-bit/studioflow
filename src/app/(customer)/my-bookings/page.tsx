@@ -29,7 +29,7 @@ export default async function MyBookingsPage({
   const { data } = await supabase
     .from("bookings")
     .select(
-      "id,status,credits_spent,session:sessions(*, studio:studios(id,name,slug,brand_color,timezone), class_type:class_types(id,name,color,credits_cost), instructor:instructors(id,display_name))",
+      "id,status,credits_spent,spots_count,session:sessions(*, studio:studios(id,name,slug,brand_color,timezone), class_type:class_types(id,name,color,credits_cost), instructor:instructors(id,display_name))",
     )
     .order("created_at", { ascending: false });
 
