@@ -4,11 +4,11 @@
 // ============================================================================
 import { signOutAction } from "@/app/(auth)/actions";
 
-export function SignOutButton() {
+export function SignOutButton({ label = "Sign out" }: { label?: string }) {
   return (
     <form action={signOutAction}>
       <button type="submit" className="btn-ghost">
-        Sign out
+        {label}
       </button>
     </form>
   );
