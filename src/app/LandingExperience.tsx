@@ -17,6 +17,8 @@ export type LandingClass = {
   credits: number;
   color: string;
   time: string;
+  booked: number;
+  capacity: number;
 };
 
 export type LandingStudio = {
@@ -193,6 +195,8 @@ export default function LandingExperience({
                   </p>
                 )}
                 <p className="mt-3 text-xs font-medium text-ink-soft">
+                  {c.booked} booked out of {c.capacity}
+                  {" · "}
                   {c.credits} credit{c.credits > 1 ? "s" : ""}
                 </p>
               </article>
