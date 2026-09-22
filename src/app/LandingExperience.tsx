@@ -10,6 +10,10 @@
 // ============================================================================
 import { useState } from "react";
 import Link from "next/link";
+import {
+  LanguageSwitcher,
+  useLanguage,
+} from "@/components/LanguageProvider";
 
 export type LandingClass = {
   name: string;
@@ -65,6 +69,8 @@ export default function LandingExperience({
 }) {
   const [studioKey, setStudioKey] = useState<string>(studios[0]?.key ?? "");
   const [selected, setSelected] = useState<number>(2); // default: 10 Class Pack
+  const { locale } = useLanguage();
+  const vi = locale === "vi";
 
   const studio = studios.find((s) => s.key === studioKey) ?? studios[0];
   const pkg = PACKAGES[selected];
@@ -74,6 +80,11 @@ export default function LandingExperience({
   const savedPct = Math.round((savedPerClass / SINGLE_PER_CLASS) * 100);
 
   const accent = studio?.accent ?? "#7c3aed";
+  const packageName = (p: Pkg) => {
+    if (!vi) return p.name;
+    if (p.credits === 1) return "Lớp lẻ";
+    return `Gói ${p.credits} lớp`;
+  };
 
   return (
     <main
@@ -90,14 +101,15 @@ export default function LandingExperience({
           </span>
         </span>
         <nav className="flex items-center gap-2">
+          <LanguageSwitcher />
           <Link href="/login" className="btn-ghost press">
-            Log in
+            {vi ? "Đăng nhập" : "Log in"}
           </Link>
           <Link
             href="/book"
             className="press inline-flex items-center justify-center rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors duration-500 hover:opacity-90"
           >
-            Book a class
+            {vi ? "Đặt lớp" : "Book a class"}
           </Link>
         </nav>
       </header>
@@ -134,22 +146,24 @@ export default function LandingExperience({
           {studio?.address ? ` · ${studio.address}` : ""}
         </p>
         <h1 className="reveal reveal-3 text-balance text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
-          Move with intention.
+          {vi ? "Chuyển động có chủ đích." : "Move with intention."}
           <br />
-          Leave recharged.
+          {vi ? "Rời lớp với năng lượng mới." : "Leave recharged."}
         </h1>
         <p className="reveal reveal-4 mx-auto mt-5 max-w-xl text-pretty text-lg text-ink-muted">
-          {studio?.blurb}
+          {vi
+            ? "Pilates reformer nhóm nhỏ với hướng dẫn tận tình. Đặt lớp, tập có chủ đích và rời studio với năng lượng mới."
+            : studio?.blurb}
         </p>
         <div className="reveal reveal-5 mt-8 flex items-center justify-center gap-3">
           <Link
             href="/book"
             className="press inline-flex items-center justify-center rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors duration-500 hover:opacity-90"
           >
-            Book your first class
+            {vi ? "Đặt lớp đầu tiên" : "Book your first class"}
           </Link>
           <Link href="/login" className="btn-secondary press">
-            I have an account
+            {vi ? "Tôi đã có tài khoản" : "I have an account"}
           </Link>
         </div>
       </section>
@@ -159,15 +173,17 @@ export default function LandingExperience({
         <div className="mb-6 flex items-end justify-between">
           <div>
             <h2 className="text-xl font-semibold tracking-tight text-ink">
-              Weekly schedule · {studio?.short}
+              {vi ? "Lịch lớp" : "Weekly schedule"} · {studio?.short}
             </h2>
             {studio?.scheduleLabel && (
               <p className="mt-1 text-sm text-ink-muted">
-                Classes from {studio.scheduleLabel}
+                {vi ? "Lớp từ" : "Classes from"} {studio.scheduleLabel}
               </p>
             )}
           </div>
-          <span className="text-sm text-ink-muted">50 min · max 4 people</span>
+          <span className="text-sm text-ink-muted">
+            {vi ? "50 phút · tối đa 4 người" : "50 min · max 4 people"}
+          </span>
         </div>
         {studio && studio.classes.length > 0 ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -195,16 +211,16 @@ export default function LandingExperience({
                   </p>
                 )}
                 <p className="mt-3 text-xs font-medium text-ink-soft">
-                  {c.booked} booked out of {c.capacity}
-                  {" · "}
-                  {c.credits} credit{c.credits > 1 ? "s" : ""}
+                  {vi
+                    ? `${c.booked}/${c.capacity} đã đặt · ${c.credits} tín dụng`
+                    : `${c.booked} booked out of ${c.capacity} · ${c.credits} credit${c.credits > 1 ? "s" : ""}`}
                 </p>
               </article>
             ))}
           </div>
         ) : (
           <div className="card px-5 py-12 text-center text-sm text-ink-muted">
-            Schedule coming soon — check back shortly.
+            {vi ? "Lịch lớp sẽ sớm được cập nhật." : "Schedule coming soon — check back shortly."}
           </div>
         )}
       </section>
@@ -213,10 +229,12 @@ export default function LandingExperience({
       <section className="mx-auto max-w-5xl px-6 pb-24 pt-4">
         <div className="mb-6 text-center">
           <h2 className="text-xl font-semibold tracking-tight text-ink">
-            Class packages
+            {vi ? "Gói lớp" : "Class packages"}
           </h2>
           <p className="mt-1.5 text-sm text-ink-muted">
-            One set of credits, valid at both studios. Tap a pack to compare.
+            {vi
+              ? "Một hệ thống tín dụng dùng tại cả hai studio. Chọn gói để so sánh."
+              : "One set of credits, valid at both studios. Tap a pack to compare."}
           </p>
         </div>
 
@@ -249,19 +267,20 @@ export default function LandingExperience({
                     className="absolute -top-2.5 right-4 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white"
                     style={{ backgroundColor: accent }}
                   >
-                    Popular
+                    {vi ? "Phổ biến" : "Popular"}
                   </span>
                 )}
-                <h3 className="text-sm font-semibold text-ink">{p.name}</h3>
+                <h3 className="text-sm font-semibold text-ink">{packageName(p)}</h3>
                 <p className="mt-2 text-2xl font-semibold tracking-tight text-ink">
                   {vnd(p.price)}
                 </p>
                 <p className="mt-1 text-xs text-ink-muted">
-                  {vnd(each)} / class · {p.credits} credit
-                  {p.credits > 1 ? "s" : ""}
+                  {vi
+                    ? `${vnd(each)} / lớp · ${p.credits} tín dụng`
+                    : `${vnd(each)} / class · ${p.credits} credit${p.credits > 1 ? "s" : ""}`}
                 </p>
                 <p className="mt-3 text-xs text-ink-soft">
-                  Valid {p.validity} days
+                  {vi ? `Có hiệu lực ${p.validity} ngày` : `Valid ${p.validity} days`}
                 </p>
               </button>
             );
@@ -275,20 +294,20 @@ export default function LandingExperience({
         >
           <div>
             <p className="text-sm font-medium text-ink">
-              {pkg.name} — {vnd(pkg.price)}
+              {packageName(pkg)} — {vnd(pkg.price)}
             </p>
             <p className="mt-1 text-sm text-ink-muted">
-              {vnd(perClass)} per class
+              {vi ? `${vnd(perClass)} mỗi lớp` : `${vnd(perClass)} per class`}
               {savedTotal > 0 ? (
                 <>
                   {" · "}
                   <span className="font-medium" style={{ color: accent }}>
-                    save {vnd(savedTotal)} ({savedPct}%)
+                    {vi ? "tiết kiệm" : "save"} {vnd(savedTotal)} ({savedPct}%)
                   </span>{" "}
-                  vs single classes
+                  {vi ? "so với lớp lẻ" : "vs single classes"}
                 </>
               ) : (
-                " · pay as you go"
+                vi ? " · trả theo từng lớp" : " · pay as you go"
               )}
             </p>
           </div>
@@ -296,7 +315,9 @@ export default function LandingExperience({
             href="/book"
             className="press inline-flex shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors duration-500 hover:opacity-90"
           >
-            Get {pkg.credits} credit{pkg.credits > 1 ? "s" : ""}
+            {vi
+              ? `Mua ${pkg.credits} tín dụng`
+              : `Get ${pkg.credits} credit${pkg.credits > 1 ? "s" : ""}`}
           </Link>
         </div>
       </section>
