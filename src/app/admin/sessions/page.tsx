@@ -163,15 +163,18 @@ export default async function SessionsPage({
   if (sessions.length > 0) {
     const { data: seatRows } = await service
       .from("bookings")
-      .select("session_id")
-      .eq("status", "booked")
+      .select("session_id,spots_count")
+      .in("status", ["booked", "attended"])
       .in(
         "session_id",
         sessions.map((s) => s.id),
       );
     for (const r of seatRows ?? []) {
-      const id = (r as { session_id: string }).session_id;
-      bookedBySession.set(id, (bookedBySession.get(id) ?? 0) + 1);
+      const row = r as { session_id: string; spots_count: number | null };
+      bookedBySession.set(
+        row.session_id,
+        (bookedBySession.get(row.session_id) ?? 0) + (row.spots_count ?? 1),
+      );
     }
   }
 
