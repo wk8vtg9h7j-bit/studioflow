@@ -44,7 +44,9 @@ type SessionForSync = Pick<
   | "status"
   | "google_event_id"
   | "filler_seats"
->;
+> & {
+  class_type_name?: string | null;
+};
 
 export class StudioNotConnectedError extends Error {
   constructor(studioId: string) {
@@ -81,7 +83,10 @@ function eventBody(
   studio: StudioForSync,
   session: SessionForSync,
 ): calendar_v3.Schema$Event {
-  const baseSummary = session.title?.trim() || `${studio.name} class`;
+  const baseSummary =
+    session.title?.trim() ||
+    session.class_type_name?.trim() ||
+    `${studio.name} class`;
   const isFilled = (session.filler_seats ?? 0) > 0;
   const summary = isFilled ? `FILLED · ${baseSummary}` : baseSummary;
   const descriptionParts: string[] = [];
@@ -246,7 +251,7 @@ export async function syncSessionById(sessionId: string): Promise<SyncResult> {
   const { data: session } = await service
     .from("sessions")
     .select(
-      "id,title,starts_at,ends_at,room,notes,status,google_event_id,studio_id,filler_seats",
+      "id,title,starts_at,ends_at,room,notes,status,google_event_id,studio_id,filler_seats,class_type:class_types(name)",
     )
     .eq("id", sessionId)
     .single();
@@ -267,8 +272,12 @@ export async function syncSessionById(sessionId: string): Promise<SyncResult> {
     return { ok: false, action: "skip", eventId: null, message: "no studio" };
   }
 
-  return syncSessionToStudio(
-    studio as StudioForSync,
-    session as SessionForSync,
-  );
+  const sessionRow = session as unknown as SessionForSync & {
+    class_type?: { name: string | null } | null;
+  };
+
+  return syncSessionToStudio(studio as StudioForSync, {
+    ...sessionRow,
+    class_type_name: sessionRow.class_type?.name ?? null,
+  });
 }
