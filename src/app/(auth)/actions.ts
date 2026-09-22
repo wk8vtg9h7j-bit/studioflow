@@ -29,6 +29,15 @@ const credentials = z.object({
 
 const signUpSchema = credentials.extend({
   fullName: z.string().trim().min(1, "Enter your name."),
+  phone: z
+    .string()
+    .trim()
+    .min(7, "Enter your phone number.")
+    .max(30, "Phone number is too long.")
+    .refine(
+      (value) => value.replace(/\D/g, "").length >= 7,
+      "Enter a valid phone number.",
+    ),
 });
 
 export async function signInAction(
@@ -63,6 +72,7 @@ export async function signUpAction(
     email: formData.get("email"),
     password: formData.get("password"),
     fullName: formData.get("fullName"),
+    phone: formData.get("phone"),
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid details." };
@@ -75,7 +85,11 @@ export async function signUpAction(
     email: parsed.data.email,
     password: parsed.data.password,
     options: {
-      data: { full_name: parsed.data.fullName, role: "customer" },
+      data: {
+        full_name: parsed.data.fullName,
+        phone: parsed.data.phone,
+        role: "customer",
+      },
     },
   });
   if (error) {
