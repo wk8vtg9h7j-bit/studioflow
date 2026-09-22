@@ -40,6 +40,9 @@ const packageSchema = z.object({
     .int("Validity must be a whole number of days")
     .min(1, "Validity must be at least 1 day")
     .max(3650),
+  pool: z.enum(["regular", "private"], {
+    errorMap: () => ({ message: "Choose regular or private credits." }),
+  }),
 });
 
 function parseForm(formData: FormData) {
@@ -51,6 +54,7 @@ function parseForm(formData: FormData) {
     price_cents: formData.get("price_cents"),
     currency: formData.get("currency"),
     validity_days: formData.get("validity_days"),
+    pool: formData.get("pool"),
   });
 }
 
