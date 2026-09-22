@@ -105,7 +105,7 @@ export async function grantPackageAction(
   // stay valid. Only active packages can be sold.
   const { data: pkg, error: pkgError } = await supabase
     .from("packages")
-    .select("credits, validity_days, active")
+    .select("credits, validity_days, active, pool")
     .eq("id", package_id)
     .single();
 
@@ -130,6 +130,7 @@ export async function grantPackageAction(
     booking_id: null,
     expires_at: expiresAt,
     payment_method,
+    pool: pkg.pool ?? "regular",
   });
 
   if (error) {
@@ -157,6 +158,9 @@ export async function grantPackageAction(
 // ----------------------------------------------------------------------------
 const AdjustSchema = z.object({
   customer_id: z.string().uuid("Could not identify which customer to adjust."),
+  pool: z.enum(["regular", "private"], {
+    errorMap: () => ({ message: "Choose regular or private credits." }),
+  }),
   delta: z.coerce
     .number({ invalid_type_error: "Enter a whole number of credits." })
     .int("Credits must be a whole number.")
@@ -172,13 +176,14 @@ export async function adjustCreditsAction(
 
   const parsed = AdjustSchema.safeParse({
     customer_id: formData.get("customer_id"),
+    pool: formData.get("pool"),
     delta: formData.get("delta"),
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Check the form." };
   }
 
-  const { customer_id, delta } = parsed.data;
+  const { customer_id, pool, delta } = parsed.data;
   const supabase = await createClient();
 
   // Guard against pushing a balance negative — book_session would refuse to
@@ -186,6 +191,7 @@ export async function adjustCreditsAction(
   if (delta < 0) {
     const { data: balance } = await supabase.rpc("credit_balance", {
       p_customer: customer_id,
+      p_pool: pool,
     });
     const current = typeof balance === "number" ? balance : 0;
     if (current + delta < 0) {
@@ -201,6 +207,7 @@ export async function adjustCreditsAction(
     reason: "adjustment",
     package_id: null,
     booking_id: null,
+    pool,
     expires_at: null,
   });
 
