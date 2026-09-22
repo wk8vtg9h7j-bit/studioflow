@@ -104,7 +104,7 @@ export function BookingRow({
           <p className="font-medium text-ink">
             {session
               ? formatSessionWhen(session.starts_at, tz)
-              : "Class removed"}
+              : vi ? "Lớp đã xóa" : "Class removed"}
           </p>
           {where && <p className="break-words">{where}</p>}
           <p>
