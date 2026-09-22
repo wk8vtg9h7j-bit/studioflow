@@ -16,6 +16,7 @@ export type BookingWithSession = {
   id: string;
   status: "booked" | "waitlisted" | "cancelled" | "attended" | "no_show";
   credits_spent: number | null;
+  spots_count: number | null;
   session:
     | (Session & {
         studio: Pick<
@@ -95,6 +96,12 @@ export function BookingRow({
               : "Class removed"}
           </p>
           {where && <p className="break-words">{where}</p>}
+          <p>
+            {booking.spots_count ?? 1} spot{(booking.spots_count ?? 1) === 1 ? "" : "s"}
+            {booking.credits_spent
+              ? ` · ${booking.credits_spent} credit${booking.credits_spent === 1 ? "" : "s"} used`
+              : ""}
+          </p>
         </div>
 
         {(cancellable || locked) && (
