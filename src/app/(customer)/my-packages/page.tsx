@@ -16,6 +16,7 @@
 // ============================================================================
 import { createClient } from "@/lib/supabase/server";
 import { formatSessionDate } from "@/lib/format";
+import { getLocale } from "@/lib/locale-server";
 
 type LedgerRow = {
   id: string;
@@ -67,6 +68,8 @@ const safeDate = (value: string | null) =>
   value && Number.isFinite(Date.parse(value)) ? formatSessionDate(value) : null;
 
 export default async function MyPackagesPage() {
+  const locale = await getLocale();
+  const vi = locale === "vi";
   const supabase = await createClient();
 
   // RLS scopes credit_ledger to the signed-in member, so a plain authed client
@@ -178,10 +181,10 @@ export default async function MyPackagesPage() {
           id: row.id,
           name:
             source === "purchase"
-              ? (row.package?.name ?? "Package")
+              ? (row.package?.name ?? (vi ? "Gói tập" : "Package"))
               : source === "refund"
-                ? "Credit returned"
-                : "Credits added",
+                ? (vi ? "Tín dụng được hoàn" : "Credit returned")
+                : (vi ? "Tín dụng được thêm" : "Credits added"),
           granted: left,
           remaining: left,
           pool,
@@ -254,9 +257,9 @@ export default async function MyPackagesPage() {
       // by hand aren't "returned" — saying so would be a lie on the row.
       const fallback = positive
         ? r.booking_id
-          ? "Credit returned"
-          : "Credits added"
-        : "Class";
+          ? (vi ? "Tín dụng được hoàn" : "Credit returned")
+          : (vi ? "Tín dụng được thêm" : "Credits added")
+        : (vi ? "Lớp" : "Class");
 
       return {
         id: r.id,
@@ -290,46 +293,49 @@ export default async function MyPackagesPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-ink">
-          Your packages
+          {vi ? "Gói tập của bạn" : "Your packages"}
         </h1>
         <p className="mt-1 text-sm text-ink-muted">
-          Every clip-card you can still spend, soonest to expire first. Regular
-          and private credits are kept apart and never mix.
+          {vi
+            ? "Các gói tín dụng bạn còn có thể sử dụng, sắp xếp theo hạn dùng gần nhất. Tín dụng thường và riêng luôn được tách biệt."
+            : "Every clip-card you can still spend, soonest to expire first. Regular and private credits are kept apart and never mix."}
         </p>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="card p-5">
           <p className="text-xs uppercase tracking-wide text-ink-soft">
-            Regular
+            {vi ? "Thường" : "Regular"}
           </p>
           <p className="mt-1 text-3xl font-semibold tracking-tight text-ink">
             {regularCredits}
           </p>
           <p className="mt-1 text-xs text-ink-muted">
-            {regularCredits === 1 ? "1 credit" : `${regularCredits} credits`}{" "}
-            available
+            {vi
+              ? `${regularCredits} tín dụng khả dụng`
+              : `${regularCredits} credit${regularCredits === 1 ? "" : "s"} available`}
           </p>
         </div>
         <div className="card p-5">
           <p className="text-xs uppercase tracking-wide text-ink-soft">
-            Private
+            {vi ? "Riêng" : "Private"}
           </p>
           <p className="mt-1 text-3xl font-semibold tracking-tight text-ink">
             {privateCredits}
           </p>
           <p className="mt-1 text-xs text-ink-muted">
-            {privateCredits === 1 ? "1 credit" : `${privateCredits} credits`}{" "}
-            available
+            {vi
+              ? `${privateCredits} tín dụng khả dụng`
+              : `${privateCredits} credit${privateCredits === 1 ? "" : "s"} available`}
           </p>
         </div>
       </div>
 
       {active.length === 0 ? (
         <div className="card px-5 py-12 text-center text-sm text-ink-muted">
-          You don&apos;t have any active packages.{" "}
+          {vi ? "Bạn chưa có gói tập đang hoạt động. " : "You don't have any active packages. "}
           <a href="/book" className="font-medium text-ink underline">
-            Browse classes
+            {vi ? "Xem lớp" : "Browse classes"}
           </a>
           .
         </div>
@@ -343,26 +349,32 @@ export default async function MyPackagesPage() {
                     <p className="font-medium text-ink">{pkg.name}</p>
                     {pkg.pool === "private" && (
                       <span className="badge bg-brand-50 text-brand-700">
-                        Private
+                        {vi ? "Riêng" : "Private"}
                       </span>
                     )}
                   </div>
                   <p className="mt-1 text-sm text-ink">
                     {safeDate(pkg.expiresAt)
-                      ? `Expires ${safeDate(pkg.expiresAt)}`
-                      : "No expiry"}
+                      ? vi
+                        ? `Hết hạn ${safeDate(pkg.expiresAt)}`
+                        : `Expires ${safeDate(pkg.expiresAt)}`
+                      : vi ? "Không hết hạn" : "No expiry"}
                   </p>
                   <p className="mt-0.5 text-xs text-ink-soft">
-                    {pkg.source === "purchase" ? "Purchased" : "Added"}{" "}
+                    {pkg.source === "purchase"
+                      ? vi ? "Đã mua" : "Purchased"
+                      : vi ? "Đã thêm" : "Added"}{" "}
                     {safeDate(pkg.startedAt) ?? ""}
                   </p>
                 </div>
 
                 <div className="text-right">
                   <p className="text-sm font-semibold text-ink">
-                    {pkg.remaining} left
+                    {vi ? `Còn ${pkg.remaining}` : `${pkg.remaining} left`}
                   </p>
-                  <p className="text-[11px] text-ink-soft">of {pkg.granted}</p>
+                  <p className="text-[11px] text-ink-soft">
+                    {vi ? `trên ${pkg.granted}` : `of ${pkg.granted}`}
+                  </p>
                 </div>
               </div>
             </li>
@@ -372,15 +384,19 @@ export default async function MyPackagesPage() {
 
       <section className="space-y-3">
         <div>
-          <h2 className="text-sm font-semibold text-ink">Class history</h2>
+          <h2 className="text-sm font-semibold text-ink">
+            {vi ? "Lịch sử lớp" : "Class history"}
+          </h2>
           <p className="mt-1 text-sm text-ink-muted">
-            Every credit you&apos;ve spent or had returned, newest first.
+            {vi
+              ? "Mọi tín dụng bạn đã sử dụng hoặc được hoàn, mới nhất trước."
+              : "Every credit you've spent or had returned, newest first."}
           </p>
         </div>
 
         {usage.length === 0 ? (
           <div className="card px-5 py-10 text-center text-sm text-ink-muted">
-            You haven&apos;t used any credits yet.
+            {vi ? "Bạn chưa sử dụng tín dụng nào." : "You haven't used any credits yet."}
           </div>
         ) : (
           <ul className="space-y-2">
@@ -391,7 +407,7 @@ export default async function MyPackagesPage() {
                     <p className="break-words font-medium text-ink">{u.label}</p>
                     <p className="mt-0.5 text-xs text-ink-muted">
                       {safeDate(u.at) ?? ""}
-                      {u.pool === "private" ? " · Private" : ""}
+                      {u.pool === "private" ? (vi ? " · Riêng" : " · Private") : ""}
                     </p>
                   </div>
                   <p
