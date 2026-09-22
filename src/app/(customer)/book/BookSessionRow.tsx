@@ -90,7 +90,7 @@ export function BookSessionRow({ session, booked, myStatus }: Props) {
             </span>
             <span className="text-ink-muted">
               {" · "}
-              {cost} {isPrivate ? "private " : ""}credit{cost === 1 ? "" : "s"}
+              {cost} {isPrivate ? "private " : ""}credit{cost === 1 ? "" : "s"} per spot
             </span>
           </p>
 
@@ -100,8 +100,22 @@ export function BookSessionRow({ session, booked, myStatus }: Props) {
                 You&apos;re {myStatus === "booked" ? "in" : "on the list"}
               </p>
             ) : (
-              <form action={bookSessionAction}>
+              <form action={bookSessionAction} className="space-y-2">
                 <input type="hidden" name="session_id" value={session.id} />
+                <label className="block text-xs font-medium text-ink-muted">
+                  Spots
+                  <select
+                    name="spots"
+                    className="input mt-1"
+                    defaultValue="1"
+                    disabled={heldFull}
+                  >
+                    <option value="1">1 spot</option>
+                    {(isFull || available >= 2) && (
+                      <option value="2">2 spots</option>
+                    )}
+                  </select>
+                </label>
                 <SubmitButton disabled={heldFull}>
                   {heldFull ? "Full" : isFull ? "Join waitlist" : "Book"}
                 </SubmitButton>
