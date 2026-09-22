@@ -11,8 +11,9 @@
 // already booked or waitlisted.
 // ============================================================================
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import type { SessionWithRelations } from "@/lib/types";
-import { formatSessionDate } from "@/lib/format";
+import { FALLBACK_TZ, formatSessionDate } from "@/lib/format";
 import { BookSessionRow } from "./BookSessionRow";
 import { BookFilters } from "./BookFilters";
 import { DayNav } from "./DayNav";
@@ -22,7 +23,7 @@ type MyStatus = "booked" | "waitlisted";
 // A yyyy-MM-dd stamp for "now". The whole page is scoped to a single day, which
 // keeps the list short enough to scan on a phone.
 function todayStamp(): string {
-  return new Date().toISOString().slice(0, 10);
+  return formatInTimeZone(new Date(), FALLBACK_TZ, "yyyy-MM-dd");
 }
 
 export default async function BookPage({
@@ -44,10 +45,12 @@ export default async function BookPage({
   // Never show a day in the past — there's nothing bookable back there.
   const day = date && date >= today ? date : today;
 
-  // The chosen day as a half-open window. Studio timezones vary, so we bound
-  // generously in UTC and let each row render in its own studio's zone.
-  const dayStart = `${day}T00:00:00.000Z`;
-  const dayEnd = `${day}T23:59:59.999Z`;
+  // The chosen day is interpreted in Vietnam/studio local time, then converted
+  // to UTC for the database query. This prevents early-morning classes from
+  // slipping onto the previous/next date because of UTC midnight boundaries.
+  const dayStart = fromZonedTime(`${day}T00:00:00`, FALLBACK_TZ);
+  const dayEnd = fromZonedTime(`${day}T00:00:00`, FALLBACK_TZ);
+  dayEnd.setDate(dayEnd.getDate() + 1);
 
   // Public session list (RLS hides cancelled classes). Only upcoming, scheduled
   // classes are bookable, so we filter to those and order soonest-first.
@@ -58,8 +61,8 @@ export default async function BookPage({
     )
     .eq("status", "scheduled")
     .gt("starts_at", nowIso)
-    .gte("starts_at", dayStart)
-    .lte("starts_at", dayEnd);
+    .gte("starts_at", dayStart.toISOString())
+    .lt("starts_at", dayEnd.toISOString());
 
   if (studio) sessionsQuery = sessionsQuery.eq("studio_id", studio);
   if (type) sessionsQuery = sessionsQuery.eq("class_type_id", type);
@@ -116,9 +119,10 @@ export default async function BookPage({
     }
   }
 
-  // Booked-seat tallies for every listed session, counted with the service
-  // client so we see everyone's seats (not just mine). Only "booked" rows take a
-  // seat; waitlisted members don't.
+  // Occupied-seat tallies for every listed session, counted with the service
+  // client so we see everyone's seats (not just mine). Both booked and attended
+  // rows occupy seats; waitlisted members do not. Multi-spot bookings contribute
+  // their full spots_count.
   // Seeded with any seats reception is holding (filler_seats), so a held class
   // reads as full here without a single row being written to bookings.
   const bookedBySession = new Map<string, number>();
@@ -129,15 +133,18 @@ export default async function BookPage({
     const service = createServiceClient();
     const { data: seatRows } = await service
       .from("bookings")
-      .select("session_id")
-      .eq("status", "booked")
+      .select("session_id,spots_count")
+      .in("status", ["booked", "attended"])
       .in(
         "session_id",
         sessions.map((s) => s.id),
       );
     for (const r of seatRows ?? []) {
-      const id = (r as { session_id: string }).session_id;
-      bookedBySession.set(id, (bookedBySession.get(id) ?? 0) + 1);
+      const row = r as { session_id: string; spots_count: number | null };
+      bookedBySession.set(
+        row.session_id,
+        (bookedBySession.get(row.session_id) ?? 0) + (row.spots_count ?? 1),
+      );
     }
   }
 
