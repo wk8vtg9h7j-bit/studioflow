@@ -99,9 +99,11 @@ export function SessionRow({
 
       setFillNotice({
         kind: "success",
-        text: releasing
-          ? "Class reopened. Customers can book again."
-          : "Class filled. Remaining seats are now held.",
+        text:
+          result.message ??
+          (releasing
+            ? "Class reopened. Customers can book again."
+            : "Class filled. Remaining seats are now held."),
       });
       router.refresh();
     });
