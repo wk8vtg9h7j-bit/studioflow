@@ -1,26 +1,19 @@
 // ============================================================================
 // GET /api/cron/sync-google
 //
-// Scheduled reconciliation endpoint. A scheduler (Vercel Cron, GitHub Actions,
-// etc.) calls this on an interval to push any sessions that drifted out of sync
-// onto their studio's Google Calendar — a safety net behind the inline sync that
-// runs on each booking/session mutation.
-//
-// Auth: this runs with no user session, so it is guarded by a shared secret.
-// The caller must send `Authorization: Bearer <CRON_SECRET>`. Any mismatch is a
-// 401. All DB access uses the service-role client.
-//
-// Work: load upcoming, still-scheduled sessions belonging to studios whose
-// google_token_status is "connected", and re-sync each via syncSessionById.
-// Returns a JSON summary of what was attempted.
+// Backfills every future scheduled StudioFlow class into Google Calendar.
+// Vercel Cron calls this once per minute with CRON_SECRET in Authorization.
+// New/edited/booked classes also sync inline, so this route is the safety net
+// and the bulk backfill for sessions created before calendar sync was enabled.
 // ============================================================================
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { syncSessionById, type SyncResult } from "@/lib/google/sync";
 
-// How far ahead to reconcile. Past sessions are left alone; the inline sync
-// already handled cancellations/completions at mutation time.
-const SYNC_WINDOW_DAYS = 30;
+export const maxDuration = 60;
+
+const BATCH_SIZE = 300;
+const CONCURRENCY = 5;
 
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;
@@ -31,14 +24,12 @@ export async function GET(request: Request) {
     );
   }
 
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${secret}`) {
+  if (request.headers.get("authorization") !== `Bearer ${secret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const service = createServiceClient();
 
-  // Connected studios only — nothing to sync for a studio without a token.
   const { data: studios, error: studiosError } = await service
     .from("studios")
     .select("id")
@@ -53,22 +44,30 @@ export async function GET(request: Request) {
 
   const studioIds = (studios ?? []).map((s) => (s as { id: string }).id);
   if (studioIds.length === 0) {
-    return NextResponse.json({ synced: 0, results: [] });
+    return NextResponse.json({ synced: 0, attempted: 0, remaining: 0 });
   }
 
-  // Upcoming, still-scheduled sessions within the reconcile window.
-  const now = new Date();
-  const windowEnd = new Date(
-    now.getTime() + SYNC_WINDOW_DAYS * 24 * 60 * 60 * 1000,
-  );
+  const now = new Date().toISOString();
 
+  const { count: remainingBefore } = await service
+    .from("sessions")
+    .select("id", { count: "exact", head: true })
+    .in("studio_id", studioIds)
+    .eq("status", "scheduled")
+    .gte("starts_at", now)
+    .is("google_event_id", null);
+
+  // Earliest sessions first so the active booking window is populated before
+  // far-future schedule rows.
   const { data: sessions, error: sessionsError } = await service
     .from("sessions")
     .select("id")
     .in("studio_id", studioIds)
     .eq("status", "scheduled")
-    .gte("starts_at", now.toISOString())
-    .lte("starts_at", windowEnd.toISOString());
+    .gte("starts_at", now)
+    .is("google_event_id", null)
+    .order("starts_at", { ascending: true })
+    .limit(BATCH_SIZE);
 
   if (sessionsError) {
     return NextResponse.json(
@@ -78,15 +77,30 @@ export async function GET(request: Request) {
   }
 
   const sessionIds = (sessions ?? []).map((s) => (s as { id: string }).id);
-
-  // Sync sequentially to stay polite to the Google API rate limits.
   const results: Array<{ sessionId: string } & SyncResult> = [];
-  for (const sessionId of sessionIds) {
-    const result = await syncSessionById(sessionId);
-    results.push({ sessionId, ...result });
+
+  // Small parallel batches keep the backfill fast without hammering one
+  // Google Calendar account with hundreds of simultaneous writes.
+  for (let i = 0; i < sessionIds.length; i += CONCURRENCY) {
+    const chunk = sessionIds.slice(i, i + CONCURRENCY);
+    const chunkResults = await Promise.all(
+      chunk.map(async (sessionId) => ({
+        sessionId,
+        ...(await syncSessionById(sessionId)),
+      })),
+    );
+    results.push(...chunkResults);
   }
 
-  const synced = results.filter((r) => r.ok && r.action !== "skip").length;
+  const synced = results.filter((item) => item.ok && item.action !== "skip").length;
+  const failed = results.filter((item) => !item.ok).length;
+  const remaining = Math.max((remainingBefore ?? 0) - synced, 0);
 
-  return NextResponse.json({ synced, attempted: sessionIds.length, results });
+  return NextResponse.json({
+    synced,
+    failed,
+    attempted: sessionIds.length,
+    remaining,
+    results,
+  });
 }
