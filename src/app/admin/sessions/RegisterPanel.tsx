@@ -95,6 +95,7 @@ export function RegisterPanel({ sessionId }: { sessionId: string }) {
             >
               <span className="min-w-0 flex-1 truncate font-medium text-ink">
                 {row.name}
+                {row.spots_count > 1 ? ` — ${row.spots_count} spots` : ""}
               </span>
               <span className={`badge ${STATUS_BADGE[row.status]}`}>
                 {STATUS_LABEL[row.status]}
@@ -107,7 +108,9 @@ export function RegisterPanel({ sessionId }: { sessionId: string }) {
                   <button
                     type="button"
                     className="btn-ghost"
-                    disabled={pending || row.status === "attended"}
+                    disabled={
+                      pending || !data.canMarkAttendance || row.status === "attended"
+                    }
                     onClick={() => mark(row.id, "attended")}
                   >
                     Attended
@@ -115,7 +118,9 @@ export function RegisterPanel({ sessionId }: { sessionId: string }) {
                   <button
                     type="button"
                     className="btn-ghost"
-                    disabled={pending || row.status === "no_show"}
+                    disabled={
+                      pending || !data.canMarkAttendance || row.status === "no_show"
+                    }
                     onClick={() => mark(row.id, "no_show")}
                   >
                     No show
@@ -134,6 +139,12 @@ export function RegisterPanel({ sessionId }: { sessionId: string }) {
             </li>
           ))}
         </ul>
+      )}
+
+      {!data.canMarkAttendance && (
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+          Attendance can be marked once the class has started.
+        </p>
       )}
 
       <p className="text-xs text-ink-soft">
