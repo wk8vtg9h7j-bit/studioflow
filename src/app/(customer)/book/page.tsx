@@ -17,6 +17,7 @@ import { FALLBACK_TZ, formatSessionDate } from "@/lib/format";
 import { BookSessionRow } from "./BookSessionRow";
 import { BookFilters } from "./BookFilters";
 import { DayNav } from "./DayNav";
+import { getLocale } from "@/lib/locale-server";
 
 type MyStatus = "booked" | "waitlisted";
 
@@ -38,6 +39,8 @@ export default async function BookPage({
   }>;
 }) {
   const { error, notice, date, studio, type } = await searchParams;
+  const locale = await getLocale();
+  const vi = locale === "vi";
   const supabase = await createClient();
 
   const nowIso = new Date().toISOString();
@@ -152,11 +155,12 @@ export default async function BookPage({
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-ink">
-          Book a class
+          {vi ? "Đặt lớp" : "Book a class"}
         </h1>
         <p className="mt-1 text-sm text-ink-muted">
-          One day at a time. Times are shown in each studio&apos;s local
-          timezone. Booking spends credits from your balance.
+          {vi
+            ? "Chọn lớp theo từng ngày. Thời gian hiển thị theo múi giờ của studio. Khi đặt lớp, tín dụng sẽ được trừ khỏi số dư của bạn."
+            : "One day at a time. Times are shown in each studio's local timezone. Booking spends credits from your balance."}
         </p>
       </div>
 
@@ -188,8 +192,9 @@ export default async function BookPage({
 
           {sessions.length === 0 ? (
             <div className="card px-5 py-12 text-center text-sm text-ink-muted">
-              No classes open for booking on this day. Try another date or clear
-              your filters.
+              {vi
+                ? "Không có lớp nào mở để đặt trong ngày này. Hãy chọn ngày khác hoặc xóa bộ lọc."
+                : "No classes open for booking on this day. Try another date or clear your filters."}
             </div>
           ) : (
             <ul className="space-y-3">
@@ -199,6 +204,7 @@ export default async function BookPage({
                   session={session}
                   booked={bookedBySession.get(session.id) ?? 0}
                   myStatus={myStatusBySession.get(session.id) ?? null}
+                  locale={locale}
                 />
               ))}
             </ul>
@@ -207,25 +213,27 @@ export default async function BookPage({
 
         <aside className="order-first lg:order-last lg:col-span-1">
           <div className="card p-5 lg:sticky lg:top-24">
-            <h2 className="text-sm font-semibold text-ink">Your credits</h2>
+            <h2 className="text-sm font-semibold text-ink">
+              {vi ? "Tín dụng của bạn" : "Your credits"}
+            </h2>
             <dl className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-1">
               <div className="rounded-lg bg-stone-50 px-3 py-2">
-                <dt className="text-xs text-ink-muted">Regular</dt>
+                <dt className="text-xs text-ink-muted">{vi ? "Thường" : "Regular"}</dt>
                 <dd className="text-2xl font-semibold tracking-tight text-ink">
                   {regularCredits}
                 </dd>
               </div>
               <div className="rounded-lg bg-brand-50 px-3 py-2">
-                <dt className="text-xs text-brand-700">Private</dt>
+                <dt className="text-xs text-brand-700">{vi ? "Riêng" : "Private"}</dt>
                 <dd className="text-2xl font-semibold tracking-tight text-brand-700">
                   {privateCredits}
                 </dd>
               </div>
             </dl>
             <p className="mt-4 text-xs leading-relaxed text-ink-muted">
-              Regular credits book regular classes and private credits book
-              private ones — the two never mix. Out of credits? Purchase a
-              package to top up.
+              {vi
+                ? "Tín dụng thường dùng cho lớp thường và tín dụng riêng dùng cho lớp riêng. Hai loại không được dùng lẫn nhau. Hết tín dụng? Hãy mua thêm gói tập."
+                : "Regular credits book regular classes and private credits book private ones — the two never mix. Out of credits? Purchase a package to top up."}
             </p>
           </div>
         </aside>
