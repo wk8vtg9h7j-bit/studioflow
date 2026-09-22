@@ -16,6 +16,7 @@ import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getLocale } from "@/lib/locale-server";
+import { syncSessionById } from "@/lib/google/sync";
 
 // Keep in step with CANCEL_WINDOW_MS on the my-bookings page.
 const CANCEL_WINDOW_MS = 3 * 60 * 60 * 1000;
@@ -35,13 +36,13 @@ export async function cancelBookingAction(formData: FormData) {
   // anyone else's. We only need the start time to check the window.
   const { data: bookingRow } = await supabase
     .from("bookings")
-    .select("id,session:sessions(starts_at)")
+    .select("id,session:sessions(id,starts_at)")
     .eq("id", bookingId)
     .maybeSingle();
 
   const booking = bookingRow as unknown as {
     id: string;
-    session: { starts_at: string } | null;
+    session: { id: string; starts_at: string } | null;
   } | null;
 
   if (!booking) {
@@ -65,6 +66,10 @@ export async function cancelBookingAction(formData: FormData) {
 
   if (error) {
     redirect(`/my-bookings?error=${encodeURIComponent(error.message)}`);
+  }
+
+  if (booking.session?.id) {
+    await syncSessionById(booking.session.id);
   }
 
   revalidatePath("/my-bookings");
