@@ -1,25 +1,14 @@
-// ============================================================================
-// GET /api/cron/sync-google
-//
-// Repairs Google Calendar drift and migrates the temporary aggregate-class
-// layout back to the studio's established one-event-per-person layout.
-//
-// Priority:
-//   1. sessions that still have an aggregate sessions.google_event_id,
-//   2. future active bookings missing booking-level Google event IDs,
-//   3. filled sessions missing filler-seat event IDs.
-//
-// Inline booking/session actions keep new changes synced immediately. Cron is
-// the safety net and migration/backfill path.
-// ============================================================================
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { syncSessionById, type SyncResult } from "@/lib/google/sync";
+import { syncSessionById } from "@/lib/google/sync";
 
 export const maxDuration = 60;
 
-const BATCH_SIZE = 180;
-const CONCURRENCY = 10;
+// Keep background Calendar work deliberately small so it never competes with
+// customer booking or admin filtering. New changes are marked dirty by DB
+// triggers and usually clear on the next one-minute cron run.
+const BATCH_SIZE = 20;
+const CONCURRENCY = 2;
 
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;
@@ -35,122 +24,60 @@ export async function GET(request: Request) {
   }
 
   const service = createServiceClient();
-  const now = new Date().toISOString();
-  const sessionIds = new Set<string>();
 
-  // First remove the orange aggregate events created by the temporary class-
-  // summary sync. syncSessionById deletes that event and replaces it with
-  // individual customer/filler events where appropriate.
-  const { data: aggregateSessions, error: aggregateError } = await service
+  const { data: pending, error } = await service
     .from("sessions")
-    .select("id")
-    .gte("starts_at", now)
-    .not("google_event_id", "is", null)
-    .order("starts_at", { ascending: true })
+    .select("id,google_sync_pending_at")
+    .not("google_sync_pending_at", "is", null)
+    .order("google_sync_pending_at", { ascending: true })
     .limit(BATCH_SIZE);
 
-  if (aggregateError) {
-    return NextResponse.json(
-      { error: `Could not load aggregate sessions: ${aggregateError.message}` },
-      { status: 500 },
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  const rows = (pending ?? []) as {
+    id: string;
+    google_sync_pending_at: string;
+  }[];
+
+  let synced = 0;
+  let failed = 0;
+
+  for (let i = 0; i < rows.length; i += CONCURRENCY) {
+    const chunk = rows.slice(i, i + CONCURRENCY);
+
+    await Promise.all(
+      chunk.map(async (row) => {
+        const result = await syncSessionById(row.id);
+
+        if (!result.ok) {
+          failed += 1;
+          return;
+        }
+
+        synced += 1;
+
+        // Clear only the version we processed. If another booking/session change
+        // happened during the Google request, its newer timestamp remains queued.
+        await service
+          .from("sessions")
+          .update({ google_sync_pending_at: null })
+          .eq("id", row.id)
+          .eq("google_sync_pending_at", row.google_sync_pending_at);
+      }),
     );
   }
 
-  for (const row of aggregateSessions ?? []) {
-    sessionIds.add((row as { id: string }).id);
-  }
-
-  if (sessionIds.size < BATCH_SIZE) {
-    const remaining = BATCH_SIZE - sessionIds.size;
-
-    // Existing bookings from before booking-level Google IDs were tracked.
-    const { data: bookingRows, error: bookingError } = await service
-      .from("bookings")
-      .select("session_id,session:sessions!inner(id,starts_at,status)")
-      .in("status", ["booked", "attended", "no_show"])
-      .is("google_event_ids", null)
-      .gte("session.starts_at", now)
-      .eq("session.status", "scheduled")
-      .order("booked_at", { ascending: true })
-      .limit(remaining * 2);
-
-    if (bookingError) {
-      return NextResponse.json(
-        { error: `Could not load unsynced bookings: ${bookingError.message}` },
-        { status: 500 },
-      );
-    }
-
-    for (const row of bookingRows ?? []) {
-      sessionIds.add((row as { session_id: string }).session_id);
-      if (sessionIds.size >= BATCH_SIZE) break;
-    }
-  }
-
-  if (sessionIds.size < BATCH_SIZE) {
-    const remaining = BATCH_SIZE - sessionIds.size;
-
-    const { data: fillerRows, error: fillerError } = await service
-      .from("sessions")
-      .select("id")
-      .eq("status", "scheduled")
-      .gte("starts_at", now)
-      .gt("filler_seats", 0)
-      .is("google_filler_event_ids", null)
-      .order("starts_at", { ascending: true })
-      .limit(remaining);
-
-    if (fillerError) {
-      return NextResponse.json(
-        { error: `Could not load filled sessions: ${fillerError.message}` },
-        { status: 500 },
-      );
-    }
-
-    for (const row of fillerRows ?? []) {
-      sessionIds.add((row as { id: string }).id);
-    }
-  }
-
-  const ids = [...sessionIds];
-  const results: Array<{ sessionId: string } & SyncResult> = [];
-
-  for (let i = 0; i < ids.length; i += CONCURRENCY) {
-    const chunk = ids.slice(i, i + CONCURRENCY);
-    const chunkResults = await Promise.all(
-      chunk.map(async (sessionId) => ({
-        sessionId,
-        ...(await syncSessionById(sessionId)),
-      })),
-    );
-    results.push(...chunkResults);
-  }
-
-  const synced = results.filter((item) => item.ok).length;
-  const failed = results.filter((item) => !item.ok).length;
-
-  const [{ count: aggregateRemaining }, { count: bookingRemaining }] =
-    await Promise.all([
-      service
-        .from("sessions")
-        .select("id", { count: "exact", head: true })
-        .gte("starts_at", now)
-        .not("google_event_id", "is", null),
-      service
-        .from("bookings")
-        .select("id,session:sessions!inner(id)", { count: "exact", head: true })
-        .in("status", ["booked", "attended", "no_show"])
-        .is("google_event_ids", null)
-        .gte("session.starts_at", now)
-        .eq("session.status", "scheduled"),
-    ]);
+  const { count: remaining } = await service
+    .from("sessions")
+    .select("id", { count: "exact", head: true })
+    .not("google_sync_pending_at", "is", null);
 
   return NextResponse.json({
+    attempted: rows.length,
     synced,
     failed,
-    attempted: ids.length,
-    aggregateRemaining: aggregateRemaining ?? 0,
-    bookingRemaining: bookingRemaining ?? 0,
-    results,
+    remaining: remaining ?? 0,
   });
 }
