@@ -8,6 +8,7 @@ import type { Session, Studio, ClassType, Instructor } from "@/lib/types";
 import { formatSessionWhen } from "@/lib/format";
 import { SubmitButton } from "@/app/(auth)/SubmitButton";
 import { cancelBookingAction } from "./actions";
+import type { Locale } from "@/lib/locale";
 
 // The joined shape we read on the my-bookings page: a booking with its session
 // and that session's studio / class type / instructor. There's no shared
@@ -40,25 +41,35 @@ const STATUS_BADGE: Record<BookingWithSession["status"], string> = {
   no_show: "bg-zinc-100 text-zinc-600",
 };
 
-const STATUS_LABEL: Record<BookingWithSession["status"], string> = {
+const STATUS_LABEL_EN: Record<BookingWithSession["status"], string> = {
   booked: "Booked",
   waitlisted: "Waitlisted",
   cancelled: "Cancelled",
   attended: "Attended",
   no_show: "No show",
 };
+const STATUS_LABEL_VI: Record<BookingWithSession["status"], string> = {
+  booked: "Đã đặt",
+  waitlisted: "Danh sách chờ",
+  cancelled: "Đã hủy",
+  attended: "Đã tham gia",
+  no_show: "Vắng mặt",
+};
 
 export function BookingRow({
   booking,
   cancellable,
   locked = false,
+  locale,
 }: {
   booking: BookingWithSession;
   cancellable: boolean;
   // Upcoming and still held, but inside the three-hour window — the cancel
   // button is gone and we say why instead of showing a bare dash.
   locked?: boolean;
+  locale: Locale;
 }) {
+  const vi = locale === "vi";
   const session = booking.session;
   const accent = session?.class_type?.color ?? "#7c3aed";
   const tz = session?.studio?.timezone;
@@ -85,7 +96,7 @@ export function BookingRow({
             {title}
           </h3>
           <span className={`badge ${STATUS_BADGE[booking.status]}`}>
-            {STATUS_LABEL[booking.status]}
+            {(vi ? STATUS_LABEL_VI : STATUS_LABEL_EN)[booking.status]}
           </span>
         </div>
 
@@ -97,9 +108,13 @@ export function BookingRow({
           </p>
           {where && <p className="break-words">{where}</p>}
           <p>
-            {booking.spots_count ?? 1} spot{(booking.spots_count ?? 1) === 1 ? "" : "s"}
+            {vi
+              ? `${booking.spots_count ?? 1} chỗ`
+              : `${booking.spots_count ?? 1} spot${(booking.spots_count ?? 1) === 1 ? "" : "s"}`}
             {booking.credits_spent
-              ? ` · ${booking.credits_spent} credit${booking.credits_spent === 1 ? "" : "s"} used`
+              ? vi
+                ? ` · đã dùng ${booking.credits_spent} tín dụng`
+                : ` · ${booking.credits_spent} credit${booking.credits_spent === 1 ? "" : "s"} used`
               : ""}
           </p>
         </div>
@@ -108,12 +123,15 @@ export function BookingRow({
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 pt-3">
             {locked ? (
               <p className="text-sm text-ink-muted">
-                Cancellation closed — this class starts within 3 hours, so the
-                credit stays used.
+                {vi
+                  ? "Đã hết thời hạn hủy — lớp bắt đầu trong vòng 3 giờ, vì vậy tín dụng vẫn được tính."
+                  : "Cancellation closed — this class starts within 3 hours, so the credit stays used."}
               </p>
             ) : (
               <p className="text-sm text-ink-muted">
-                Free to cancel until 3 hours before the start.
+                {vi
+                  ? "Có thể hủy miễn phí trước giờ bắt đầu ít nhất 3 giờ."
+                  : "Free to cancel until 3 hours before the start."}
               </p>
             )}
 
@@ -121,7 +139,7 @@ export function BookingRow({
               <div className="w-full sm:w-40">
                 <form action={cancelBookingAction}>
                   <input type="hidden" name="booking_id" value={booking.id} />
-                  <SubmitButton>Cancel</SubmitButton>
+                  <SubmitButton pendingLabel={vi ? "Vui lòng đợi…" : "Please wait…"}>{vi ? "Hủy" : "Cancel"}</SubmitButton>
                 </form>
               </div>
             )}
