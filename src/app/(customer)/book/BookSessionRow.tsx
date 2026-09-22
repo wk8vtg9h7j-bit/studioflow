@@ -15,14 +15,17 @@ import type { SessionWithRelations } from "@/lib/types";
 import { formatSessionDate, formatSessionTimeRange } from "@/lib/format";
 import { SubmitButton } from "@/app/(auth)/SubmitButton";
 import { bookSessionAction } from "./actions";
+import type { Locale } from "@/lib/locale";
 
 type Props = {
   session: SessionWithRelations;
   booked: number;
   myStatus: "booked" | "waitlisted" | null;
+  locale: Locale;
 };
 
-export function BookSessionRow({ session, booked, myStatus }: Props) {
+export function BookSessionRow({ session, booked, myStatus, locale }: Props) {
+  const vi = locale === "vi";
   const capacity = session.capacity ?? 0;
   const available = Math.max(0, capacity - booked);
   const isFull = available <= 0;
@@ -54,7 +57,7 @@ export function BookSessionRow({ session, booked, myStatus }: Props) {
             {session.title || session.class_type?.name || "Class"}
           </h3>
           {isPrivate && (
-            <span className="badge bg-brand-50 text-brand-700">Private</span>
+            <span className="badge bg-brand-50 text-brand-700">{vi ? "Riêng" : "Private"}</span>
           )}
           {myStatus && (
             <span
@@ -64,7 +67,7 @@ export function BookSessionRow({ session, booked, myStatus }: Props) {
                   : "bg-amber-50 text-amber-700"
               }`}
             >
-              {myStatus === "booked" ? "Booked" : "Waitlisted"}
+              {myStatus === "booked" ? (vi ? "Đã đặt" : "Booked") : (vi ? "Danh sách chờ" : "Waitlisted")}
             </span>
           )}
         </div>
@@ -86,38 +89,48 @@ export function BookSessionRow({ session, booked, myStatus }: Props) {
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 pt-3">
           <p className="text-sm">
             <span className="font-semibold text-ink">
-              {booked} booked out of {capacity}
+              {vi ? `${booked}/${capacity} đã đặt` : `${booked} booked out of ${capacity}`}
             </span>
             <span className="text-ink-muted">
               {" · "}
-              {cost} {isPrivate ? "private " : ""}credit{cost === 1 ? "" : "s"} per spot
+              {vi
+                ? `${cost} tín dụng${isPrivate ? " riêng" : ""} / chỗ`
+                : `${cost} ${isPrivate ? "private " : ""}credit${cost === 1 ? "" : "s"} per spot`}
             </span>
           </p>
 
           <div className="w-full sm:w-40">
             {myStatus ? (
               <p className="text-sm text-ink-muted sm:text-right">
-                You&apos;re {myStatus === "booked" ? "in" : "on the list"}
+                {vi
+                  ? myStatus === "booked"
+                    ? "Bạn đã có chỗ"
+                    : "Bạn đang trong danh sách chờ"
+                  : <>You&apos;re {myStatus === "booked" ? "in" : "on the list"}</>}
               </p>
             ) : (
               <form action={bookSessionAction} className="space-y-2">
                 <input type="hidden" name="session_id" value={session.id} />
                 <label className="block text-xs font-medium text-ink-muted">
-                  Spots
+                  {vi ? "Số chỗ" : "Spots"}
                   <select
                     name="spots"
                     className="input mt-1"
                     defaultValue="1"
                     disabled={heldFull}
                   >
-                    <option value="1">1 spot</option>
+                    <option value="1">{vi ? "1 chỗ" : "1 spot"}</option>
                     {(isFull || available >= 2) && (
-                      <option value="2">2 spots</option>
+                      <option value="2">{vi ? "2 chỗ" : "2 spots"}</option>
                     )}
                   </select>
                 </label>
                 <SubmitButton disabled={heldFull}>
-                  {heldFull ? "Full" : isFull ? "Join waitlist" : "Book"}
+                  {heldFull
+                    ? vi ? "Đã đầy" : "Full"
+                    : isFull
+                      ? vi ? "Vào danh sách chờ" : "Join waitlist"
+                      : vi ? "Đặt lớp" : "Book"}
                 </SubmitButton>
               </form>
             )}
