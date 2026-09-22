@@ -17,7 +17,6 @@ import { z } from "zod";
 import { requireRole } from "@/lib/auth";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import type { BookingStatus } from "@/lib/types";
-import { syncSessionById } from "@/lib/google/sync";
 
 const SessionSchema = z.object({
   studio_id: z.string().uuid("Pick a studio"),
@@ -156,14 +155,10 @@ export async function createSessionAction(
     return { error: error?.message ?? "Could not create this class." };
   }
 
-  const calendarSync = await syncSessionById(created.id);
-
   revalidatePath("/admin/sessions");
   return {
     ok: true,
-    message: calendarSync.ok
-      ? "Class created and synced to Google Calendar."
-      : `Class created, but Google Calendar sync failed: ${calendarSync.message ?? "sync failed"}`,
+    message: "Class created. Google Calendar will update shortly.",
   };
 }
 
@@ -219,14 +214,10 @@ export async function updateSessionAction(
 
   if (error) return { error: error.message };
 
-  const calendarSync = await syncSessionById(id);
-
   revalidatePath("/admin/sessions");
   return {
     ok: true,
-    message: calendarSync.ok
-      ? "Class updated in Google Calendar."
-      : `Class updated, but Google Calendar sync failed: ${calendarSync.message ?? "sync failed"}`,
+    message: "Class updated. Google Calendar will update shortly.",
   };
 }
 
@@ -245,7 +236,6 @@ export async function setSessionStatusAction(formData: FormData) {
   const { error } = await supabase.from("sessions").update({ status }).eq("id", id);
   if (error) return;
 
-  await syncSessionById(id);
   revalidatePath("/admin/sessions");
 }
 
@@ -289,26 +279,14 @@ export async function setFillerSeatsAction(
 
   if (updateError) return { error: updateError.message };
 
-  const calendarSync = await syncSessionById(id);
-
   revalidatePath("/admin/sessions");
-
-  if (!calendarSync.ok) {
-    return {
-      ok: true,
-      message:
-        nextHeldSeats > 0
-          ? `Class filled, but Google Calendar could not be updated: ${calendarSync.message ?? "sync failed"}`
-          : `Class reopened, but Google Calendar could not be updated: ${calendarSync.message ?? "sync failed"}`,
-    };
-  }
 
   return {
     ok: true,
     message:
       nextHeldSeats > 0
-        ? "Class filled and Google Calendar updated."
-        : "Class reopened and Google Calendar updated.",
+        ? "Class filled. Google Calendar will update shortly."
+        : "Class reopened. Google Calendar will update shortly.",
   };
 }
 
@@ -482,8 +460,6 @@ export async function adminBookPrivateCustomerAction(
     return { error: ledgerError.message };
   }
 
-  const calendarSync = await syncSessionById(sessionId);
-
   revalidatePath("/admin/sessions");
   revalidatePath("/admin/notifications");
   revalidatePath("/book");
@@ -491,9 +467,7 @@ export async function adminBookPrivateCustomerAction(
 
   return {
     ok: true,
-    message: calendarSync.ok
-      ? "Customer booked and Google Calendar updated."
-      : `Customer booked, but Google Calendar sync failed: ${calendarSync.message ?? "sync failed"}`,
+    message: "Customer booked. Google Calendar will update shortly.",
   };
 }
 
@@ -674,12 +648,59 @@ export async function bookCustomerIntoPrivateSessionAction(
     return { error: ledgerError.message };
   }
 
-  await syncSessionById(session_id);
-
   revalidatePath("/admin/sessions");
   revalidatePath("/book");
   revalidatePath("/my-bookings");
   return { ok: true };
+}
+
+export type PrivateCustomerSearchResult = {
+  id: string;
+  name: string;
+  email: string | null;
+};
+
+export async function searchPrivateCustomersAction(
+  query: string,
+): Promise<PrivateCustomerSearchResult[]> {
+  await requireRole("admin", "/admin/sessions");
+
+  const needle = query.trim().toLowerCase();
+  const svc = createServiceClient();
+
+  // Only run this lookup when the private-booking panel is open. Keeping this
+  // data out of the main Sessions payload makes every filter/navigation much
+  // lighter.
+  const { data } = await svc
+    .from("customers")
+    .select("id,name,email,profile:profiles(full_name,email)")
+    .order("created_at", { ascending: false })
+    .limit(500);
+
+  return ((data ?? []) as unknown as {
+    id: string;
+    name: string | null;
+    email: string | null;
+    profile: { full_name: string | null; email: string | null } | null;
+  }[])
+    .map((customer) => ({
+      id: customer.id,
+      name:
+        customer.profile?.full_name ??
+        customer.name ??
+        customer.profile?.email ??
+        customer.email ??
+        "Unnamed customer",
+      email: customer.profile?.email ?? customer.email ?? null,
+    }))
+    .filter((customer) => {
+      if (!needle) return true;
+      return `${customer.name} ${customer.email ?? ""}`
+        .toLowerCase()
+        .includes(needle);
+    })
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .slice(0, 30);
 }
 
 // ----------------------------------------------------------------------------
@@ -825,10 +846,6 @@ export async function setBookingStatusAction(
     })
     .eq("id", bookingId);
   if (error) return { error: error.message };
-
-  if (row?.session?.id) {
-    await syncSessionById(row.session.id);
-  }
 
   revalidatePath("/admin/sessions");
   return { ok: true };
