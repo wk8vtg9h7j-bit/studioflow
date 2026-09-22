@@ -334,14 +334,19 @@ export async function adminBookPrivateCustomerAction(
     return { error: "This customer is already booked into this class." };
   }
 
-  const { count: bookedCount, error: countError } = await svc
+  const { data: occupiedRows, error: countError } = await svc
     .from("bookings")
-    .select("id", { count: "exact", head: true })
+    .select("spots_count")
     .eq("session_id", sessionId)
-    .eq("status", "booked");
+    .in("status", ["booked", "attended"]);
 
   if (countError) return { error: countError.message };
-  if ((bookedCount ?? 0) >= session.capacity) {
+  const occupied = (occupiedRows ?? []).reduce(
+    (sum, row) =>
+      sum + ((row as { spots_count: number | null }).spots_count ?? 1),
+    0,
+  );
+  if (occupied >= session.capacity) {
     return { error: "This private class is already full." };
   }
 
