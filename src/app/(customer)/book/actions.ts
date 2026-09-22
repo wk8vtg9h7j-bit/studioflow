@@ -20,13 +20,18 @@ export async function bookSessionAction(formData: FormData) {
   await requireRole("customer", "/book");
 
   const sessionId = String(formData.get("session_id") ?? "").trim();
+  const spots = Number(formData.get("spots") ?? "1");
   if (!sessionId) {
     redirect("/book?error=Missing+session");
+  }
+  if (!Number.isInteger(spots) || spots < 1 || spots > 2) {
+    redirect("/book?error=Choose+1+or+2+spots");
   }
 
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("book_session", {
     p_session_id: sessionId,
+    p_spots: spots,
   });
 
   if (error) {
@@ -45,7 +50,7 @@ export async function bookSessionAction(formData: FormData) {
 
   const notice =
     status === "waitlisted"
-      ? "Class is full — you're on the waitlist"
-      : "Booked! See you in class";
+      ? `Class is full — you're on the waitlist for ${spots} spot${spots === 1 ? "" : "s"}`
+      : `Booked ${spots} spot${spots === 1 ? "" : "s"}! See you in class`;
   redirect(`/book?notice=${encodeURIComponent(notice)}`);
 }
