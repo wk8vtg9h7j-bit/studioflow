@@ -128,6 +128,25 @@ export function PackageForm({
       </div>
 
       <div>
+        <label htmlFor="pool" className="label">
+          Credit type
+        </label>
+        <select
+          id="pool"
+          name="pool"
+          className="input"
+          defaultValue={pkg?.pool ?? "regular"}
+          required
+        >
+          <option value="regular">Regular credits</option>
+          <option value="private">Private credits</option>
+        </select>
+        <p className="mt-1 text-xs text-ink-soft">
+          Private packages can only be spent on private class types.
+        </p>
+      </div>
+
+      <div>
         <label htmlFor="validity_days" className="label">
           Validity (days)
         </label>
