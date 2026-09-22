@@ -7,6 +7,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
+import { useLanguage } from "@/components/LanguageProvider";
 
 function addDays(yyyyMmDd: string, n: number): string {
   // Anchor at noon UTC so day arithmetic never slips across a timezone edge.
@@ -26,6 +27,8 @@ export function DayNav({
 }) {
   const router = useRouter();
   const params = useSearchParams();
+  const { locale } = useLanguage();
+  const vi = locale === "vi";
 
   function go(next: string) {
     const p = new URLSearchParams(params.toString());
@@ -40,7 +43,7 @@ export function DayNav({
       <button
         type="button"
         onClick={() => go(addDays(date, -1))}
-        aria-label="Previous day"
+        aria-label={vi ? "Ngày trước" : "Previous day"}
         className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-ink-muted transition hover:bg-stone-100 hover:text-ink active:scale-95"
       >
         ‹
@@ -65,14 +68,14 @@ export function DayNav({
           onClick={() => go(today)}
           className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium text-ink-muted transition hover:bg-stone-100 hover:text-ink active:scale-95"
         >
-          Today
+          {vi ? "Hôm nay" : "Today"}
         </button>
       )}
 
       <button
         type="button"
         onClick={() => go(addDays(date, 1))}
-        aria-label="Next day"
+        aria-label={vi ? "Ngày tiếp theo" : "Next day"}
         className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-ink-muted transition hover:bg-stone-100 hover:text-ink active:scale-95"
       >
         ›
