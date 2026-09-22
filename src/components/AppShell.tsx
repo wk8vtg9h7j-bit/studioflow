@@ -14,12 +14,14 @@ export function AppShell({
   navMenu,
   user,
   roleLabel,
+  notifications,
   children,
 }: {
   navItems: NavItem[];
   navMenu?: { label: string; items: NavMenuItem[] };
   user: string;
   roleLabel: string;
+  notifications?: { count: number; href: string };
   children: React.ReactNode;
 }) {
   return (
@@ -46,6 +48,36 @@ export function AppShell({
               <p className="text-sm font-medium leading-tight text-ink">{user}</p>
               <p className="text-xs leading-tight text-ink-soft">{roleLabel}</p>
             </div>
+            {notifications ? (
+              <Link
+                href={notifications.href}
+                aria-label={
+                  notifications.count > 0
+                    ? `${notifications.count} new notifications`
+                    : "Notifications"
+                }
+                className="relative grid h-9 w-9 place-items-center rounded-full text-ink-soft transition hover:bg-stone-100 hover:text-ink"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-5 w-5"
+                  aria-hidden="true"
+                >
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                  <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+                </svg>
+                {notifications.count > 0 ? (
+                  <span className="absolute -right-0.5 -top-0.5 grid min-w-[1.15rem] place-items-center rounded-full bg-brand-600 px-1 text-[0.65rem] font-semibold leading-[1.15rem] text-white">
+                    {notifications.count > 99 ? "99+" : notifications.count}
+                  </span>
+                ) : null}
+              </Link>
+            ) : null}
             <SignOutButton />
           </div>
         </div>
