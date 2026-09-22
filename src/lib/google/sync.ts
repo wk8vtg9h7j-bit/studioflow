@@ -29,6 +29,7 @@ type StudioForSync = Pick<
   | "google_calendar_id"
   | "google_refresh_token"
   | "google_token_status"
+  | "google_account_email"
 >;
 
 // The session fields needed to render a calendar event.
@@ -42,6 +43,7 @@ type SessionForSync = Pick<
   | "notes"
   | "status"
   | "google_event_id"
+  | "filler_seats"
 >;
 
 export class StudioNotConnectedError extends Error {
@@ -79,10 +81,18 @@ function eventBody(
   studio: StudioForSync,
   session: SessionForSync,
 ): calendar_v3.Schema$Event {
-  const summary = session.title?.trim() || `${studio.name} class`;
+  const baseSummary = session.title?.trim() || `${studio.name} class`;
+  const isFilled = (session.filler_seats ?? 0) > 0;
+  const summary = isFilled ? `FILLED · ${baseSummary}` : baseSummary;
   const descriptionParts: string[] = [];
   if (session.room) descriptionParts.push(`Room: ${session.room}`);
   if (session.notes) descriptionParts.push(session.notes);
+  if (isFilled) {
+    descriptionParts.push(
+      `Filled by: ${studio.google_account_email ?? "info@rechargeddanang.com"}`,
+    );
+    descriptionParts.push(`Held seats: ${session.filler_seats}`);
+  }
   descriptionParts.push(`StudioFlow session ${session.id}`);
 
   return {
@@ -236,7 +246,7 @@ export async function syncSessionById(sessionId: string): Promise<SyncResult> {
   const { data: session } = await service
     .from("sessions")
     .select(
-      "id,title,starts_at,ends_at,room,notes,status,google_event_id,studio_id",
+      "id,title,starts_at,ends_at,room,notes,status,google_event_id,studio_id,filler_seats",
     )
     .eq("id", sessionId)
     .single();
@@ -248,7 +258,7 @@ export async function syncSessionById(sessionId: string): Promise<SyncResult> {
   const { data: studio } = await service
     .from("studios")
     .select(
-      "id,name,timezone,google_calendar_id,google_refresh_token,google_token_status",
+      "id,name,timezone,google_calendar_id,google_refresh_token,google_token_status,google_account_email",
     )
     .eq("id", (session as { studio_id: string }).studio_id)
     .single();
