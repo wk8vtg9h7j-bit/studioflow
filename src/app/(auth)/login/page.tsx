@@ -11,6 +11,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { signInAction, type AuthState } from "../actions";
 import { SubmitButton } from "../SubmitButton";
+import { useLanguage } from "@/components/LanguageProvider";
 
 const initial: AuthState = { error: null };
 
@@ -49,14 +50,16 @@ function PreviewRolePicker({ next }: { next: string }) {
 function LoginForm() {
   const [state, formAction] = useFormState(signInAction, initial);
   const next = useSearchParams().get("next") ?? "";
+  const { locale } = useLanguage();
+  const vi = locale === "vi";
 
   return (
     <div className="card p-6">
       <h1 className="text-xl font-semibold tracking-tight text-ink">
-        Welcome back
+        {vi ? "Chào mừng trở lại" : "Welcome back"}
       </h1>
       <p className="mt-1 text-sm text-ink-muted">
-        Log in to manage your studio or book a class.
+        {vi ? "Đăng nhập để đặt lớp và quản lý tài khoản của bạn." : "Log in to manage your studio or book a class."}
       </p>
 
       <form action={formAction} className="mt-6 space-y-4">
@@ -80,13 +83,13 @@ function LoginForm() {
         <div>
           <div className="flex items-baseline justify-between gap-2">
             <label htmlFor="password" className="label">
-              Password
+              {vi ? "Mật khẩu" : "Password"}
             </label>
             <Link
               href="/forgot-password"
               className="text-xs font-medium text-brand-600 hover:text-brand-700"
             >
-              Forgot password?
+              {vi ? "Quên mật khẩu?" : "Forgot password?"}
             </Link>
           </div>
           <input
@@ -106,15 +109,15 @@ function LoginForm() {
           </p>
         ) : null}
 
-        <SubmitButton>Log in</SubmitButton>
+        <SubmitButton pendingLabel={vi ? "Vui lòng đợi…" : "Please wait…"}>{vi ? "Đăng nhập" : "Log in"}</SubmitButton>
       </form>
 
       <PreviewRolePicker next={next} />
 
       <p className="mt-6 text-center text-sm text-ink-muted">
-        New here?{" "}
+        {vi ? "Chưa có tài khoản?" : "New here?"}{" "}
         <Link href="/signup" className="font-medium text-brand-600 hover:text-brand-700">
-          Create an account
+          {vi ? "Tạo tài khoản" : "Create an account"}
         </Link>
       </p>
     </div>
