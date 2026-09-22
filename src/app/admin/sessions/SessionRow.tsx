@@ -10,7 +10,7 @@
 // ============================================================================
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { formatSessionWhen, formatSessionTimeRange } from "@/lib/format";
 import type { SessionWithRelations } from "@/lib/types";
@@ -24,14 +24,10 @@ import {
   setSessionStatusAction,
   setFillerSeatsAction,
   adminBookPrivateCustomerAction,
+  searchPrivateCustomersAction,
+  type PrivateCustomerSearchResult,
 } from "./actions";
 import { RegisterPanel } from "./RegisterPanel";
-
-export type CustomerOption = {
-  id: string;
-  name: string;
-  email: string | null;
-};
 
 export function SessionRow({
   session,
@@ -39,7 +35,6 @@ export function SessionRow({
   studios,
   classTypes,
   instructors,
-  customers,
 }: {
   session: SessionWithRelations;
   // Seats taken right now, held seats included — tallied on the server because
@@ -48,7 +43,6 @@ export function SessionRow({
   studios: StudioOption[];
   classTypes: ClassTypeOption[];
   instructors: InstructorOption[];
-  customers: CustomerOption[];
 }) {
   const [editing, setEditing] = useState(false);
   // The roster is fetched by RegisterPanel only once it's opened, so this flag
@@ -60,6 +54,10 @@ export function SessionRow({
   const [showPrivateBooking, setShowPrivateBooking] = useState(false);
   const [privateCustomerId, setPrivateCustomerId] = useState("");
   const [privateCustomerQuery, setPrivateCustomerQuery] = useState("");
+  const [privateCustomers, setPrivateCustomers] = useState<
+    PrivateCustomerSearchResult[]
+  >([]);
+  const [privateSearchLoading, setPrivateSearchLoading] = useState(false);
   const [fillNotice, setFillNotice] = useState<{
     kind: "success" | "error";
     text: string;
@@ -73,13 +71,26 @@ export function SessionRow({
   const tz = session.studio?.timezone;
   const heading = session.title ?? session.class_type?.name ?? "Class";
   const color = session.class_type?.color ?? "#d6d3d1";
-  const normalizedCustomerQuery = privateCustomerQuery.trim().toLowerCase();
-  const filteredCustomers = normalizedCustomerQuery
-    ? customers.filter((customer) => {
-        const haystack = `${customer.name} ${customer.email ?? ""}`.toLowerCase();
-        return haystack.includes(normalizedCustomerQuery);
-      })
-    : customers;
+
+  useEffect(() => {
+    if (!showPrivateBooking || !isPrivate || cancelled) return;
+
+    let cancelledRequest = false;
+    const timer = window.setTimeout(async () => {
+      setPrivateSearchLoading(true);
+      try {
+        const results = await searchPrivateCustomersAction(privateCustomerQuery);
+        if (!cancelledRequest) setPrivateCustomers(results);
+      } finally {
+        if (!cancelledRequest) setPrivateSearchLoading(false);
+      }
+    }, privateCustomerQuery.trim() ? 220 : 0);
+
+    return () => {
+      cancelledRequest = true;
+      window.clearTimeout(timer);
+    };
+  }, [showPrivateBooking, isPrivate, cancelled, privateCustomerQuery]);
 
   function toggleFill() {
     const releasing = held > 0;
@@ -134,6 +145,7 @@ export function SessionRow({
       setShowPrivateBooking(false);
       setPrivateCustomerId("");
       setPrivateCustomerQuery("");
+      setPrivateCustomers([]);
       router.refresh();
     });
   }
@@ -275,6 +287,9 @@ export function SessionRow({
                   placeholder="Search by name or email…"
                   disabled={privateBookPending}
                 />
+                {privateSearchLoading && (
+                  <p className="mt-1 text-xs text-ink-soft">Searching…</p>
+                )}
               </div>
 
               <div>
@@ -289,11 +304,13 @@ export function SessionRow({
                   disabled={privateBookPending}
                 >
                   <option value="">
-                    {filteredCustomers.length === 0
-                      ? "No matching customers"
-                      : "Choose a customer…"}
+                    {privateSearchLoading
+                      ? "Searching…"
+                      : privateCustomers.length === 0
+                        ? "No matching customers"
+                        : "Choose a customer…"}
                   </option>
-                  {filteredCustomers.map((customer) => (
+                  {privateCustomers.map((customer) => (
                     <option key={customer.id} value={customer.id}>
                       {customer.name}
                       {customer.email ? ` — ${customer.email}` : ""}
@@ -301,7 +318,7 @@ export function SessionRow({
                   ))}
                 </select>
                 <p className="mt-1 text-xs text-ink-soft">
-                  {filteredCustomers.length} of {customers.length} customers shown
+                  Showing up to 30 matching customers
                 </p>
               </div>
             </div>
