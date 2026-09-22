@@ -1,30 +1,28 @@
 // ============================================================================
-// Per-studio Google Calendar sync service. Each studio owns one Google Calendar
-// (studios.google_calendar_id) authorized by a stored, encrypted refresh token
-// (studios.google_refresh_token). This module:
-//   1. builds an authed Calendar client for a studio from that refresh token,
-//   2. mirrors a session to the studio's calendar (create / update / delete),
-//      keyed by sessions.google_event_id, and
-//   3. records every attempt in google_sync_log and stamps
-//      studios.google_last_synced_at.
+// Google Calendar sync.
 //
-// All DB access here uses the service-role client: sync runs from route
-// handlers / cron with no user session, and must read the encrypted token and
-// write event ids regardless of RLS.
+// Calendar layout intentionally mirrors the studio's previous workflow:
+//   • one Google event for each occupied spot/customer,
+//   • Hideaway and Downtown use their two established Google colors,
+//   • filler seats are individual "Filled by info@" events,
+//   • no aggregate "1/4 booked" class event is created.
+//
+// Old aggregate StudioFlow session events are removed as sessions are reconciled.
+// Existing legacy per-booking events are discovered by their "StudioFlow booking"
+// marker and reused, avoiding duplicate customer events.
 // ============================================================================
 import { calendar_v3, google } from "googleapis";
 import type { OAuth2Client } from "google-auth-library";
 import { createServiceClient } from "@/lib/supabase/server";
 import { createOAuthClient } from "./oauth";
 import { decryptToken } from "./crypto";
-import type { Session, Studio } from "@/lib/types";
+import type { BookingStatus, SessionStatus, Studio } from "@/lib/types";
 
-// The studio fields the sync needs. Callers may pass a full Studio row or just
-// this subset (e.g. the connect callback before the row is fully hydrated).
 type StudioForSync = Pick<
   Studio,
   | "id"
   | "name"
+  | "slug"
   | "timezone"
   | "google_calendar_id"
   | "google_refresh_token"
@@ -32,28 +30,30 @@ type StudioForSync = Pick<
   | "google_account_email"
 >;
 
-// The session fields needed to render a calendar event.
-type SessionForSync = Pick<
-  Session,
-  | "id"
-  | "title"
-  | "starts_at"
-  | "ends_at"
-  | "room"
-  | "notes"
-  | "status"
-  | "google_event_id"
-  | "filler_seats"
-> & {
-  capacity?: number | null;
-  class_type_name?: string | null;
-  calendar_bookings?: Array<{
-    name: string;
-    email: string | null;
-    phone: string | null;
-    status: "booked" | "waitlisted" | "attended" | "no_show" | "cancelled";
-    spots: number;
-  }>;
+type SessionForSync = {
+  id: string;
+  title: string | null;
+  starts_at: string;
+  ends_at: string;
+  room: string | null;
+  notes: string | null;
+  status: SessionStatus;
+  google_event_id: string | null;
+  google_filler_event_ids: string[] | null;
+  filler_seats: number;
+  capacity: number;
+  class_type_name: string | null;
+  instructor_name: string | null;
+};
+
+type BookingForSync = {
+  id: string;
+  status: BookingStatus;
+  spots_count: number;
+  google_event_ids: string[] | null;
+  name: string;
+  email: string | null;
+  phone: string | null;
 };
 
 export class StudioNotConnectedError extends Error {
@@ -63,9 +63,6 @@ export class StudioNotConnectedError extends Error {
   }
 }
 
-// Build an OAuth2 client primed with the studio's refresh token. googleapis
-// transparently exchanges it for a short-lived access token on the first API
-// call, so we don't pre-fetch one here.
 export function authedClientForStudio(studio: StudioForSync): OAuth2Client {
   if (!studio.google_refresh_token) {
     throw new StudioNotConnectedError(studio.id);
@@ -80,89 +77,171 @@ export function authedClientForStudio(studio: StudioForSync): OAuth2Client {
 export function calendarForStudio(
   studio: StudioForSync,
 ): calendar_v3.Calendar {
-  const auth = authedClientForStudio(studio);
-  return google.calendar({ version: "v3", auth });
+  return google.calendar({
+    version: "v3",
+    auth: authedClientForStudio(studio),
+  });
 }
 
-// Map a session onto the Google event body. Times are stored UTC (ISO) and we
-// hand Google the studio's IANA timezone so the event lands at the right local
-// wall-clock time on the studio's calendar.
-function eventBody(
-  studio: StudioForSync,
-  session: SessionForSync,
-): calendar_v3.Schema$Event {
-  const baseSummary =
+function errorCode(error: unknown): number | null {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return null;
+  }
+  const code = Number((error as { code?: unknown }).code);
+  return Number.isFinite(code) ? code : null;
+}
+
+function eventColorId(studio: StudioForSync): string {
+  // These are the two colors already used by the old StudioFlow booking events:
+  // Hideaway = green, Downtown = purple.
+  return studio.slug === "downtown-pilates" ? "3" : "10";
+}
+
+function sessionName(session: SessionForSync): string {
+  return (
     session.title?.trim() ||
     session.class_type_name?.trim() ||
-    `${studio.name} class`;
-  const isFilled = (session.filler_seats ?? 0) > 0;
-  const bookings = session.calendar_bookings ?? [];
-  const booked = bookings.filter(
-    (booking) => booking.status === "booked" || booking.status === "attended",
+    "Pilates class"
   );
-  const waitlisted = bookings.filter(
-    (booking) => booking.status === "waitlisted",
-  );
-  const bookedSpots = booked.reduce((sum, booking) => sum + booking.spots, 0);
-  const capacity = session.capacity ?? 0;
-  const occupied = bookedSpots + (session.filler_seats ?? 0);
-  const occupancy =
-    capacity > 0 ? ` · ${Math.min(occupied, capacity)}/${capacity} booked` : "";
-  const summary = isFilled
-    ? `FILLED · ${baseSummary}${occupancy}`
-    : `${baseSummary}${occupancy}`;
+}
 
-  const descriptionParts: string[] = [];
-  if (session.room) descriptionParts.push(`Room: ${session.room}`);
-  if (session.notes) descriptionParts.push(session.notes);
+function bookingEventBody(
+  studio: StudioForSync,
+  session: SessionForSync,
+  booking: BookingForSync,
+  spotIndex: number,
+): calendar_v3.Schema$Event {
+  const name =
+    spotIndex === 0
+      ? booking.name
+      : `${booking.name} guest ${spotIndex}`;
+  const description: string[] = [];
 
-  if (booked.length > 0) {
-    descriptionParts.push(
-      `Booked customers (${bookedSpots}${capacity > 0 ? `/${capacity}` : ""}):`,
-    );
-    for (const booking of booked) {
-      const contact = [booking.email, booking.phone].filter(Boolean).join(" · ");
-      descriptionParts.push(
-        `• ${booking.name} — ${booking.spots} spot${booking.spots === 1 ? "" : "s"}${contact ? ` · ${contact}` : ""}`,
-      );
-    }
+  if (session.instructor_name) {
+    description.push(`Instructor: ${session.instructor_name}`);
   }
-
-  if (waitlisted.length > 0) {
-    descriptionParts.push("Waitlist:");
-    for (const booking of waitlisted) {
-      descriptionParts.push(
-        `• ${booking.name} — ${booking.spots} spot${booking.spots === 1 ? "" : "s"}`,
-      );
-    }
+  if (booking.email) description.push(`Email: ${booking.email}`);
+  if (booking.phone) description.push(`Phone: ${booking.phone}`);
+  if (booking.spots_count > 1) {
+    description.push(`Spot ${spotIndex + 1} of ${booking.spots_count}`);
   }
-
-  if (isFilled) {
-    descriptionParts.push(
-      `Filled by: ${studio.google_account_email ?? "info@rechargeddanang.com"}`,
-    );
-    descriptionParts.push(`Held seats: ${session.filler_seats}`);
-  }
-  descriptionParts.push(`StudioFlow session ${session.id}`);
+  description.push(`StudioFlow booking ${booking.id}`);
 
   return {
-    summary,
-    description: descriptionParts.join("\n"),
+    summary: `${name}: ${sessionName(session)}`,
+    description: description.join("\n"),
+    colorId: eventColorId(studio),
     start: { dateTime: session.starts_at, timeZone: studio.timezone },
     end: { dateTime: session.ends_at, timeZone: studio.timezone },
-    // A stable extended property lets us re-link an event to its session even
-    // if google_event_id were ever lost.
     extendedProperties: {
-      private: { studioflow_session_id: session.id },
+      private: {
+        studioflow_booking_id: booking.id,
+        studioflow_session_id: session.id,
+        studioflow_spot: String(spotIndex + 1),
+      },
     },
   };
 }
 
-// Append a row to google_sync_log. Best-effort: a logging failure must never
-// mask the real sync result.
+function fillerEventBody(
+  studio: StudioForSync,
+  session: SessionForSync,
+  spotIndex: number,
+): calendar_v3.Schema$Event {
+  const account = studio.google_account_email ?? "info@rechargeddanang.com";
+  const description: string[] = [];
+  if (session.instructor_name) {
+    description.push(`Instructor: ${session.instructor_name}`);
+  }
+  description.push(`Filled by: ${account}`);
+  description.push(`Held spot ${spotIndex + 1} of ${session.filler_seats}`);
+  description.push(`StudioFlow fill ${session.id}`);
+
+  return {
+    summary: `${account}: ${sessionName(session)} (FILLED)`,
+    description: description.join("\n"),
+    colorId: eventColorId(studio),
+    start: { dateTime: session.starts_at, timeZone: studio.timezone },
+    end: { dateTime: session.ends_at, timeZone: studio.timezone },
+    extendedProperties: {
+      private: {
+        studioflow_session_id: session.id,
+        studioflow_fill_spot: String(spotIndex + 1),
+      },
+    },
+  };
+}
+
+async function safeDelete(
+  calendar: calendar_v3.Calendar,
+  calendarId: string,
+  eventId: string,
+): Promise<void> {
+  try {
+    await calendar.events.delete({ calendarId, eventId });
+  } catch (error) {
+    if (errorCode(error) !== 404 && errorCode(error) !== 410) throw error;
+  }
+}
+
+async function upsertEvent(
+  calendar: calendar_v3.Calendar,
+  calendarId: string,
+  eventId: string,
+  body: calendar_v3.Schema$Event,
+): Promise<string> {
+  try {
+    const updated = await calendar.events.update({
+      calendarId,
+      eventId,
+      requestBody: body,
+    });
+    return updated.data.id ?? eventId;
+  } catch (error) {
+    if (errorCode(error) !== 404 && errorCode(error) !== 410) throw error;
+  }
+
+  try {
+    const inserted = await calendar.events.insert({
+      calendarId,
+      requestBody: { ...body, id: eventId },
+    });
+    return inserted.data.id ?? eventId;
+  } catch (error) {
+    if (errorCode(error) !== 409) throw error;
+    const updated = await calendar.events.update({
+      calendarId,
+      eventId,
+      requestBody: body,
+    });
+    return updated.data.id ?? eventId;
+  }
+}
+
+async function findLegacyBookingEventIds(
+  calendar: calendar_v3.Calendar,
+  calendarId: string,
+  bookingId: string,
+  session: SessionForSync,
+): Promise<string[]> {
+  const result = await calendar.events.list({
+    calendarId,
+    timeMin: session.starts_at,
+    timeMax: session.ends_at,
+    q: bookingId,
+    singleEvents: true,
+    maxResults: 10,
+  });
+
+  const marker = `StudioFlow booking ${bookingId}`;
+  return (result.data.items ?? [])
+    .filter((event) => event.id && event.description?.includes(marker))
+    .map((event) => event.id as string);
+}
+
 async function logSync(
   studioId: string,
-  sessionId: string | null,
+  sessionId: string,
   action: string,
   ok: boolean,
   message: string | null,
@@ -177,7 +256,7 @@ async function logSync(
       message,
     });
   } catch {
-    // swallow — logging is auxiliary
+    // Logging should never break a booking or calendar update.
   }
 }
 
@@ -196,16 +275,77 @@ export type SyncResult = {
   message: string | null;
 };
 
-// Push a single session to the studio's calendar. Decides create/update/delete
-// from the session status and whether we already hold a google_event_id:
-//   - cancelled session with an event  -> delete the event, clear the id
-//   - scheduled/completed, no event id  -> create, store the new id
-//   - scheduled/completed, has event id -> update in place
-// Writes google_sync_log and (on success) stamps google_last_synced_at.
-export async function syncSessionToStudio(
-  studio: StudioForSync,
-  session: SessionForSync,
-): Promise<SyncResult> {
+export async function syncSessionById(sessionId: string): Promise<SyncResult> {
+  const service = createServiceClient();
+
+  const { data: sessionData, error: sessionError } = await service
+    .from("sessions")
+    .select(
+      "id,title,starts_at,ends_at,room,notes,status,google_event_id,google_filler_event_ids,filler_seats,capacity,studio_id,class_type:class_types(name),instructor:instructors(display_name)",
+    )
+    .eq("id", sessionId)
+    .single();
+
+  if (sessionError || !sessionData) {
+    return {
+      ok: false,
+      action: "skip",
+      eventId: null,
+      message: sessionError?.message ?? "no session",
+    };
+  }
+
+  const sessionRow = sessionData as unknown as {
+    id: string;
+    title: string | null;
+    starts_at: string;
+    ends_at: string;
+    room: string | null;
+    notes: string | null;
+    status: SessionStatus;
+    google_event_id: string | null;
+    google_filler_event_ids: string[] | null;
+    filler_seats: number | null;
+    capacity: number;
+    studio_id: string;
+    class_type: { name: string | null } | null;
+    instructor: { display_name: string | null } | null;
+  };
+
+  const session: SessionForSync = {
+    id: sessionRow.id,
+    title: sessionRow.title,
+    starts_at: sessionRow.starts_at,
+    ends_at: sessionRow.ends_at,
+    room: sessionRow.room,
+    notes: sessionRow.notes,
+    status: sessionRow.status,
+    google_event_id: sessionRow.google_event_id,
+    google_filler_event_ids: sessionRow.google_filler_event_ids,
+    filler_seats: sessionRow.filler_seats ?? 0,
+    capacity: sessionRow.capacity,
+    class_type_name: sessionRow.class_type?.name ?? null,
+    instructor_name: sessionRow.instructor?.display_name ?? null,
+  };
+
+  const { data: studioData, error: studioError } = await service
+    .from("studios")
+    .select(
+      "id,name,slug,timezone,google_calendar_id,google_refresh_token,google_token_status,google_account_email",
+    )
+    .eq("id", sessionRow.studio_id)
+    .single();
+
+  if (studioError || !studioData) {
+    return {
+      ok: false,
+      action: "skip",
+      eventId: null,
+      message: studioError?.message ?? "no studio",
+    };
+  }
+
+  const studio = studioData as StudioForSync;
   if (
     studio.google_token_status !== "connected" ||
     !studio.google_refresh_token ||
@@ -214,186 +354,205 @@ export async function syncSessionToStudio(
     return {
       ok: false,
       action: "skip",
-      eventId: session.google_event_id,
+      eventId: null,
       message: "studio not connected",
     };
   }
 
+  const calendar = calendarForStudio(studio);
   const calendarId = studio.google_calendar_id;
-  const service = createServiceClient();
 
   try {
-    const calendar = calendarForStudio(studio);
-    const isCancelled =
-      session.status === "cancelled" || session.status === "completed";
-
-    // Cancelled/completed: remove the mirrored event if one exists.
-    if (isCancelled) {
-      if (!session.google_event_id) {
-        return { ok: true, action: "skip", eventId: null, message: null };
-      }
-      await calendar.events.delete({
-        calendarId,
-        eventId: session.google_event_id,
-      });
+    // Remove the newer aggregate class card ("Foundation Flow · 1/4 booked").
+    // The desired calendar layout is one event per occupied spot instead.
+    if (session.google_event_id) {
+      await safeDelete(calendar, calendarId, session.google_event_id);
       await service
         .from("sessions")
         .update({ google_event_id: null })
         .eq("id", session.id);
-      await logSync(studio.id, session.id, "delete", true, null);
-      await stampSynced(studio.id);
-      return { ok: true, action: "delete", eventId: null, message: null };
     }
 
-    // Update an existing event in place.
-    if (session.google_event_id) {
-      const res = await calendar.events.update({
-        calendarId,
-        eventId: session.google_event_id,
-        requestBody: eventBody(studio, session),
-      });
-      await logSync(studio.id, session.id, "update", true, null);
-      await stampSynced(studio.id);
-      return {
-        ok: true,
-        action: "update",
-        eventId: res.data.id ?? session.google_event_id,
-        message: null,
+    const { data: bookingRows, error: bookingError } = await service
+      .from("bookings")
+      .select(
+        "id,status,spots_count,google_event_ids,customer:customers(name,email,phone,profile:profiles(full_name,email,phone))",
+      )
+      .eq("session_id", session.id)
+      .order("booked_at", { ascending: true });
+
+    if (bookingError) throw bookingError;
+
+    const bookings: BookingForSync[] = (bookingRows ?? []).map((row) => {
+      const item = row as unknown as {
+        id: string;
+        status: BookingStatus;
+        spots_count: number | null;
+        google_event_ids: string[] | null;
+        customer:
+          | {
+              name: string | null;
+              email: string | null;
+              phone: string | null;
+              profile:
+                | {
+                    full_name: string | null;
+                    email: string | null;
+                    phone: string | null;
+                  }
+                | null;
+            }
+          | null;
       };
+      const customer = item.customer;
+      return {
+        id: item.id,
+        status: item.status,
+        spots_count: Math.max(item.spots_count ?? 1, 1),
+        google_event_ids: item.google_event_ids,
+        name:
+          customer?.profile?.full_name ||
+          customer?.name ||
+          customer?.profile?.email ||
+          customer?.email ||
+          "Member",
+        email: customer?.profile?.email ?? customer?.email ?? null,
+        phone: customer?.profile?.phone ?? customer?.phone ?? null,
+      };
+    });
+
+    let created = 0;
+    let updated = 0;
+    let deleted = 0;
+    let firstEventId: string | null = null;
+    const sessionActive = session.status === "scheduled";
+
+    for (const booking of bookings) {
+      const shouldShow =
+        sessionActive &&
+        (booking.status === "booked" ||
+          booking.status === "attended" ||
+          booking.status === "no_show");
+
+      let ids = [...(booking.google_event_ids ?? [])];
+
+      if (!shouldShow) {
+        for (const id of ids) {
+          await safeDelete(calendar, calendarId, id);
+          deleted += 1;
+        }
+        if (ids.length > 0) {
+          await service
+            .from("bookings")
+            .update({ google_event_ids: null })
+            .eq("id", booking.id);
+        }
+        continue;
+      }
+
+      if (ids.length === 0) {
+        ids = await findLegacyBookingEventIds(
+          calendar,
+          calendarId,
+          booking.id,
+          session,
+        );
+      }
+
+      const nextIds: string[] = [];
+      for (let spotIndex = 0; spotIndex < booking.spots_count; spotIndex += 1) {
+        const existingId = ids[spotIndex];
+        const deterministicId = `sfb${booking.id.replace(/-/g, "")}${spotIndex + 1}`;
+        const targetId = existingId ?? deterministicId;
+        const body = bookingEventBody(studio, session, booking, spotIndex);
+        const eventId = await upsertEvent(calendar, calendarId, targetId, body);
+
+        if (existingId) updated += 1;
+        else created += 1;
+
+        nextIds.push(eventId);
+        firstEventId ??= eventId;
+      }
+
+      for (const staleId of ids.slice(booking.spots_count)) {
+        await safeDelete(calendar, calendarId, staleId);
+        deleted += 1;
+      }
+
+      await service
+        .from("bookings")
+        .update({ google_event_ids: nextIds })
+        .eq("id", booking.id);
     }
 
-    // Create a new event with a deterministic ID derived from the StudioFlow
-    // session UUID. This makes bulk sync idempotent: even if two cron runs ever
-    // overlap, Google will not accept a duplicate event for the same class.
-    const deterministicEventId = `sf${session.id.replace(/-/g, "")}`;
-    let eventId = deterministicEventId;
+    const currentFillerIds = [...(session.google_filler_event_ids ?? [])];
+    const wantedFillerCount = sessionActive ? session.filler_seats : 0;
+    const nextFillerIds: string[] = [];
 
-    try {
-      const res = await calendar.events.insert({
+    for (let spotIndex = 0; spotIndex < wantedFillerCount; spotIndex += 1) {
+      const existingId = currentFillerIds[spotIndex];
+      const deterministicId = `sff${session.id.replace(/-/g, "")}${spotIndex + 1}`;
+      const targetId = existingId ?? deterministicId;
+      const eventId = await upsertEvent(
+        calendar,
         calendarId,
-        requestBody: {
-          ...eventBody(studio, session),
-          id: deterministicEventId,
-        },
-      });
-      eventId = res.data.id ?? deterministicEventId;
-    } catch (insertError) {
-      const status =
-        typeof insertError === "object" &&
-        insertError !== null &&
-        "code" in insertError
-          ? Number((insertError as { code?: unknown }).code)
-          : null;
+        targetId,
+        fillerEventBody(studio, session, spotIndex),
+      );
 
-      if (status !== 409) throw insertError;
+      if (existingId) updated += 1;
+      else created += 1;
 
-      // The deterministic event already exists. Re-link and update it instead
-      // of creating a second copy.
-      await calendar.events.update({
-        calendarId,
-        eventId: deterministicEventId,
-        requestBody: eventBody(studio, session),
-      });
+      nextFillerIds.push(eventId);
+      firstEventId ??= eventId;
+    }
+
+    for (const staleId of currentFillerIds.slice(wantedFillerCount)) {
+      await safeDelete(calendar, calendarId, staleId);
+      deleted += 1;
     }
 
     await service
       .from("sessions")
-      .update({ google_event_id: eventId })
+      .update({
+        google_filler_event_ids:
+          nextFillerIds.length > 0 ? nextFillerIds : null,
+      })
       .eq("id", session.id);
 
-    await logSync(studio.id, session.id, "create", true, null);
+    await logSync(
+      studio.id,
+      session.id,
+      "booking_events",
+      true,
+      `created=${created}, updated=${updated}, deleted=${deleted}`,
+    );
     await stampSynced(studio.id);
-    return { ok: true, action: "create", eventId, message: null };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "unknown sync error";
-    await logSync(studio.id, session.id, "error", false, message);
+
+    const action =
+      created > 0
+        ? "create"
+        : deleted > 0
+          ? "delete"
+          : updated > 0
+            ? "update"
+            : "skip";
+
+    return {
+      ok: true,
+      action,
+      eventId: firstEventId,
+      message: null,
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "unknown sync error";
+    await logSync(studio.id, session.id, "booking_events", false, message);
     return {
       ok: false,
       action: "skip",
-      eventId: session.google_event_id,
+      eventId: null,
       message,
     };
   }
-}
-
-// Convenience: load a studio + session by id (service client) and sync. Used by
-// the booking/session mutation paths and the cron endpoint.
-export async function syncSessionById(sessionId: string): Promise<SyncResult> {
-  const service = createServiceClient();
-  const { data: session } = await service
-    .from("sessions")
-    .select(
-      "id,title,starts_at,ends_at,room,notes,status,google_event_id,studio_id,filler_seats,capacity,class_type:class_types(name)",
-    )
-    .eq("id", sessionId)
-    .single();
-
-  if (!session) {
-    return { ok: false, action: "skip", eventId: null, message: "no session" };
-  }
-
-  const { data: studio } = await service
-    .from("studios")
-    .select(
-      "id,name,timezone,google_calendar_id,google_refresh_token,google_token_status,google_account_email",
-    )
-    .eq("id", (session as { studio_id: string }).studio_id)
-    .single();
-
-  if (!studio) {
-    return { ok: false, action: "skip", eventId: null, message: "no studio" };
-  }
-
-  const sessionRow = session as unknown as SessionForSync & {
-    class_type?: { name: string | null } | null;
-  };
-
-  const { data: bookingRows } = await service
-    .from("bookings")
-    .select(
-      "status,spots_count,customer:customers(name,email,phone,profile:profiles(full_name,email,phone))",
-    )
-    .eq("session_id", sessionId)
-    .in("status", ["booked", "attended", "waitlisted"])
-    .order("booked_at", { ascending: true });
-
-  const calendarBookings = (bookingRows ?? []).map((row) => {
-    const item = row as unknown as {
-      status: "booked" | "waitlisted" | "attended";
-      spots_count: number | null;
-      customer:
-        | {
-            name: string | null;
-            email: string | null;
-            phone: string | null;
-            profile:
-              | {
-                  full_name: string | null;
-                  email: string | null;
-                  phone: string | null;
-                }
-              | null;
-          }
-        | null;
-    };
-    const customer = item.customer;
-    return {
-      name:
-        customer?.profile?.full_name ||
-        customer?.name ||
-        customer?.profile?.email ||
-        customer?.email ||
-        "Member",
-      email: customer?.profile?.email ?? customer?.email ?? null,
-      phone: customer?.profile?.phone ?? customer?.phone ?? null,
-      status: item.status,
-      spots: item.spots_count ?? 1,
-    };
-  });
-
-  return syncSessionToStudio(studio as StudioForSync, {
-    ...sessionRow,
-    class_type_name: sessionRow.class_type?.name ?? null,
-    calendar_bookings: calendarBookings,
-  });
 }
