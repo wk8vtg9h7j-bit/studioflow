@@ -226,31 +226,42 @@ export async function setSessionStatusAction(formData: FormData) {
 // there is no real seat to free up). Held seats are a counter on the session, never
 // rows in bookings, so attendance, payroll and revenue are untouched. Passing 0
 // releases the hold.
-export async function setFillerSeatsAction(formData: FormData) {
+export async function setFillerSeatsAction(
+  _prev: SessionActionState,
+  formData: FormData,
+): Promise<SessionActionState> {
   await requireRole("admin", "/admin/sessions");
 
   const id = String(formData.get("id") ?? "");
   const seats = Number(formData.get("seats") ?? "");
-  if (!id) return;
-  if (!Number.isInteger(seats) || seats < 0) return;
+  if (!id) return { error: "Missing session id." };
+  if (!Number.isInteger(seats) || seats < 0) {
+    return { error: "Invalid number of seats to hold." };
+  }
 
   const supabase = await createClient();
 
   // Never hold more seats than the class has: the customer-side tally counts
   // held + booked as taken, so an oversized hold would only distort the numbers.
-  const { data: row } = await supabase
+  const { data: row, error: readError } = await supabase
     .from("sessions")
     .select("capacity")
     .eq("id", id)
     .maybeSingle();
-  if (!row) return;
+
+  if (readError) return { error: readError.message };
+  if (!row) return { error: "That session could not be found." };
 
   const capacity = (row as { capacity: number }).capacity;
-  await supabase
+  const { error: updateError } = await supabase
     .from("sessions")
     .update({ filler_seats: Math.min(seats, capacity) })
     .eq("id", id);
+
+  if (updateError) return { error: updateError.message };
+
   revalidatePath("/admin/sessions");
+  return { ok: true };
 }
 
 // ----------------------------------------------------------------------------
