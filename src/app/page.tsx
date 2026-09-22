@@ -70,18 +70,18 @@ export default async function HomePage() {
   if (rows.length > 0) {
     const { data: bookedRows } = await service
       .from("bookings")
-      .select("session_id")
-      .eq("status", "booked")
+      .select("session_id,spots_count")
+      .in("status", ["booked", "attended"])
       .in(
         "session_id",
         rows.map((row) => row.id),
       );
 
     for (const booking of bookedRows ?? []) {
-      const sessionId = (booking as { session_id: string }).session_id;
+      const row = booking as { session_id: string; spots_count: number | null };
       bookedBySession.set(
-        sessionId,
-        (bookedBySession.get(sessionId) ?? 0) + 1,
+        row.session_id,
+        (bookedBySession.get(row.session_id) ?? 0) + (row.spots_count ?? 1),
       );
     }
   }
