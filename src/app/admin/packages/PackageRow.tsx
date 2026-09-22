@@ -35,6 +35,9 @@ export function PackageRow({ pkg }: { pkg: Package }) {
             >
               {pkg.active ? "Active" : "Inactive"}
             </span>
+            <span className="badge bg-brand-50 text-brand-700">
+              {pkg.pool === "private" ? "Private" : "Regular"}
+            </span>
           </div>
 
           {pkg.description && (
