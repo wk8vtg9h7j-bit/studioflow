@@ -65,8 +65,8 @@ export function MobileNavMenu({
         aria-label="Open navigation menu"
         className={
           open
-            ? "flex h-9 items-center gap-1.5 rounded-md bg-brand-50 px-2.5 text-sm font-medium text-brand-700"
-            : "flex h-9 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-ink-muted hover:bg-stone-100 hover:text-ink"
+            ? "grid h-9 w-9 place-items-center rounded-md bg-brand-50 text-brand-700"
+            : "grid h-9 w-9 place-items-center rounded-md text-ink-muted hover:bg-stone-100 hover:text-ink"
         }
       >
         <svg
@@ -80,7 +80,6 @@ export function MobileNavMenu({
         >
           <path d="M4 7h16M4 12h16M4 17h16" />
         </svg>
-        <span>Menu</span>
       </button>
 
       {open ? (
