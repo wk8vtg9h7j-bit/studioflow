@@ -35,14 +35,6 @@ type PurchaseRow = {
 };
 
 export async function GET(request: Request) {
-  const url = new URL(request.url);
-  if (url.searchParams.get("email-health") === "1") {
-    return NextResponse.json({
-      provider: emailProvider()?.kind ?? null,
-      configured: Boolean(emailProvider()),
-    });
-  }
-
   const secret = process.env.CRON_SECRET;
   if (!secret) {
     return NextResponse.json(
