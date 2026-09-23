@@ -23,7 +23,7 @@ export function InstructorRow({
 
   return (
     <li className="card overflow-hidden">
-      <div className="flex items-center gap-4 px-5 py-4">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-3 px-4 py-4 sm:flex sm:gap-4 sm:px-5">
         <span
           className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-brand-50 text-sm font-semibold text-brand-700"
           aria-hidden
@@ -32,7 +32,7 @@ export function InstructorRow({
         </span>
 
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <p className="truncate font-medium text-ink">
               {instructor.display_name}
             </p>
@@ -52,16 +52,16 @@ export function InstructorRow({
           </p>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="col-span-2 grid w-full grid-cols-2 gap-2 sm:ml-auto sm:flex sm:w-auto sm:shrink-0 sm:items-center">
           <button
             type="button"
             onClick={() => setEditing((v) => !v)}
-            className="btn-secondary"
+            className="btn-secondary w-full sm:w-auto"
           >
             {editing ? "Close" : "Edit"}
           </button>
 
-          <form action={toggleInstructorActiveAction}>
+          <form action={toggleInstructorActiveAction} className="w-full sm:w-auto">
             <input type="hidden" name="id" value={instructor.id} />
             <input
               type="hidden"
@@ -70,7 +70,7 @@ export function InstructorRow({
             />
             <button
               type="submit"
-              className="btn-ghost"
+              className="btn-ghost w-full sm:w-auto"
               title={
                 instructor.active
                   ? "Deactivate instructor"
