@@ -83,6 +83,69 @@ export function calendarForStudio(
   });
 }
 
+
+export async function cleanupLegacyAggregateEvents(
+  limit = 40,
+): Promise<{ deleted: number; scanned: number; failed: number }> {
+  const service = createServiceClient();
+
+  const { data: studios } = await service
+    .from("studios")
+    .select(
+      "id,name,slug,timezone,google_calendar_id,google_refresh_token,google_token_status,google_account_email",
+    )
+    .eq("google_token_status", "connected")
+    .not("google_calendar_id", "is", null);
+
+  const uniqueCalendars = new Map<string, StudioForSync>();
+  for (const row of studios ?? []) {
+    const studio = row as StudioForSync;
+    if (studio.google_calendar_id && !uniqueCalendars.has(studio.google_calendar_id)) {
+      uniqueCalendars.set(studio.google_calendar_id, studio);
+    }
+  }
+
+  let deleted = 0;
+  let scanned = 0;
+  let failed = 0;
+
+  for (const studio of uniqueCalendars.values()) {
+    if (deleted >= limit || !studio.google_calendar_id) break;
+
+    const calendar = calendarForStudio(studio);
+    const remaining = limit - deleted;
+
+    const result = await calendar.events.list({
+      calendarId: studio.google_calendar_id,
+      timeMin: new Date().toISOString(),
+      q: "StudioFlow session",
+      singleEvents: true,
+      orderBy: "startTime",
+      maxResults: Math.min(remaining * 2, 100),
+    });
+
+    const legacy = (result.data.items ?? []).filter(
+      (event) =>
+        event.id &&
+        typeof event.description === "string" &&
+        event.description.includes("StudioFlow session "),
+    );
+
+    scanned += legacy.length;
+
+    for (const event of legacy.slice(0, remaining)) {
+      try {
+        await safeDelete(calendar, studio.google_calendar_id, event.id as string);
+        deleted += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+  }
+
+  return { deleted, scanned, failed };
+}
+
 function errorCode(error: unknown): number | null {
   if (typeof error !== "object" || error === null || !("code" in error)) {
     return null;
