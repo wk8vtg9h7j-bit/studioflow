@@ -91,23 +91,23 @@ export function RegisterPanel({ sessionId }: { sessionId: string }) {
           {data.roster.map((row) => (
             <li
               key={row.id}
-              className="flex items-center gap-3 px-3 py-2 text-sm"
+              className="flex flex-col items-stretch gap-2 px-3 py-3 text-sm sm:flex-row sm:items-center sm:gap-3 sm:py-2"
             >
               <span className="min-w-0 flex-1 truncate font-medium text-ink">
                 {row.name}
                 {row.spots_count > 1 ? ` — ${row.spots_count} spots` : ""}
               </span>
-              <span className={`badge ${STATUS_BADGE[row.status]}`}>
+              <span className={`badge self-start ${STATUS_BADGE[row.status]}`}>
                 {STATUS_LABEL[row.status]}
               </span>
 
               {/* A waitlisted member never had a seat, so there is nothing to
                   mark until someone promotes them. */}
               {row.status !== "waitlisted" && (
-                <div className="flex shrink-0 items-center gap-1">
+                <div className="grid grid-cols-3 gap-1 sm:flex sm:shrink-0 sm:items-center">
                   <button
                     type="button"
-                    className="btn-ghost"
+                    className="btn-ghost w-full px-2.5 sm:w-auto sm:px-4"
                     disabled={
                       pending || !data.canMarkAttendance || row.status === "attended"
                     }
@@ -117,7 +117,7 @@ export function RegisterPanel({ sessionId }: { sessionId: string }) {
                   </button>
                   <button
                     type="button"
-                    className="btn-ghost"
+                    className="btn-ghost w-full px-2.5 sm:w-auto sm:px-4"
                     disabled={
                       pending || !data.canMarkAttendance || row.status === "no_show"
                     }
@@ -127,7 +127,7 @@ export function RegisterPanel({ sessionId }: { sessionId: string }) {
                   </button>
                   <button
                     type="button"
-                    className="btn-ghost"
+                    className="btn-ghost w-full px-2.5 sm:w-auto sm:px-4"
                     disabled={pending || row.status === "booked"}
                     onClick={() => mark(row.id, "booked")}
                     title="Clear the mark and put this booking back to Booked"
