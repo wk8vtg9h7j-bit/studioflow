@@ -19,9 +19,9 @@ export function ProductRow({ product }: { product: Product }) {
 
   return (
     <li className="card overflow-hidden">
-      <div className="flex items-start justify-between gap-4 px-5 py-4">
+      <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-5">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <h3 className="truncate text-sm font-semibold text-ink">
               {product.name}
             </h3>
@@ -58,23 +58,23 @@ export function ProductRow({ product }: { product: Product }) {
           </dl>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:shrink-0 sm:items-center">
           <button
             type="button"
             onClick={() => setEditing((v) => !v)}
-            className="btn-secondary"
+            className="btn-secondary w-full sm:w-auto"
           >
             {editing ? "Close" : "Edit"}
           </button>
 
-          <form action={toggleProductActiveAction}>
+          <form action={toggleProductActiveAction} className="w-full sm:w-auto">
             <input type="hidden" name="id" value={product.id} />
             <input
               type="hidden"
               name="active"
               value={product.active ? "false" : "true"}
             />
-            <button type="submit" className="btn-ghost">
+            <button type="submit" className="btn-ghost w-full sm:w-auto">
               {product.active ? "Deactivate" : "Reactivate"}
             </button>
           </form>
