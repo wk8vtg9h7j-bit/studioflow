@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { syncSessionById } from "@/lib/google/sync";
+import {
+  cleanupLegacyAggregateEvents,
+  syncSessionById,
+} from "@/lib/google/sync";
 
 export const maxDuration = 60;
 
@@ -24,6 +27,11 @@ export async function GET(request: Request) {
   }
 
   const service = createServiceClient();
+
+  // Remove a small batch of orphaned orange aggregate class events first.
+  // These are legacy calendar cards that no longer have a sessions.google_event_id
+  // link in StudioFlow, so they need calendar-side discovery by marker.
+  const legacyCleanup = await cleanupLegacyAggregateEvents(40);
 
   // Fresh customer/admin changes must never wait behind an old migration
   // backlog. Process most of each batch newest-first, while reserving a few
@@ -102,5 +110,6 @@ export async function GET(request: Request) {
     synced,
     failed,
     remaining: remaining ?? 0,
+    legacyAggregateCleanup: legacyCleanup,
   });
 }
