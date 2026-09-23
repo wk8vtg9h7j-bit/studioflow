@@ -63,7 +63,7 @@ export function CustomerRow({
 
   return (
     <li className="card overflow-hidden">
-      <div className="flex items-center gap-4 px-5 py-4">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-3 px-4 py-4 sm:flex sm:gap-4 sm:px-5">
         <span
           className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-brand-50 text-sm font-semibold text-brand-700"
           aria-hidden
@@ -92,7 +92,7 @@ export function CustomerRow({
           </p>
         </div>
 
-        <div className="flex shrink-0 items-center gap-4">
+        <div className="col-span-2 flex w-full flex-wrap items-center justify-between gap-3 sm:ml-auto sm:w-auto sm:shrink-0 sm:justify-start sm:gap-4">
           <div className="flex items-center gap-3 text-right">
             <div>
               <p className="text-sm font-semibold text-ink">{regularBalance}</p>
@@ -113,7 +113,7 @@ export function CustomerRow({
               setEditing((v) => !v);
               setShowDelete(false);
             }}
-            className="btn-secondary"
+            className="btn-secondary flex-1 sm:flex-none"
           >
             {editing ? "Close" : "Edit"}
           </button>
@@ -123,7 +123,7 @@ export function CustomerRow({
               setShowDelete((v) => !v);
               setEditing(false);
             }}
-            className="btn-ghost text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+            className="btn-ghost flex-1 text-rose-700 hover:bg-rose-50 hover:text-rose-800 sm:flex-none"
           >
             {showDelete ? "Close delete" : "Delete"}
           </button>
