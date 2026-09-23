@@ -9,7 +9,11 @@
 import { useState } from "react";
 import { useFormState } from "react-dom";
 import { SubmitButton } from "@/app/(auth)/SubmitButton";
-import { formatMoney } from "@/lib/format";
+import {
+  formatMoney,
+  formatSessionWhen,
+  humanizeLabel,
+} from "@/lib/format";
 import type { Customer, Package, Profile } from "@/lib/types";
 import { CustomerForm } from "./CustomerForm";
 import {
@@ -17,8 +21,10 @@ import {
   adjustCreditsAction,
   attachLoginAction,
   deleteCustomerAction,
+  getCustomerHistoryAction,
   type CustomerActionState,
   type AddCustomerState,
+  type CustomerHistoryResult,
 } from "./actions";
 
 export type CustomerWithProfile = Customer & {
@@ -53,6 +59,9 @@ export function CustomerRow({
 }) {
   const [editing, setEditing] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [history, setHistory] = useState<CustomerHistoryResult | null>(null);
   const isWalkIn = !customer.profile;
   const name =
     customer.profile?.full_name ?? customer.name ?? "Unnamed customer";
@@ -60,6 +69,32 @@ export function CustomerRow({
   const phone = customer.profile?.phone ?? customer.phone ?? null;
   const statusClass =
     STATUS_STYLES[customer.status] ?? "bg-stone-100 text-ink-muted";
+
+  async function toggleHistory() {
+    if (showHistory) {
+      setShowHistory(false);
+      return;
+    }
+
+    setEditing(false);
+    setShowDelete(false);
+    setShowHistory(true);
+
+    if (history) return;
+
+    setHistoryLoading(true);
+    try {
+      setHistory(await getCustomerHistoryAction(customer.id));
+    } catch {
+      setHistory({
+        bookings: [],
+        credits: [],
+        error: "Could not load customer history.",
+      });
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
 
   return (
     <li className="card overflow-hidden">
@@ -109,9 +144,17 @@ export function CustomerRow({
           </div>
           <button
             type="button"
+            onClick={toggleHistory}
+            className="btn-secondary flex-1 sm:flex-none"
+          >
+            {showHistory ? "Close history" : "History"}
+          </button>
+          <button
+            type="button"
             onClick={() => {
               setEditing((v) => !v);
               setShowDelete(false);
+              setShowHistory(false);
             }}
             className="btn-secondary flex-1 sm:flex-none"
           >
@@ -122,6 +165,7 @@ export function CustomerRow({
             onClick={() => {
               setShowDelete((v) => !v);
               setEditing(false);
+              setShowHistory(false);
             }}
             className="btn-ghost flex-1 text-rose-700 hover:bg-rose-50 hover:text-rose-800 sm:flex-none"
           >
@@ -129,6 +173,10 @@ export function CustomerRow({
           </button>
         </div>
       </div>
+
+      {showHistory && (
+        <CustomerHistoryPanel history={history} loading={historyLoading} />
+      )}
 
       {showDelete && (
         <DeleteCustomer
@@ -150,6 +198,138 @@ export function CustomerRow({
         </div>
       )}
     </li>
+  );
+}
+
+function CustomerHistoryPanel({
+  history,
+  loading,
+}: {
+  history: CustomerHistoryResult | null;
+  loading: boolean;
+}) {
+  return (
+    <div className="border-t border-stone-200 bg-stone-50 px-4 py-5 sm:px-5">
+      <div className="mb-4">
+        <h3 className="text-sm font-semibold text-ink">Customer history</h3>
+        <p className="mt-1 text-xs text-ink-soft">
+          Latest class bookings and credit/package activity.
+        </p>
+      </div>
+
+      {loading && (
+        <p className="rounded-lg bg-white px-3 py-4 text-sm text-ink-muted">
+          Loading history…
+        </p>
+      )}
+
+      {!loading && history?.error && (
+        <p className="rounded-lg bg-rose-50 px-3 py-3 text-sm text-rose-700">
+          {history.error}
+        </p>
+      )}
+
+      {!loading && history && !history.error && (
+        <div className="grid gap-6 xl:grid-cols-2">
+          <section>
+            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+              Class history
+            </h4>
+            {history.bookings.length === 0 ? (
+              <p className="rounded-lg bg-white px-3 py-4 text-sm text-ink-muted">
+                No class bookings yet.
+              </p>
+            ) : (
+              <div className="max-h-[28rem] space-y-2 overflow-y-auto pr-1">
+                {history.bookings.map((booking) => (
+                  <div
+                    key={booking.id}
+                    className="rounded-lg border border-stone-200 bg-white px-3 py-3"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-ink">
+                          {booking.session?.title ?? "Deleted class"}
+                        </p>
+                        {booking.session && (
+                          <p className="mt-0.5 text-xs leading-relaxed text-ink-muted">
+                            {formatSessionWhen(
+                              booking.session.startsAt,
+                              booking.session.timezone,
+                            )}{" "}
+                            · {booking.session.studio}
+                          </p>
+                        )}
+                      </div>
+                      <span className="badge shrink-0 bg-stone-100 text-ink-muted">
+                        {humanizeLabel(booking.status)}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs text-ink-soft">
+                      {booking.spots} spot{booking.spots === 1 ? "" : "s"}
+                      {" · "}
+                      {booking.creditsSpent} credit
+                      {booking.creditsSpent === 1 ? "" : "s"} used
+                      {booking.session?.pool === "private" ? " · Private" : ""}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section>
+            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+              Credit & package activity
+            </h4>
+            {history.credits.length === 0 ? (
+              <p className="rounded-lg bg-white px-3 py-4 text-sm text-ink-muted">
+                No credit activity yet.
+              </p>
+            ) : (
+              <div className="max-h-[28rem] space-y-2 overflow-y-auto pr-1">
+                {history.credits.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-start justify-between gap-3 rounded-lg border border-stone-200 bg-white px-3 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-ink">
+                        {item.packageName ?? humanizeLabel(item.reason)}
+                      </p>
+                      <p className="mt-0.5 text-xs leading-relaxed text-ink-muted">
+                        {new Date(item.createdAt).toLocaleString()}
+                        {item.paymentMethod
+                          ? ` · ${item.paymentMethod.toUpperCase()}`
+                          : ""}
+                      </p>
+                      <p className="mt-1 text-xs text-ink-soft">
+                        {item.pool === "private" ? "Private" : "Regular"} credits
+                        {item.expiresAt
+                          ? ` · expires ${new Date(
+                              item.expiresAt,
+                            ).toLocaleDateString()}`
+                          : ""}
+                      </p>
+                    </div>
+                    <span
+                      className={
+                        item.delta >= 0
+                          ? "shrink-0 text-sm font-semibold text-emerald-700"
+                          : "shrink-0 text-sm font-semibold text-rose-700"
+                      }
+                    >
+                      {item.delta > 0 ? "+" : ""}
+                      {item.delta}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+    </div>
   );
 }
 
