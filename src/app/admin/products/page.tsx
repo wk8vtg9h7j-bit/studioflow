@@ -57,7 +57,7 @@ export default async function ProductsPage() {
         </section>
 
         <aside className="lg:col-span-1">
-          <div className="card sticky top-24 p-5">
+          <div className="card p-4 sm:p-5 lg:sticky lg:top-24">
             <h2 className="mb-4 text-sm font-semibold text-ink">New product</h2>
             <ProductForm />
           </div>
