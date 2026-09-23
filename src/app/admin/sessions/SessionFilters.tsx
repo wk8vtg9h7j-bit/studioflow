@@ -58,8 +58,8 @@ export function SessionFilters({
   }
 
   return (
-    <div className="card flex flex-wrap items-end gap-3 p-4">
-      <div className="min-w-[10rem] flex-1">
+    <div className="card grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-end">
+      <div className="w-full lg:min-w-[10rem] lg:flex-1">
         <label className="label" htmlFor="sf-studio">
           Studio
         </label>
@@ -78,7 +78,7 @@ export function SessionFilters({
         </select>
       </div>
 
-      <div className="min-w-[9rem] flex-1">
+      <div className="w-full lg:min-w-[9rem] lg:flex-1">
         <label className="label" htmlFor="sf-date">
           Day
         </label>
@@ -91,7 +91,7 @@ export function SessionFilters({
         />
       </div>
 
-      <div className="min-w-[10rem] flex-1">
+      <div className="w-full lg:min-w-[10rem] lg:flex-1">
         <label className="label" htmlFor="sf-type">
           Class
         </label>
@@ -110,7 +110,7 @@ export function SessionFilters({
         </select>
       </div>
 
-      <div className="min-w-[12rem] flex-1">
+      <div className="w-full sm:col-span-2 lg:min-w-[12rem] lg:flex-1">
         <label className="label" htmlFor="sf-q">
           Search
         </label>
@@ -137,7 +137,7 @@ export function SessionFilters({
       </div>
 
       {hasFilters && (
-        <a href="/admin/sessions" className="btn-secondary">
+        <a href="/admin/sessions" className="btn-secondary w-full sm:w-auto">
           Clear
         </a>
       )}
