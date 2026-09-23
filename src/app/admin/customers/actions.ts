@@ -19,6 +19,148 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 export type CustomerActionState = { error?: string; ok?: boolean };
 export type AddCustomerState = { error?: string; ok?: boolean; message?: string };
 
+export type CustomerBookingHistoryItem = {
+  id: string;
+  status: string;
+  spots: number;
+  creditsSpent: number;
+  bookedAt: string;
+  cancelledAt: string | null;
+  checkedInAt: string | null;
+  session: {
+    id: string;
+    title: string;
+    startsAt: string;
+    endsAt: string;
+    studio: string;
+    timezone: string;
+    pool: string;
+  } | null;
+};
+
+export type CustomerCreditHistoryItem = {
+  id: string;
+  delta: number;
+  reason: string;
+  pool: string;
+  createdAt: string;
+  expiresAt: string | null;
+  paymentMethod: string | null;
+  packageName: string | null;
+};
+
+export type CustomerHistoryResult = {
+  bookings: CustomerBookingHistoryItem[];
+  credits: CustomerCreditHistoryItem[];
+  error?: string;
+};
+
+export async function getCustomerHistoryAction(
+  customerId: string,
+): Promise<CustomerHistoryResult> {
+  await requireRole("admin", "/admin/customers");
+
+  if (!z.string().uuid().safeParse(customerId).success) {
+    return { bookings: [], credits: [], error: "Invalid customer." };
+  }
+
+  const svc = createServiceClient();
+
+  const [bookingsRes, creditsRes] = await Promise.all([
+    svc
+      .from("bookings")
+      .select(
+        "id,status,spots_count,credits_spent,booked_at,cancelled_at,checked_in_at,session:sessions(id,title,starts_at,ends_at,studio:studios(name,timezone),class_type:class_types(name,pool))",
+      )
+      .eq("customer_id", customerId)
+      .order("booked_at", { ascending: false })
+      .limit(100),
+    svc
+      .from("credit_ledger")
+      .select(
+        "id,delta,reason,pool,created_at,expires_at,payment_method,package:packages(name)",
+      )
+      .eq("customer_id", customerId)
+      .order("created_at", { ascending: false })
+      .limit(100),
+  ]);
+
+  if (bookingsRes.error || creditsRes.error) {
+    return {
+      bookings: [],
+      credits: [],
+      error:
+        bookingsRes.error?.message ??
+        creditsRes.error?.message ??
+        "Could not load customer history.",
+    };
+  }
+
+  const bookings = ((bookingsRes.data ?? []) as unknown as {
+    id: string;
+    status: string;
+    spots_count: number | null;
+    credits_spent: number | null;
+    booked_at: string;
+    cancelled_at: string | null;
+    checked_in_at: string | null;
+    session:
+      | {
+          id: string;
+          title: string | null;
+          starts_at: string;
+          ends_at: string;
+          studio: { name: string; timezone: string } | null;
+          class_type: { name: string; pool: string | null } | null;
+        }
+      | null;
+  }[]).map((item) => ({
+    id: item.id,
+    status: item.status,
+    spots: item.spots_count ?? 1,
+    creditsSpent: item.credits_spent ?? 0,
+    bookedAt: item.booked_at,
+    cancelledAt: item.cancelled_at,
+    checkedInAt: item.checked_in_at,
+    session: item.session
+      ? {
+          id: item.session.id,
+          title:
+            item.session.title?.trim() ||
+            item.session.class_type?.name ||
+            "Class",
+          startsAt: item.session.starts_at,
+          endsAt: item.session.ends_at,
+          studio: item.session.studio?.name ?? "Studio",
+          timezone: item.session.studio?.timezone ?? "Asia/Ho_Chi_Minh",
+          pool: item.session.class_type?.pool ?? "regular",
+        }
+      : null,
+  }));
+
+  const credits = ((creditsRes.data ?? []) as unknown as {
+    id: string;
+    delta: number;
+    reason: string;
+    pool: string | null;
+    created_at: string;
+    expires_at: string | null;
+    payment_method: string | null;
+    package: { name: string } | null;
+  }[]).map((item) => ({
+    id: item.id,
+    delta: item.delta,
+    reason: item.reason,
+    pool: item.pool ?? "regular",
+    createdAt: item.created_at,
+    expiresAt: item.expires_at,
+    paymentMethod: item.payment_method,
+    packageName: item.package?.name ?? null,
+  }));
+
+  return { bookings, credits };
+}
+
 const STATUSES = ["lead", "active", "inactive"] as const;
 
 // Tags arrive as a single comma-separated string from the form; we normalise
