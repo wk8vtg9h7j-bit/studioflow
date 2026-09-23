@@ -25,21 +25,44 @@ export async function GET(request: Request) {
 
   const service = createServiceClient();
 
-  const { data: pending, error } = await service
-    .from("sessions")
-    .select("id,google_sync_pending_at")
-    .not("google_sync_pending_at", "is", null)
-    .order("google_sync_pending_at", { ascending: true })
-    .limit(BATCH_SIZE);
+  // Fresh customer/admin changes must never wait behind an old migration
+  // backlog. Process most of each batch newest-first, while reserving a few
+  // slots for the oldest pending rows so the backlog still drains.
+  const urgentLimit = 14;
+  const backlogLimit = BATCH_SIZE - urgentLimit;
 
+  const [{ data: newest, error: newestError }, { data: oldest, error: oldestError }] =
+    await Promise.all([
+      service
+        .from("sessions")
+        .select("id,google_sync_pending_at")
+        .not("google_sync_pending_at", "is", null)
+        .order("google_sync_pending_at", { ascending: false })
+        .limit(urgentLimit),
+      service
+        .from("sessions")
+        .select("id,google_sync_pending_at")
+        .not("google_sync_pending_at", "is", null)
+        .order("google_sync_pending_at", { ascending: true })
+        .limit(backlogLimit),
+    ]);
+
+  const error = newestError ?? oldestError;
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const rows = (pending ?? []) as {
+  const byId = new Map<
+    string,
+    { id: string; google_sync_pending_at: string }
+  >();
+  for (const row of [...(newest ?? []), ...(oldest ?? [])] as {
     id: string;
     google_sync_pending_at: string;
-  }[];
+  }[]) {
+    byId.set(row.id, row);
+  }
+  const rows = [...byId.values()];
 
   let synced = 0;
   let failed = 0;
