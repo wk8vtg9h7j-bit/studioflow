@@ -138,7 +138,7 @@ export default async function AdminOverviewPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-ink">
             Overview
@@ -147,7 +147,7 @@ export default async function AdminOverviewPage() {
             A snapshot of your studios, schedule, and what needs attention.
           </p>
         </div>
-        <Link href="/admin/sessions/new" className="btn-primary">
+        <Link href="/admin/sessions/new" className="btn-primary w-full sm:w-auto">
           Schedule a class
         </Link>
       </div>
@@ -194,7 +194,7 @@ export default async function AdminOverviewPage() {
             {sessions.map((s) => (
               <li
                 key={s.id}
-                className="flex items-center gap-4 px-5 py-3 text-sm"
+                className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1 px-4 py-3 text-sm sm:flex sm:gap-4 sm:px-5"
               >
                 <span
                   className="h-8 w-1 shrink-0 rounded-full"
@@ -212,7 +212,7 @@ export default async function AdminOverviewPage() {
                     {s.instructor?.display_name ?? "Unassigned"}
                   </p>
                 </div>
-                <p className="shrink-0 text-right text-xs text-ink-muted">
+                <p className="col-span-2 pl-4 text-left text-xs text-ink-muted sm:col-auto sm:shrink-0 sm:pl-0 sm:text-right">
                   {formatSessionWhen(s.starts_at, s.studio?.timezone)}
                 </p>
               </li>
