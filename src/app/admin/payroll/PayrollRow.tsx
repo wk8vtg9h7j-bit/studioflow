@@ -65,7 +65,7 @@ export function PayrollRow({ row }: { row: PayrollListRow }) {
 
   return (
     <li className="card overflow-hidden">
-      <div className="flex items-center gap-4 px-5 py-4">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-3 px-4 py-4 sm:flex sm:gap-4 sm:px-5">
         <span
           className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-brand-50 text-sm font-semibold text-brand-700"
           aria-hidden
@@ -87,7 +87,7 @@ export function PayrollRow({ row }: { row: PayrollListRow }) {
           </p>
         </div>
 
-        <div className="flex shrink-0 items-center gap-4">
+        <div className="col-span-2 flex w-full items-center justify-between gap-3 sm:ml-auto sm:w-auto sm:shrink-0 sm:justify-start sm:gap-4">
           <div className="text-right">
             <p className="text-sm font-semibold text-ink">{amount}</p>
             <p className="text-[11px] uppercase tracking-wide text-ink-soft">
@@ -98,14 +98,14 @@ export function PayrollRow({ row }: { row: PayrollListRow }) {
           <button
             type="button"
             onClick={() => setRecalcOpen((v) => !v)}
-            className="btn-secondary"
+            className="btn-secondary shrink-0"
           >
             {recalcOpen ? "Close" : "Recalc"}
           </button>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-t border-stone-200 bg-stone-50 px-5 py-3">
+      <div className="flex flex-col items-stretch gap-2 border-t border-stone-200 bg-stone-50 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:px-5">
         {row.status !== "admin_approved" && row.status !== "paid" && (
           <form action={approvePayrollAction}>
             <input type="hidden" name="id" value={row.id} />
@@ -133,7 +133,7 @@ export function PayrollRow({ row }: { row: PayrollListRow }) {
           </form>
         )}
 
-        <div className="ml-auto text-[11px] text-ink-soft">
+        <div className="pt-1 text-[11px] text-ink-soft sm:ml-auto sm:pt-0">
           {row.paid_at
             ? `Paid ${formatStamp(row.paid_at)}`
             : row.admin_approved_at
@@ -162,7 +162,7 @@ export function PayrollRow({ row }: { row: PayrollListRow }) {
                 type="number"
                 min={0}
                 step={1}
-                className="input w-40"
+                className="input w-full sm:w-40"
                 placeholder={String(row.attendance_count)}
               />
             </div>
