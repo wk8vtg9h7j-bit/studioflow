@@ -154,9 +154,9 @@ export default async function CustomersPage({
 
           <form
             method="get"
-            className="card flex flex-wrap items-end gap-3 p-4"
+            className="card grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-end"
           >
-            <div className="min-w-[14rem] flex-1">
+            <div className="w-full sm:col-span-2 lg:min-w-[14rem] lg:flex-1">
               <label className="label" htmlFor="customer-search">
                 Search
               </label>
@@ -170,7 +170,7 @@ export default async function CustomersPage({
               />
             </div>
 
-            <div className="min-w-[10rem]">
+            <div className="w-full lg:min-w-[10rem]">
               <label className="label" htmlFor="customer-status">
                 Status
               </label>
@@ -187,11 +187,11 @@ export default async function CustomersPage({
               </select>
             </div>
 
-            <button type="submit" className="btn-primary">
+            <button type="submit" className="btn-primary w-full sm:w-auto">
               Filter
             </button>
             {(q || status) && (
-              <a href="/admin/customers" className="btn-secondary">
+              <a href="/admin/customers" className="btn-secondary w-full sm:w-auto">
                 Clear
               </a>
             )}
@@ -245,7 +245,7 @@ export default async function CustomersPage({
         </section>
 
         <aside className="lg:col-span-1">
-          <div className="card sticky top-24 p-5">
+          <div className="card p-4 sm:p-5 lg:sticky lg:top-24">
             <h2 className="mb-4 text-sm font-semibold text-ink">At a glance</h2>
             <dl className="space-y-3">
               <SummaryStat label="Total members" value={counts.total} />
