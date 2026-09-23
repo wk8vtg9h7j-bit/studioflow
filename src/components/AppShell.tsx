@@ -90,7 +90,7 @@ export function AppShell({
         </div>
       </header>
 
-      <div className="mx-auto max-w-6xl px-6 py-8">{children}</div>
+      <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-8">{children}</div>
     </div>
   );
 }
