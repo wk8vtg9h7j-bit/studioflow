@@ -51,7 +51,7 @@ export function StudioRow({ studio }: { studio: Studio }) {
 
   return (
     <li className="card overflow-hidden">
-      <div className="flex items-center gap-4 px-5 py-4">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-3 px-4 py-4 sm:flex sm:gap-4 sm:px-5">
         <span
           className="h-10 w-1.5 shrink-0 rounded-full"
           style={{ backgroundColor: studio.brand_color ?? "#a8a29e" }}
@@ -59,7 +59,7 @@ export function StudioRow({ studio }: { studio: Studio }) {
         />
 
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <p className="truncate font-medium text-ink">{studio.name}</p>
             {studio.active ? (
               <span className="badge bg-emerald-50 text-emerald-700">
@@ -78,21 +78,21 @@ export function StudioRow({ studio }: { studio: Studio }) {
           </p>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="col-span-2 grid w-full grid-cols-2 gap-2 sm:ml-auto sm:flex sm:w-auto sm:shrink-0 sm:items-center">
           <button
             type="button"
             onClick={() => setEditing((v) => !v)}
-            className="btn-secondary"
+            className="btn-secondary w-full sm:w-auto"
           >
             {editing ? "Close" : "Edit"}
           </button>
 
           {calendarConnected ? (
-            <form action={disconnectGoogleAction}>
+            <form action={disconnectGoogleAction} className="w-full sm:w-auto">
               <input type="hidden" name="id" value={studio.id} />
               <button
                 type="submit"
-                className="btn-ghost"
+                className="btn-ghost w-full sm:w-auto"
                 title="Disconnect Google Calendar"
               >
                 Disconnect
@@ -101,14 +101,14 @@ export function StudioRow({ studio }: { studio: Studio }) {
           ) : (
             <a
               href={`/api/google/connect?studio=${studio.id}`}
-              className="btn-ghost"
+              className="btn-ghost w-full sm:w-auto"
               title="Connect Google Calendar"
             >
               Connect Calendar
             </a>
           )}
 
-          <form action={toggleStudioActiveAction}>
+          <form action={toggleStudioActiveAction} className="w-full sm:w-auto">
             <input type="hidden" name="id" value={studio.id} />
             <input
               type="hidden"
@@ -117,7 +117,7 @@ export function StudioRow({ studio }: { studio: Studio }) {
             />
             <button
               type="submit"
-              className="btn-ghost"
+              className="btn-ghost w-full sm:w-auto"
               title={studio.active ? "Deactivate studio" : "Reactivate studio"}
             >
               {studio.active ? "Deactivate" : "Reactivate"}
