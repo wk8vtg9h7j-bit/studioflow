@@ -51,7 +51,7 @@ export default async function NotificationsPage() {
             const isNew = !seenISO || e.atISO > seenISO;
             const cancelled = e.type === "cancelled";
             return (
-              <li key={e.id} className="card flex items-center gap-4 px-5 py-4">
+              <li key={e.id} className="card grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 px-4 py-4 sm:flex sm:gap-4 sm:px-5">
                 <span
                   className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm ${
                     cancelled
@@ -92,7 +92,7 @@ export default async function NotificationsPage() {
                   </p>
                 </div>
 
-                <p className="shrink-0 text-right text-xs text-ink-soft">
+                <p className="col-span-2 text-left text-xs text-ink-soft sm:col-auto sm:shrink-0 sm:text-right">
                   {formatInTimeZone(
                     new Date(e.atISO),
                     e.timezone,
