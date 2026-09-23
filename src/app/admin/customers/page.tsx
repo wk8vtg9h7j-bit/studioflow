@@ -97,32 +97,74 @@ export default async function CustomersPage({
   }
 
   if (customers.length > 0) {
-    const now = new Date();
     const { data: ledgerRows } = await service
       .from("credit_ledger")
-      .select("customer_id,delta,pool,expires_at")
+      .select("id,customer_id,delta,pool,expires_at,created_at")
       .in(
         "customer_id",
         customers.map((customer) => customer.id),
-      );
+      )
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true });
+
+    type Bucket = { remaining: number; expiresAt: number | null };
+    const bucketsByCustomerPool = new Map<string, Bucket[]>();
 
     for (const row of ledgerRows ?? []) {
       const item = row as {
+        id: string;
         customer_id: string;
         delta: number;
         pool: string | null;
         expires_at: string | null;
+        created_at: string;
       };
+      const pool = item.pool ?? "regular";
+      const key = `${item.customer_id}:${pool}`;
+      const buckets = bucketsByCustomerPool.get(key) ?? [];
 
-      if (item.expires_at && new Date(item.expires_at) <= now) continue;
+      if (item.delta > 0) {
+        buckets.push({
+          remaining: item.delta,
+          expiresAt: item.expires_at ? Date.parse(item.expires_at) : null,
+        });
+        bucketsByCustomerPool.set(key, buckets);
+        continue;
+      }
 
-      const balance = balanceById.get(item.customer_id);
+      if (item.delta < 0) {
+        let owed = -item.delta;
+        const spentAt = Date.parse(item.created_at);
+
+        for (const bucket of buckets) {
+          if (owed <= 0) break;
+          if (bucket.remaining <= 0) continue;
+          if (bucket.expiresAt !== null && bucket.expiresAt <= spentAt) continue;
+
+          const take = Math.min(owed, bucket.remaining);
+          bucket.remaining -= take;
+          owed -= take;
+        }
+      }
+    }
+
+    const nowMs = Date.now();
+    for (const customer of customers) {
+      const balance = balanceById.get(customer.id);
       if (!balance) continue;
 
-      if ((item.pool ?? "regular") === "private") {
-        balance.private += item.delta;
-      } else {
-        balance.regular += item.delta;
+      for (const pool of ["regular", "private"] as const) {
+        const buckets =
+          bucketsByCustomerPool.get(`${customer.id}:${pool}`) ?? [];
+        const total = buckets.reduce(
+          (sum, bucket) =>
+            bucket.remaining > 0 &&
+            (bucket.expiresAt === null || bucket.expiresAt > nowMs)
+              ? sum + bucket.remaining
+              : sum,
+          0,
+        );
+        balance[pool] = Math.max(0, total);
       }
     }
   }
