@@ -411,7 +411,7 @@ export default async function PaymentsPage({
           takings can be reconciled against who came in.
         </p>
 
-        <form method="get" className="mt-4 flex flex-wrap items-end gap-3">
+        <form method="get" className="mt-4 grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-end">
           <div>
             <label htmlFor="from" className="label">
               From
@@ -421,7 +421,7 @@ export default async function PaymentsPage({
               name="from"
               type="date"
               defaultValue={fromKey}
-              className="input w-44"
+              className="input w-full sm:w-44"
             />
           </div>
           <div>
@@ -433,18 +433,18 @@ export default async function PaymentsPage({
               name="to"
               type="date"
               defaultValue={toKey}
-              className="input w-44"
+              className="input w-full sm:w-44"
             />
           </div>
-          <button type="submit" className="btn-secondary">
+          <button type="submit" className="btn-secondary w-full sm:w-auto">
             Apply
           </button>
-          <a href="/admin/payments" className="btn-ghost">
+          <a href="/admin/payments" className="btn-ghost w-full sm:w-auto">
             Last {DEFAULT_RANGE_DAYS} days
           </a>
           <a
             href={`/admin/payments/export?from=${fromKey}&to=${toKey}`}
-            className="btn-ghost"
+            className="btn-ghost w-full sm:w-auto"
           >
             Export CSV
           </a>
@@ -460,7 +460,7 @@ export default async function PaymentsPage({
           ) : (
             days.map((day) => (
               <div key={day.date} className="card overflow-hidden">
-                <div className="flex items-center justify-between border-b border-stone-200 bg-stone-50 px-5 py-3">
+                <div className="flex flex-col gap-1 border-b border-stone-200 bg-stone-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                   <h2 className="text-sm font-semibold text-ink">{day.label}</h2>
                   <span className="text-sm font-semibold tabular-nums text-ink">
                     {formatTotals(day.totals)}
@@ -482,10 +482,10 @@ export default async function PaymentsPage({
                     {day.payments.map((p) => (
                       <li
                         key={p.id}
-                        className="flex items-center justify-between px-5 py-3"
+                        className="flex flex-col items-stretch gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5"
                       >
                         <div className="min-w-0">
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <p className="truncate text-sm font-medium text-ink">
                               {p.name}
                             </p>
@@ -506,7 +506,7 @@ export default async function PaymentsPage({
                             {p.label} · {p.time}
                           </p>
                         </div>
-                        <div className="flex shrink-0 items-center gap-3">
+                        <div className="flex shrink-0 items-center justify-between gap-3 sm:justify-start">
                           <span className={`badge ${METHOD_BADGE[p.method]}`}>
                             {METHOD_LABEL[p.method]}
                           </span>
@@ -533,10 +533,10 @@ export default async function PaymentsPage({
                       {day.attendees.map((a, i) => (
                         <li
                           key={`${day.date}-${i}`}
-                          className="flex items-center justify-between text-xs"
+                          className="flex flex-col gap-0.5 text-xs sm:flex-row sm:items-center sm:justify-between"
                         >
                           <span className="truncate text-ink">{a.name}</span>
-                          <span className="shrink-0 text-ink-muted">
+                          <span className="text-ink-muted sm:shrink-0">
                             {a.klass} · {a.time}
                           </span>
                         </li>
@@ -550,7 +550,7 @@ export default async function PaymentsPage({
         </section>
 
         <aside className="lg:col-span-1">
-          <div className="card sticky top-24 p-5">
+          <div className="card p-4 sm:p-5 lg:sticky lg:top-24">
             <h2 className="mb-4 text-sm font-semibold text-ink">At a glance</h2>
             <dl className="space-y-3">
               <SummaryStat label="Today" value={formatTotals(todayTotals)} />
