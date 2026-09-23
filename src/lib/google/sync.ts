@@ -441,6 +441,19 @@ export async function syncSessionById(sessionId: string): Promise<SyncResult> {
 
       let ids = [...(booking.google_event_ids ?? [])];
 
+      // Older booking events existed in Google before we started persisting
+      // booking-level event IDs. Discover them for BOTH active and cancelled
+      // bookings. Without this, a cancellation with google_event_ids = null
+      // could leave the old Google event behind indefinitely.
+      if (ids.length === 0) {
+        ids = await findLegacyBookingEventIds(
+          calendar,
+          calendarId,
+          booking.id,
+          session,
+        );
+      }
+
       if (!shouldShow) {
         for (const id of ids) {
           await safeDelete(calendar, calendarId, id);
@@ -453,15 +466,6 @@ export async function syncSessionById(sessionId: string): Promise<SyncResult> {
             .eq("id", booking.id);
         }
         continue;
-      }
-
-      if (ids.length === 0) {
-        ids = await findLegacyBookingEventIds(
-          calendar,
-          calendarId,
-          booking.id,
-          session,
-        );
       }
 
       const nextIds: string[] = [];
