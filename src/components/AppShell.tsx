@@ -7,6 +7,7 @@ import { SignOutButton } from "@/components/SignOutButton";
 import { NavLink } from "@/components/NavLink";
 import { NavMenu, type NavMenuItem } from "@/components/NavMenu";
 import { LanguageSwitcher } from "@/components/LanguageProvider";
+import { MobileNavMenu } from "@/components/MobileNavMenu";
 import type { Locale } from "@/lib/locale";
 
 export type NavItem = { href: string; label: string };
@@ -31,12 +32,12 @@ export function AppShell({
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-20 border-b border-stone-200 bg-white/80 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center gap-6 px-6 py-3">
+        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:gap-6 sm:px-6">
           <Link href="/" className="text-base font-semibold tracking-tight text-ink">
             Studio<span className="text-brand-600">Flow</span>
           </Link>
 
-          <nav className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+          <nav className="hidden min-w-0 flex-1 flex-wrap items-center gap-1 sm:flex">
             {navItems.map((item) => (
               <NavLink key={item.href} href={item.href}>
                 {item.label}
@@ -47,7 +48,8 @@ export function AppShell({
             ) : null}
           </nav>
 
-          <div className="flex items-center gap-3">
+          <div className="ml-auto flex items-center gap-2 sm:gap-3">
+            <MobileNavMenu navItems={navItems} navMenu={navMenu} />
             <div className="hidden text-right sm:block">
               <p className="text-sm font-medium leading-tight text-ink">{user}</p>
               <p className="text-xs leading-tight text-ink-soft">{roleLabel}</p>
