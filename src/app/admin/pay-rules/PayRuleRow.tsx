@@ -53,7 +53,7 @@ export function PayRuleRow({
 
   return (
     <li className="card overflow-hidden">
-      <div className="flex items-center gap-4 px-5 py-4">
+      <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:gap-4 sm:px-5">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <p className="truncate font-medium text-ink">{rule.name}</p>
@@ -74,7 +74,7 @@ export function PayRuleRow({
           </p>
         </div>
 
-        <div className="flex shrink-0 items-center gap-4">
+        <div className="flex w-full items-center justify-between gap-4 sm:ml-auto sm:w-auto sm:shrink-0">
           <TierSummary
             currency={rule.currency}
             amounts={[
@@ -87,7 +87,7 @@ export function PayRuleRow({
           <button
             type="button"
             onClick={() => setEditOpen((v) => !v)}
-            className="btn-secondary"
+            className="btn-secondary shrink-0"
           >
             {editOpen ? "Close" : "Edit"}
           </button>
