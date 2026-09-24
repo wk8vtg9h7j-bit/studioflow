@@ -452,24 +452,6 @@ function GrantPackage({
           </select>
         </div>
 
-        <label className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
-          <input
-            type="checkbox"
-            name="settle_latest_attendance"
-            defaultChecked
-            className="mt-0.5 h-4 w-4 rounded border-stone-300"
-          />
-          <span className="text-xs leading-relaxed text-amber-900">
-            <span className="block font-semibold">
-              Use this payment for today&apos;s attended class
-            </span>
-            If this customer already attended a class today, StudioFlow will use
-            the required credit(s) from this package to settle their latest
-            attended class instead of leaving extra usable credits. Uncheck this
-            only when the package is purely for future classes.
-          </span>
-        </label>
-
         {state.error && (
           <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
             {state.error}
@@ -477,11 +459,11 @@ function GrantPackage({
         )}
         {state.ok && (
           <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-            {state.message ?? "Package recorded."}
+            Package granted — credits added to this customer.
           </p>
         )}
 
-        <SubmitButton>Record package payment</SubmitButton>
+        <SubmitButton>Grant package</SubmitButton>
       </form>
     </div>
   );
