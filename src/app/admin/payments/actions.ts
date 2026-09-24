@@ -199,7 +199,7 @@ export async function deletePaymentAction(
     const { data: balanceData, error: balanceError } = await svc.rpc(
       "credit_balance",
       {
-        p_customer_id: row.customer_id,
+        p_customer: row.customer_id,
         p_pool: pool,
       },
     );
