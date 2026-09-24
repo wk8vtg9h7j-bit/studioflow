@@ -114,26 +114,26 @@ export async function getCustomerHistoryAction(
           class_type: { name: string; pool: string | null } | null;
         }
       | null;
-  }[]).map((row) => ({
-    id: row.id,
-    status: row.status,
-    spots: row.spots_count ?? 1,
-    creditsSpent: row.credits_spent ?? 0,
-    bookedAt: row.booked_at,
-    cancelledAt: row.cancelled_at,
-    checkedInAt: row.checked_in_at,
-    session: row.session
+  }[]).map((item) => ({
+    id: item.id,
+    status: item.status,
+    spots: item.spots_count ?? 1,
+    creditsSpent: item.credits_spent ?? 0,
+    bookedAt: item.booked_at,
+    cancelledAt: item.cancelled_at,
+    checkedInAt: item.checked_in_at,
+    session: item.session
       ? {
-          id: row.session.id,
+          id: item.session.id,
           title:
-            row.session.title?.trim() ||
-            row.session.class_type?.name ||
+            item.session.title?.trim() ||
+            item.session.class_type?.name ||
             "Class",
-          startsAt: row.session.starts_at,
-          endsAt: row.session.ends_at,
-          studio: row.session.studio?.name ?? "Studio",
-          timezone: row.session.studio?.timezone ?? "Asia/Ho_Chi_Minh",
-          pool: row.session.class_type?.pool ?? "regular",
+          startsAt: item.session.starts_at,
+          endsAt: item.session.ends_at,
+          studio: item.session.studio?.name ?? "Studio",
+          timezone: item.session.studio?.timezone ?? "Asia/Ho_Chi_Minh",
+          pool: item.session.class_type?.pool ?? "regular",
         }
       : null,
   }));
@@ -147,19 +147,19 @@ export async function getCustomerHistoryAction(
     expires_at: string | null;
     payment_method: string | null;
     package: { name: string } | null;
-  }[]).map((row) => ({
-    id: row.id,
-    delta: row.delta,
-    reason: row.reason,
-    pool: row.pool ?? "regular",
-    createdAt: row.created_at,
-    expiresAt: row.expires_at,
-    paymentMethod: row.payment_method,
-    packageName: row.package?.name ?? null,
+  }[]).map((item) => ({
+    id: item.id,
+    delta: item.delta,
+    reason: item.reason,
+    pool: item.pool ?? "regular",
+    createdAt: item.created_at,
+    expiresAt: item.expires_at,
+    paymentMethod: item.payment_method,
+    packageName: item.package?.name ?? null,
   }));
 
   return { bookings, credits };
-};
+}
 
 const STATUSES = ["lead", "active", "inactive"] as const;
 
@@ -247,7 +247,7 @@ export async function grantPackageAction(
   // stay valid. Only active packages can be sold.
   const { data: pkg, error: pkgError } = await supabase
     .from("packages")
-    .select("credits, validity_days, active, pool")
+    .select("credits, validity_days, active, pool, price_cents, currency")
     .eq("id", package_id)
     .single();
 
@@ -273,6 +273,8 @@ export async function grantPackageAction(
     expires_at: expiresAt,
     payment_method,
     pool: pkg.pool ?? "regular",
+    sale_amount_cents: pkg.price_cents,
+    sale_currency: pkg.currency ?? "VND",
   });
 
   if (error) {
