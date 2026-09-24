@@ -13,7 +13,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireRole } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import type { Product } from "@/lib/types";
 
 export type SaleActionState = { error?: string; ok?: boolean };
@@ -126,5 +126,104 @@ export async function recordSaleAction(
   }
 
   revalidatePath("/admin/payments");
+  return { ok: true };
+}
+
+
+const deletePaymentSchema = z.object({
+  id: z.string().uuid(),
+  kind: z.enum(["package", "retail"]),
+});
+
+export type DeletePaymentState = {
+  ok?: boolean;
+  error?: string;
+};
+
+export async function deletePaymentAction(
+  formData: FormData,
+): Promise<DeletePaymentState> {
+  await requireRole("admin", "/admin/payments");
+
+  const parsed = deletePaymentSchema.safeParse({
+    id: formData.get("id"),
+    kind: formData.get("kind"),
+  });
+  if (!parsed.success) {
+    return { error: "Invalid payment." };
+  }
+
+  const svc = createServiceClient();
+  const { id, kind } = parsed.data;
+
+  if (kind === "retail") {
+    const { data: sale, error: findError } = await svc
+      .from("sales")
+      .select("id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (findError) return { error: findError.message };
+    if (!sale) return { error: "Retail payment was not found." };
+
+    // sale_items is ON DELETE CASCADE from sales.
+    const { error } = await svc.from("sales").delete().eq("id", id);
+    if (error) return { error: error.message };
+
+    revalidatePath("/admin/payments");
+    return { ok: true };
+  }
+
+  const { data: purchase, error: purchaseError } = await svc
+    .from("credit_ledger")
+    .select("id,customer_id,delta,pool")
+    .eq("id", id)
+    .eq("reason", "purchase")
+    .maybeSingle();
+
+  if (purchaseError) return { error: purchaseError.message };
+  if (!purchase) return { error: "Package payment was not found." };
+
+  const row = purchase as {
+    id: string;
+    customer_id: string;
+    delta: number;
+    pool: string | null;
+  };
+
+  // Deleting a mistaken package payment also removes the credits that payment
+  // granted. Do not allow that correction to make the customer's balance
+  // negative because those credits have already been spent.
+  if (row.delta > 0) {
+    const pool = row.pool ?? "regular";
+    const { data: balanceData, error: balanceError } = await svc.rpc(
+      "credit_balance",
+      {
+        p_customer_id: row.customer_id,
+        p_pool: pool,
+      },
+    );
+
+    if (balanceError) return { error: balanceError.message };
+
+    const balance = Number(balanceData ?? 0);
+    if (balance - row.delta < 0) {
+      return {
+        error:
+          "This payment cannot be deleted because some of its credits have already been used. Add a correcting credit adjustment instead.",
+      };
+    }
+  }
+
+  const { error } = await svc
+    .from("credit_ledger")
+    .delete()
+    .eq("id", id)
+    .eq("reason", "purchase");
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/admin/payments");
+  revalidatePath("/admin/customers");
   return { ok: true };
 }
