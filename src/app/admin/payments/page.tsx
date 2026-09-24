@@ -17,6 +17,7 @@ import { formatMoney, FALLBACK_TZ } from "@/lib/format";
 import { formatInTimeZone } from "date-fns-tz";
 import type { Product } from "@/lib/types";
 import { RecordSale } from "./RecordSale";
+import { DeletePaymentButton } from "./DeletePaymentButton";
 
 export const dynamic = "force-dynamic";
 
@@ -644,6 +645,14 @@ export default async function PaymentsPage({
                           <span className="text-sm font-semibold tabular-nums text-ink">
                             {formatMoney(p.amount, p.currency)}
                           </span>
+                          <DeletePaymentButton
+                            id={p.id}
+                            kind={p.kind}
+                            label={`${p.name} · ${p.label} · ${formatMoney(
+                              p.amount,
+                              p.currency,
+                            )}`}
+                          />
                         </div>
                       </li>
                     ))}
