@@ -87,14 +87,23 @@ type CustomerRef = {
 };
 
 type AttendRow = {
+  id: string;
   status: string;
-  session: { starts_at: string; title: string | null } | null;
+  credits_spent: number | null;
+  spots_count: number | null;
+  session:
+    | {
+        starts_at: string;
+        title: string | null;
+        class_type: { name: string | null } | null;
+      }
+    | null;
   customer: CustomerRef | null;
 };
 
 type Payment = {
   id: string;
-  kind: "package" | "retail";
+  kind: "package" | "retail" | "attendance";
   name: string;
   label: string;
   amount: number;
@@ -104,9 +113,8 @@ type Payment = {
   // retail row leaves this null rather than claiming the customer is returning.
   isNew: boolean | null;
   time: string;
+  at: string;
 };
-
-type Attendee = { name: string; klass: string; time: string; status: string };
 
 type DayGroup = {
   date: string;
@@ -115,7 +123,6 @@ type DayGroup = {
   // Takings bucketed by currency code. A day that mixed VND and USD keeps two
   // entries rather than collapsing into one meaningless number.
   totals: Totals;
-  attendees: Attendee[];
 };
 
 // Money is only additive within a single currency, so every total on this page
@@ -232,8 +239,12 @@ export default async function PaymentsPage({
     supabase
       .from("bookings")
       .select(
-        `status,
-         session:sessions ( starts_at, title ),
+        `id,status,credits_spent,spots_count,
+         session:sessions (
+           starts_at,
+           title,
+           class_type:class_types ( name )
+         ),
          customer:customers ( name, email, profile:profiles ( full_name, email ) )`,
       )
       .in("status", ["booked", "attended"])
@@ -330,7 +341,6 @@ export default async function PaymentsPage({
         label: formatInTimeZone(new Date(iso), TZ, "EEEE, d MMM yyyy"),
         payments: [],
         totals: {},
-        attendees: [],
       };
       groups.set(date, g);
     }
@@ -352,6 +362,7 @@ export default async function PaymentsPage({
       method: methodOf(row.payment_method),
       isNew: isNew.get(row.id) ?? false,
       time: formatInTimeZone(new Date(row.created_at), TZ, "h:mm a"),
+      at: row.created_at,
     });
   }
 
@@ -375,29 +386,50 @@ export default async function PaymentsPage({
       isNew: null,
       method: methodOf(row.payment_method),
       time: formatInTimeZone(new Date(row.created_at), TZ, "h:mm a"),
+      at: row.created_at,
     });
   }
 
   for (const row of attendance) {
-    if (!row.session) continue;
+    if (!row.session || row.status !== "attended") continue;
     if (!inRange(row.session.starts_at)) continue;
+
     const date = dayOf(row.session.starts_at);
     const g = ensureDay(date, row.session.starts_at);
-    g.attendees.push({
+    const className =
+      row.session.title?.trim() ||
+      row.session.class_type?.name ||
+      "Class";
+    const spots = Math.max(row.spots_count ?? 1, 1);
+
+    g.payments.push({
+      id: `attendance-${row.id}`,
+      kind: "attendance",
       name: nameOf(row.customer),
-      klass: row.session.title ?? "Class",
-      time: formatInTimeZone(new Date(row.session.starts_at), TZ, "h:mm a"),
-      status: row.status,
+      label:
+        spots > 1
+          ? `Package · ${className} · ${spots} spots`
+          : `Package · ${className}`,
+      amount: 0,
+      currency: "VND",
+      method: "unrecorded",
+      isNew: null,
+      time: formatInTimeZone(
+        new Date(row.session.starts_at),
+        TZ,
+        "h:mm a",
+      ),
+      at: row.session.starts_at,
     });
   }
 
-  // Most recent day first; newest payments first within a day.
+  // Most recent day first; all money movements + attended package visits are
+  // ordered together so reception gets one chronological daily view.
   const days = Array.from(groups.values()).sort((a, b) =>
     a.date < b.date ? 1 : -1,
   );
   for (const d of days) {
-    d.payments.reverse();
-    d.attendees.sort((a, b) => (a.time < b.time ? -1 : 1));
+    d.payments.sort((a, b) => (a.at < b.at ? 1 : -1));
   }
 
   const rangeTotals: Totals = {};
@@ -587,7 +619,7 @@ export default async function PaymentsPage({
         <section className="space-y-6 lg:col-span-2">
           {days.length === 0 ? (
             <div className="card px-5 py-12 text-center text-sm text-ink-muted">
-              No payments or attendance in this date range.
+              No payments or attended visits in this date range.
             </div>
           ) : (
             days.map((day) => (
@@ -602,7 +634,7 @@ export default async function PaymentsPage({
                 {/* Payments */}
                 <div className="px-5 pt-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
-                    Paid ({day.payments.length})
+                    Payments & visits ({day.payments.length})
                   </p>
                 </div>
                 {day.payments.length === 0 ? (
@@ -639,51 +671,34 @@ export default async function PaymentsPage({
                           </p>
                         </div>
                         <div className="flex shrink-0 items-center gap-3">
-                          <span className={`badge ${METHOD_BADGE[p.method]}`}>
-                            {METHOD_LABEL[p.method]}
-                          </span>
+                          {p.kind === "attendance" ? (
+                            <span className="badge bg-violet-50 text-violet-700">
+                              Package
+                            </span>
+                          ) : (
+                            <span className={`badge ${METHOD_BADGE[p.method]}`}>
+                              {METHOD_LABEL[p.method]}
+                            </span>
+                          )}
                           <span className="text-sm font-semibold tabular-nums text-ink">
                             {formatMoney(p.amount, p.currency)}
                           </span>
-                          <DeletePaymentButton
-                            id={p.id}
-                            kind={p.kind}
-                            label={`${p.name} · ${p.label} · ${formatMoney(
-                              p.amount,
-                              p.currency,
-                            )}`}
-                          />
+                          {p.kind !== "attendance" && (
+                            <DeletePaymentButton
+                              id={p.id}
+                              kind={p.kind}
+                              label={`${p.name} · ${p.label} · ${formatMoney(
+                                p.amount,
+                                p.currency,
+                              )}`}
+                            />
+                          )}
                         </div>
                       </li>
                     ))}
                   </ul>
                 )}
 
-                {/* Attendance */}
-                <div className="border-t border-stone-100 bg-stone-50/50 px-5 py-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
-                    Attended ({day.attendees.length})
-                  </p>
-                  {day.attendees.length === 0 ? (
-                    <p className="mt-1 text-xs text-ink-muted">
-                      No bookings for this day.
-                    </p>
-                  ) : (
-                    <ul className="mt-2 space-y-1">
-                      {day.attendees.map((a, i) => (
-                        <li
-                          key={`${day.date}-${i}`}
-                          className="flex items-center justify-between text-xs"
-                        >
-                          <span className="truncate text-ink">{a.name}</span>
-                          <span className="shrink-0 text-ink-muted">
-                            {a.klass} · {a.time}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
               </div>
             ))
           )}
