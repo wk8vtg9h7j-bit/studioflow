@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { deletePaymentAction } from "./actions";
 
 export function DeletePaymentButton({
@@ -12,6 +13,7 @@ export function DeletePaymentButton({
   kind: "package" | "retail";
   label: string;
 }) {
+  const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +62,7 @@ export function DeletePaymentButton({
                 return;
               }
               setConfirming(false);
+              router.refresh();
             })
           }
           className="rounded-md bg-rose-600 px-2.5 py-1 text-xs font-medium text-white disabled:opacity-60"
