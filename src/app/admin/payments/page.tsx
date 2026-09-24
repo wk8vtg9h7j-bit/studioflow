@@ -68,6 +68,17 @@ type SaleRow = {
   items: { name: string; qty: number }[] | null;
 };
 
+type SummaryPurchaseRow = {
+  created_at: string;
+  package: { price_cents: number | null; currency: string | null } | null;
+};
+
+type SummarySaleRow = {
+  created_at: string;
+  total_cents: number;
+  currency: string;
+};
+
 type CustomerRef = {
   name: string | null;
   email: string | null;
@@ -173,6 +184,10 @@ export default async function PaymentsPage({
 
   // Resolve the visible window as yyyy-MM-dd day keys in the studio's zone.
   const todayKey = formatInTimeZone(new Date(), TZ, "yyyy-MM-dd");
+  const todayUtc = new Date(`${todayKey}T00:00:00Z`);
+  const mondayOffset = (todayUtc.getUTCDay() + 6) % 7;
+  const weekStartKey = shiftDay(todayKey, -mondayOffset);
+  const monthStartKey = `${todayKey.slice(0, 7)}-01`;
   const fromParam = rawFrom && DAY_KEY.test(rawFrom) ? rawFrom : null;
   const toParam = rawTo && DAY_KEY.test(rawTo) ? rawTo : null;
   const a = fromParam ?? shiftDay(todayKey, -(DEFAULT_RANGE_DAYS - 1));
@@ -187,6 +202,11 @@ export default async function PaymentsPage({
   const lowerBound = `${shiftDay(fromKey, -1)}T00:00:00Z`;
   const upperBound = `${shiftDay(toKey, 2)}T00:00:00Z`;
 
+  // Dashboard totals are independent of the selected transaction range. They
+  // always mean Today / Monday-through-today / first-of-month-through-today.
+  const summaryLowerBound = `${shiftDay(monthStartKey, -1)}T00:00:00Z`;
+  const summaryUpperBound = `${shiftDay(todayKey, 2)}T00:00:00Z`;
+
   const [
     { data: purchaseData },
     { data: attendData },
@@ -194,6 +214,8 @@ export default async function PaymentsPage({
     { data: productData },
     { data: customerData },
     { data: priorBuyerData },
+    { data: summaryPurchaseData },
+    { data: summarySaleData },
   ] = await Promise.all([
     supabase
       .from("credit_ledger")
@@ -242,11 +264,29 @@ export default async function PaymentsPage({
       .select("customer_id")
       .eq("reason", "purchase")
       .lt("created_at", lowerBound),
+    // Lightweight rows for dashboard totals. These are deliberately separate
+    // from the selected-range query so changing filters never changes MTD/WTD.
+    supabase
+      .from("credit_ledger")
+      .select(
+        `created_at,
+         package:packages ( price_cents, currency )`,
+      )
+      .eq("reason", "purchase")
+      .gte("created_at", summaryLowerBound)
+      .lt("created_at", summaryUpperBound),
+    supabase
+      .from("sales")
+      .select("created_at,total_cents,currency")
+      .gte("created_at", summaryLowerBound)
+      .lt("created_at", summaryUpperBound),
   ]);
 
   const purchases = (purchaseData ?? []) as unknown as PurchaseRow[];
   const attendance = (attendData ?? []) as unknown as AttendRow[];
   const sales = (saleData ?? []) as unknown as SaleRow[];
+  const summaryPurchases = (summaryPurchaseData ?? []) as unknown as SummaryPurchaseRow[];
+  const summarySales = (summarySaleData ?? []) as SummarySaleRow[];
   const products = (productData ?? []) as Product[];
 
   // A Customer row carries no display name of its own — it is either a profile
@@ -367,12 +407,57 @@ export default async function PaymentsPage({
     addTo(rangeTotals, r.currency, r.total_cents);
   }
 
-  const monthKey = formatInTimeZone(new Date(), TZ, "yyyy-MM");
-  const todayTotals = groups.get(todayKey)?.totals ?? {};
+  const todayTotals: Totals = {};
+  const weekTotals: Totals = {};
   const monthTotals: Totals = {};
-  for (const d of days) {
-    if (d.date.startsWith(monthKey)) mergeInto(monthTotals, d.totals);
+  let todayPaymentCount = 0;
+  let weekPaymentCount = 0;
+  let monthPaymentCount = 0;
+
+  const addSummaryPayment = (
+    iso: string,
+    currency: string | null,
+    amount: number,
+  ) => {
+    const key = dayOf(iso);
+    if (key < monthStartKey || key > todayKey) return;
+
+    addTo(monthTotals, currency, amount);
+    monthPaymentCount += 1;
+
+    if (key >= weekStartKey) {
+      addTo(weekTotals, currency, amount);
+      weekPaymentCount += 1;
+    }
+
+    if (key === todayKey) {
+      addTo(todayTotals, currency, amount);
+      todayPaymentCount += 1;
+    }
+  };
+
+  for (const row of summaryPurchases) {
+    addSummaryPayment(
+      row.created_at,
+      row.package?.currency ?? null,
+      row.package?.price_cents ?? 0,
+    );
   }
+  for (const row of summarySales) {
+    addSummaryPayment(row.created_at, row.currency, row.total_cents);
+  }
+
+  const todayLabel = formatInTimeZone(new Date(), TZ, "EEE, d MMM");
+  const weekStartLabel = formatInTimeZone(
+    new Date(`${weekStartKey}T00:00:00Z`),
+    "UTC",
+    "d MMM",
+  );
+  const monthStartLabel = formatInTimeZone(
+    new Date(`${monthStartKey}T00:00:00Z`),
+    "UTC",
+    "d MMM",
+  );
 
   // Method breakdown + new/returning counts across all payments.
   const byMethod: Record<Method, Totals> = {
@@ -410,6 +495,52 @@ export default async function PaymentsPage({
           Package sales, retail sales and class attendance, grouped by day — so
           takings can be reconciled against who came in.
         </p>
+
+      </header>
+
+      <section aria-label="Payment overview" className="grid gap-3 sm:grid-cols-3">
+        <OverviewCard
+          label="Today"
+          value={formatTotals(todayTotals)}
+          detail={`${todayLabel} · ${todayPaymentCount} payment${todayPaymentCount === 1 ? "" : "s"}`}
+          href={`/admin/payments?from=${todayKey}&to=${todayKey}`}
+          active={fromKey === todayKey && toKey === todayKey}
+        />
+        <OverviewCard
+          label="This week"
+          value={formatTotals(weekTotals)}
+          detail={`${weekStartLabel} – ${todayLabel} · ${weekPaymentCount} payment${weekPaymentCount === 1 ? "" : "s"}`}
+          href={`/admin/payments?from=${weekStartKey}&to=${todayKey}`}
+          active={fromKey === weekStartKey && toKey === todayKey}
+        />
+        <OverviewCard
+          label="Month to date"
+          value={formatTotals(monthTotals)}
+          detail={`${monthStartLabel} – ${todayLabel} · ${monthPaymentCount} payment${monthPaymentCount === 1 ? "" : "s"}`}
+          href={`/admin/payments?from=${monthStartKey}&to=${todayKey}`}
+          active={fromKey === monthStartKey && toKey === todayKey}
+          emphasis
+        />
+      </section>
+
+      <section className="card p-4 sm:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-ink-soft">
+              Detailed transactions
+            </p>
+            <p className="mt-1 text-sm text-ink-muted">
+              Filter the list below without changing the Today / Week / Month totals above.
+            </p>
+          </div>
+
+          <div className="text-left lg:text-right">
+            <p className="text-xs text-ink-soft">Selected range total</p>
+            <p className="mt-0.5 text-xl font-semibold tabular-nums text-ink">
+              {formatTotals(rangeTotals)}
+            </p>
+          </div>
+        </div>
 
         <form method="get" className="mt-4 flex flex-wrap items-end gap-3">
           <div>
@@ -449,7 +580,7 @@ export default async function PaymentsPage({
             Export CSV
           </a>
         </form>
-      </header>
+      </section>
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
         <section className="space-y-6 lg:col-span-2">
@@ -551,10 +682,17 @@ export default async function PaymentsPage({
 
         <aside className="lg:col-span-1">
           <div className="card sticky top-24 p-5">
-            <h2 className="mb-4 text-sm font-semibold text-ink">At a glance</h2>
-            <dl className="space-y-3">
-              <SummaryStat label="Today" value={formatTotals(todayTotals)} />
-              <SummaryStat label="This month" value={formatTotals(monthTotals)} />
+            <h2 className="mb-1 text-sm font-semibold text-ink">
+              Selected range
+            </h2>
+            <p className="mb-4 text-xs text-ink-soft">
+              {fromKey} → {toKey}
+            </p>
+            <dl className="mb-5 space-y-3">
+              <SummaryStat
+                label="Total"
+                value={formatTotals(rangeTotals)}
+              />
               <SummaryStat
                 label="Payments"
                 value={visiblePurchases.length + visibleSales.length}
@@ -586,14 +724,6 @@ export default async function PaymentsPage({
               <SummaryStat label="Returning" value={returningCount} />
             </dl>
 
-            <div className="my-5 h-px bg-stone-200" />
-            <dl className="space-y-3">
-              <SummaryStat
-                label="Selected range"
-                value={formatTotals(rangeTotals)}
-              />
-            </dl>
-
             <p className="mt-5 text-xs text-ink-soft">
               Package amounts come from each package&rsquo;s current price; retail
               amounts are the total snapshotted at the till. &ldquo;New&rdquo;
@@ -614,6 +744,46 @@ export default async function PaymentsPage({
         </aside>
       </div>
     </div>
+  );
+}
+
+function OverviewCard({
+  label,
+  value,
+  detail,
+  href,
+  active,
+  emphasis = false,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  href: string;
+  active: boolean;
+  emphasis?: boolean;
+}) {
+  return (
+    <a
+      href={href}
+      className={`card block p-5 transition hover:-translate-y-0.5 hover:shadow-md ${
+        active
+          ? "ring-2 ring-brand-500"
+          : emphasis
+            ? "border-brand-200 bg-brand-50/40"
+            : ""
+      }`}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-medium text-ink-muted">{label}</p>
+        {active && (
+          <span className="badge bg-brand-50 text-brand-700">Viewing</span>
+        )}
+      </div>
+      <p className="mt-3 text-2xl font-semibold tracking-tight tabular-nums text-ink sm:text-3xl">
+        {value}
+      </p>
+      <p className="mt-2 text-xs text-ink-soft">{detail}</p>
+    </a>
   );
 }
 
