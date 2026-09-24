@@ -247,7 +247,7 @@ export async function grantPackageAction(
   // stay valid. Only active packages can be sold.
   const { data: pkg, error: pkgError } = await supabase
     .from("packages")
-    .select("credits, validity_days, active, pool")
+    .select("credits, validity_days, active, pool, price_cents, currency")
     .eq("id", package_id)
     .single();
 
@@ -273,6 +273,8 @@ export async function grantPackageAction(
     expires_at: expiresAt,
     payment_method,
     pool: pkg.pool ?? "regular",
+    sale_amount_cents: pkg.price_cents,
+    sale_currency: pkg.currency ?? "VND",
   });
 
   if (error) {
