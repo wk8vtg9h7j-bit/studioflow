@@ -85,12 +85,6 @@ export function CustomerRow({
     setHistoryLoading(true);
     try {
       setHistory(await getCustomerHistoryAction(customer.id));
-    } catch {
-      setHistory({
-        bookings: [],
-        credits: [],
-        error: "Could not load customer history.",
-      });
     } finally {
       setHistoryLoading(false);
     }
@@ -98,7 +92,7 @@ export function CustomerRow({
 
   return (
     <li className="card overflow-hidden">
-      <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-3 px-4 py-4 sm:flex sm:gap-4 sm:px-5">
+      <div className="flex items-center gap-4 px-5 py-4">
         <span
           className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-brand-50 text-sm font-semibold text-brand-700"
           aria-hidden
@@ -127,7 +121,7 @@ export function CustomerRow({
           </p>
         </div>
 
-        <div className="col-span-2 flex w-full flex-wrap items-center justify-between gap-3 sm:ml-auto sm:w-auto sm:shrink-0 sm:justify-start sm:gap-4">
+        <div className="flex shrink-0 items-center gap-4">
           <div className="flex items-center gap-3 text-right">
             <div>
               <p className="text-sm font-semibold text-ink">{regularBalance}</p>
@@ -145,7 +139,7 @@ export function CustomerRow({
           <button
             type="button"
             onClick={toggleHistory}
-            className="btn-secondary flex-1 sm:flex-none"
+            className="btn-secondary"
           >
             {showHistory ? "Close history" : "History"}
           </button>
@@ -156,7 +150,7 @@ export function CustomerRow({
               setShowDelete(false);
               setShowHistory(false);
             }}
-            className="btn-secondary flex-1 sm:flex-none"
+            className="btn-secondary"
           >
             {editing ? "Close" : "Edit"}
           </button>
@@ -167,7 +161,7 @@ export function CustomerRow({
               setEditing(false);
               setShowHistory(false);
             }}
-            className="btn-ghost flex-1 text-rose-700 hover:bg-rose-50 hover:text-rose-800 sm:flex-none"
+            className="btn-ghost text-rose-700 hover:bg-rose-50 hover:text-rose-800"
           >
             {showDelete ? "Close delete" : "Delete"}
           </button>
@@ -175,7 +169,10 @@ export function CustomerRow({
       </div>
 
       {showHistory && (
-        <CustomerHistoryPanel history={history} loading={historyLoading} />
+        <CustomerHistoryPanel
+          history={history}
+          loading={historyLoading}
+        />
       )}
 
       {showDelete && (
@@ -209,11 +206,11 @@ function CustomerHistoryPanel({
   loading: boolean;
 }) {
   return (
-    <div className="border-t border-stone-200 bg-stone-50 px-4 py-5 sm:px-5">
+    <div className="border-t border-stone-200 bg-stone-50 px-5 py-5">
       <div className="mb-4">
         <h3 className="text-sm font-semibold text-ink">Customer history</h3>
         <p className="mt-1 text-xs text-ink-soft">
-          Latest class bookings and credit/package activity.
+          Latest 100 class bookings and 100 credit/package transactions.
         </p>
       </div>
 
@@ -248,11 +245,11 @@ function CustomerHistoryPanel({
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-ink">
+                        <p className="truncate text-sm font-medium text-ink">
                           {booking.session?.title ?? "Deleted class"}
                         </p>
                         {booking.session && (
-                          <p className="mt-0.5 text-xs leading-relaxed text-ink-muted">
+                          <p className="mt-0.5 text-xs text-ink-muted">
                             {formatSessionWhen(
                               booking.session.startsAt,
                               booking.session.timezone,
@@ -261,7 +258,7 @@ function CustomerHistoryPanel({
                           </p>
                         )}
                       </div>
-                      <span className="badge shrink-0 bg-stone-100 text-ink-muted">
+                      <span className="badge bg-stone-100 text-ink-muted">
                         {humanizeLabel(booking.status)}
                       </span>
                     </div>
@@ -294,10 +291,10 @@ function CustomerHistoryPanel({
                     className="flex items-start justify-between gap-3 rounded-lg border border-stone-200 bg-white px-3 py-3"
                   >
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-ink">
+                      <p className="truncate text-sm font-medium text-ink">
                         {item.packageName ?? humanizeLabel(item.reason)}
                       </p>
-                      <p className="mt-0.5 text-xs leading-relaxed text-ink-muted">
+                      <p className="mt-0.5 text-xs text-ink-muted">
                         {new Date(item.createdAt).toLocaleString()}
                         {item.paymentMethod
                           ? ` · ${item.paymentMethod.toUpperCase()}`
@@ -315,8 +312,8 @@ function CustomerHistoryPanel({
                     <span
                       className={
                         item.delta >= 0
-                          ? "shrink-0 text-sm font-semibold text-emerald-700"
-                          : "shrink-0 text-sm font-semibold text-rose-700"
+                          ? "text-sm font-semibold text-emerald-700"
+                          : "text-sm font-semibold text-rose-700"
                       }
                     >
                       {item.delta > 0 ? "+" : ""}
@@ -455,6 +452,24 @@ function GrantPackage({
           </select>
         </div>
 
+        <label className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
+          <input
+            type="checkbox"
+            name="settle_latest_attendance"
+            defaultChecked
+            className="mt-0.5 h-4 w-4 rounded border-stone-300"
+          />
+          <span className="text-xs leading-relaxed text-amber-900">
+            <span className="block font-semibold">
+              Use this payment for today&apos;s attended class
+            </span>
+            If this customer already attended a class today, StudioFlow will use
+            the required credit(s) from this package to settle their latest
+            attended class instead of leaving extra usable credits. Uncheck this
+            only when the package is purely for future classes.
+          </span>
+        </label>
+
         {state.error && (
           <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
             {state.error}
@@ -462,11 +477,11 @@ function GrantPackage({
         )}
         {state.ok && (
           <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-            Package granted — credits added to this customer.
+            {state.message ?? "Package recorded."}
           </p>
         )}
 
-        <SubmitButton>Grant package</SubmitButton>
+        <SubmitButton>Record package payment</SubmitButton>
       </form>
     </div>
   );
