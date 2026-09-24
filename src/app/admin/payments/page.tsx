@@ -55,6 +55,8 @@ type PurchaseRow = {
   created_at: string;
   customer_id: string;
   payment_method: string | null;
+  sale_amount_cents: number | null;
+  sale_currency: string | null;
   package: { name: string | null; price_cents: number | null; currency: string | null } | null;
   customer: CustomerRef | null;
 };
@@ -71,7 +73,14 @@ type SaleRow = {
 
 type SummaryPurchaseRow = {
   created_at: string;
+  sale_amount_cents: number | null;
+  sale_currency: string | null;
   package: { price_cents: number | null; currency: string | null } | null;
+};
+
+type SummaryAttendanceRow = {
+  spots_count: number | null;
+  session: { starts_at: string } | null;
 };
 
 type SummarySaleRow = {
@@ -120,6 +129,8 @@ type DayGroup = {
   date: string;
   label: string;
   payments: Payment[];
+  paymentCount: number;
+  visits: number;
   // Takings bucketed by currency code. A day that mixed VND and USD keeps two
   // entries rather than collapsing into one meaningless number.
   totals: Totals;
@@ -224,11 +235,12 @@ export default async function PaymentsPage({
     { data: priorBuyerData },
     { data: summaryPurchaseData },
     { data: summarySaleData },
+    { data: summaryAttendanceData },
   ] = await Promise.all([
     supabase
       .from("credit_ledger")
       .select(
-        `id, created_at, customer_id, payment_method,
+        `id, created_at, customer_id, payment_method, sale_amount_cents, sale_currency,
          package:packages ( name, price_cents, currency ),
          customer:customers ( name, email, profile:profiles ( full_name, email ) )`,
       )
@@ -240,14 +252,14 @@ export default async function PaymentsPage({
       .from("bookings")
       .select(
         `id,status,credits_spent,spots_count,
-         session:sessions (
+         session:sessions!inner (
            starts_at,
            title,
            class_type:class_types ( name )
          ),
          customer:customers ( name, email, profile:profiles ( full_name, email ) )`,
       )
-      .in("status", ["booked", "attended"])
+      .eq("status", "attended")
       .gte("session.starts_at", lowerBound)
       .lt("session.starts_at", upperBound),
     supabase
@@ -281,7 +293,7 @@ export default async function PaymentsPage({
     supabase
       .from("credit_ledger")
       .select(
-        `created_at,
+        `created_at, sale_amount_cents, sale_currency,
          package:packages ( price_cents, currency )`,
       )
       .eq("reason", "purchase")
@@ -292,6 +304,12 @@ export default async function PaymentsPage({
       .select("created_at,total_cents,currency")
       .gte("created_at", summaryLowerBound)
       .lt("created_at", summaryUpperBound),
+    supabase
+      .from("bookings")
+      .select("spots_count,session:sessions!inner(starts_at)")
+      .eq("status", "attended")
+      .gte("session.starts_at", summaryLowerBound)
+      .lt("session.starts_at", summaryUpperBound),
   ]);
 
   const purchases = (purchaseData ?? []) as unknown as PurchaseRow[];
@@ -299,6 +317,7 @@ export default async function PaymentsPage({
   const sales = (saleData ?? []) as unknown as SaleRow[];
   const summaryPurchases = (summaryPurchaseData ?? []) as unknown as SummaryPurchaseRow[];
   const summarySales = (summarySaleData ?? []) as SummarySaleRow[];
+  const summaryAttendance = (summaryAttendanceData ?? []) as unknown as SummaryAttendanceRow[];
   const products = (productData ?? []) as Product[];
 
   // A Customer row carries no display name of its own — it is either a profile
@@ -340,6 +359,8 @@ export default async function PaymentsPage({
         date,
         label: formatInTimeZone(new Date(iso), TZ, "EEEE, d MMM yyyy"),
         payments: [],
+        paymentCount: 0,
+        visits: 0,
         totals: {},
       };
       groups.set(date, g);
@@ -350,15 +371,17 @@ export default async function PaymentsPage({
   for (const row of visiblePurchases) {
     const date = dayOf(row.created_at);
     const g = ensureDay(date, row.created_at);
-    const amount = row.package?.price_cents ?? 0;
-    addTo(g.totals, row.package?.currency ?? null, amount);
+    const amount = row.sale_amount_cents ?? row.package?.price_cents ?? 0;
+    const currency = row.sale_currency ?? row.package?.currency ?? "VND";
+    addTo(g.totals, currency, amount);
+    g.paymentCount += 1;
     g.payments.push({
       id: row.id,
       kind: "package",
       name: nameOf(row.customer),
       label: row.package?.name ?? "Package",
       amount,
-      currency: row.package?.currency ?? "VND",
+      currency,
       method: methodOf(row.payment_method),
       isNew: isNew.get(row.id) ?? false,
       time: formatInTimeZone(new Date(row.created_at), TZ, "h:mm a"),
@@ -373,6 +396,7 @@ export default async function PaymentsPage({
     const date = dayOf(row.created_at);
     const g = ensureDay(date, row.created_at);
     addTo(g.totals, row.currency, row.total_cents);
+    g.paymentCount += 1;
     g.payments.push({
       id: row.id,
       kind: "retail",
@@ -401,6 +425,7 @@ export default async function PaymentsPage({
       row.session.class_type?.name ||
       "Class";
     const spots = Math.max(row.spots_count ?? 1, 1);
+    g.visits += spots;
 
     g.payments.push({
       id: `attendance-${row.id}`,
@@ -434,7 +459,11 @@ export default async function PaymentsPage({
 
   const rangeTotals: Totals = {};
   for (const p of visiblePurchases) {
-    addTo(rangeTotals, p.package?.currency ?? null, p.package?.price_cents ?? 0);
+    addTo(
+      rangeTotals,
+      p.sale_currency ?? p.package?.currency ?? null,
+      p.sale_amount_cents ?? p.package?.price_cents ?? 0,
+    );
   }
   for (const r of visibleSales) {
     addTo(rangeTotals, r.currency, r.total_cents);
@@ -446,6 +475,9 @@ export default async function PaymentsPage({
   let todayPaymentCount = 0;
   let weekPaymentCount = 0;
   let monthPaymentCount = 0;
+  let todayVisitCount = 0;
+  let weekVisitCount = 0;
+  let monthVisitCount = 0;
 
   const addSummaryPayment = (
     iso: string,
@@ -472,13 +504,29 @@ export default async function PaymentsPage({
   for (const row of summaryPurchases) {
     addSummaryPayment(
       row.created_at,
-      row.package?.currency ?? null,
-      row.package?.price_cents ?? 0,
+      row.sale_currency ?? row.package?.currency ?? null,
+      row.sale_amount_cents ?? row.package?.price_cents ?? 0,
     );
   }
   for (const row of summarySales) {
     addSummaryPayment(row.created_at, row.currency, row.total_cents);
   }
+
+  for (const row of summaryAttendance) {
+    if (!row.session) continue;
+    const key = dayOf(row.session.starts_at);
+    if (key < monthStartKey || key > todayKey) continue;
+    const spots = Math.max(row.spots_count ?? 1, 1);
+
+    monthVisitCount += spots;
+    if (key >= weekStartKey) weekVisitCount += spots;
+    if (key === todayKey) todayVisitCount += spots;
+  }
+
+  const rangeVisitCount = attendance.reduce((sum, row) => {
+    if (!row.session || !inRange(row.session.starts_at)) return sum;
+    return sum + Math.max(row.spots_count ?? 1, 1);
+  }, 0);
 
   const todayLabel = formatInTimeZone(new Date(), TZ, "EEE, d MMM");
   const weekStartLabel = formatInTimeZone(
@@ -504,8 +552,8 @@ export default async function PaymentsPage({
   for (const p of visiblePurchases) {
     addTo(
       byMethod[methodOf(p.payment_method)],
-      p.package?.currency ?? null,
-      p.package?.price_cents ?? 0,
+      p.sale_currency ?? p.package?.currency ?? null,
+      p.sale_amount_cents ?? p.package?.price_cents ?? 0,
     );
     if (isNew.get(p.id)) newCount++;
     else returningCount++;
@@ -535,21 +583,21 @@ export default async function PaymentsPage({
         <OverviewCard
           label="Today"
           value={formatTotals(todayTotals)}
-          detail={`${todayLabel} · ${todayPaymentCount} payment${todayPaymentCount === 1 ? "" : "s"}`}
+          detail={`${todayLabel} · ${todayPaymentCount} payment${todayPaymentCount === 1 ? "" : "s"} · ${todayVisitCount} attended visit${todayVisitCount === 1 ? "" : "s"}`}
           href={`/admin/payments?from=${todayKey}&to=${todayKey}`}
           active={fromKey === todayKey && toKey === todayKey}
         />
         <OverviewCard
           label="This week"
           value={formatTotals(weekTotals)}
-          detail={`${weekStartLabel} – ${todayLabel} · ${weekPaymentCount} payment${weekPaymentCount === 1 ? "" : "s"}`}
+          detail={`${weekStartLabel} – ${todayLabel} · ${weekPaymentCount} payments · ${weekVisitCount} attended visits`}
           href={`/admin/payments?from=${weekStartKey}&to=${todayKey}`}
           active={fromKey === weekStartKey && toKey === todayKey}
         />
         <OverviewCard
           label="Month to date"
           value={formatTotals(monthTotals)}
-          detail={`${monthStartLabel} – ${todayLabel} · ${monthPaymentCount} payment${monthPaymentCount === 1 ? "" : "s"}`}
+          detail={`${monthStartLabel} – ${todayLabel} · ${monthPaymentCount} payments · ${monthVisitCount} attended visits`}
           href={`/admin/payments?from=${monthStartKey}&to=${todayKey}`}
           active={fromKey === monthStartKey && toKey === todayKey}
           emphasis
@@ -634,7 +682,7 @@ export default async function PaymentsPage({
                 {/* Payments */}
                 <div className="px-5 pt-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
-                    Payments & visits ({day.payments.length})
+                    Activity · {day.paymentCount} payment{day.paymentCount === 1 ? "" : "s"} · {day.visits} visit{day.visits === 1 ? "" : "s"}
                   </p>
                 </div>
                 {day.payments.length === 0 ? (
@@ -721,6 +769,10 @@ export default async function PaymentsPage({
                 label="Payments"
                 value={visiblePurchases.length + visibleSales.length}
               />
+              <SummaryStat
+                label="Attended visits"
+                value={rangeVisitCount}
+              />
             </dl>
 
             <div className="my-5 h-px bg-stone-200" />
@@ -749,8 +801,8 @@ export default async function PaymentsPage({
             </dl>
 
             <p className="mt-5 text-xs text-ink-soft">
-              Package amounts come from each package&rsquo;s current price; retail
-              amounts are the total snapshotted at the till. &ldquo;New&rdquo;
+              Package amounts use the immutable sale amount stored when the package
+              was purchased; retail amounts use the till snapshot. &ldquo;New&rdquo;
               means the customer&rsquo;s first package purchase — retail sales do
               not count towards it. Refunds and manual credit adjustments are not
               counted.
