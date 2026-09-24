@@ -16,7 +16,7 @@ import { z } from "zod";
 import { requireRole } from "@/lib/auth";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 
-export type CustomerActionState = { error?: string; ok?: boolean };
+export type CustomerActionState = { error?: string; ok?: boolean; message?: string };
 export type AddCustomerState = { error?: string; ok?: boolean; message?: string };
 
 export type CustomerBookingHistoryItem = {
@@ -241,48 +241,45 @@ export async function grantPackageAction(
   }
 
   const { customer_id, package_id, payment_method } = parsed.data;
-  const supabase = await createClient();
+  const settleLatestAttendance =
+    formData.get("settle_latest_attendance") === "on";
 
-  // Look up the package so we know how many clips it grants and how long they
-  // stay valid. Only active packages can be sold.
-  const { data: pkg, error: pkgError } = await supabase
-    .from("packages")
-    .select("credits, validity_days, active, pool, price_cents, currency")
-    .eq("id", package_id)
-    .single();
-
-  if (pkgError || !pkg) {
-    return { error: "That package could not be found." };
-  }
-  if (!pkg.active) {
-    return { error: "That package is no longer available." };
-  }
-
-  // Clips expire validity_days after the grant. credit_balance() ignores
-  // ledger rows whose expires_at has passed.
-  const expiresAt = new Date(
-    Date.now() + pkg.validity_days * 24 * 60 * 60 * 1000,
-  ).toISOString();
-
-  const { error } = await supabase.from("credit_ledger").insert({
-    customer_id,
-    delta: pkg.credits,
-    reason: "purchase",
-    package_id,
-    booking_id: null,
-    expires_at: expiresAt,
-    payment_method,
-    pool: pkg.pool ?? "regular",
-    sale_amount_cents: pkg.price_cents,
-    sale_currency: pkg.currency ?? "VND",
+  const svc = createServiceClient();
+  const { data, error } = await svc.rpc("record_package_purchase", {
+    p_customer: customer_id,
+    p_package: package_id,
+    p_payment_method: payment_method,
+    p_settle_latest_attendance: settleLatestAttendance,
   });
 
   if (error) {
     return { error: error.message };
   }
 
+  const result = data as
+    | {
+        settlement?: {
+          settled?: boolean;
+          booking_id?: string;
+          credits?: number;
+        };
+      }
+    | null;
+
+  const settledCredits = Number(result?.settlement?.credits ?? 0);
+
   revalidatePath("/admin/customers");
-  return { ok: true };
+  revalidatePath("/admin/payments");
+
+  return {
+    ok: true,
+    message:
+      settledCredits > 0
+        ? `Package recorded. ${settledCredits} credit${
+            settledCredits === 1 ? "" : "s"
+          } used to settle today’s attended class.`
+        : "Package recorded. Credits added to this customer.",
+  };
 }
 
 // ----------------------------------------------------------------------------
