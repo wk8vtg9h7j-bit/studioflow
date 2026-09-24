@@ -35,6 +35,8 @@ type PurchaseRow = {
   id: string;
   created_at: string;
   payment_method: string | null;
+  sale_amount_cents: number | null;
+  sale_currency: string | null;
   package: { name: string | null; price_cents: number | null; currency: string | null } | null;
   customer: CustomerRef | null;
 };
@@ -105,7 +107,7 @@ export async function GET(request: NextRequest) {
     supabase
       .from("credit_ledger")
       .select(
-        `id, created_at, payment_method,
+        `id, created_at, payment_method, sale_amount_cents, sale_currency,
          package:packages ( name, price_cents, currency ),
          customer:customers ( name, email, profile:profiles ( full_name, email ) )`,
       )
@@ -158,8 +160,8 @@ export async function GET(request: NextRequest) {
       customer: nameOf(row.customer),
       item: row.package?.name ?? "Package",
       method: methodOf(row.payment_method),
-      currency: (row.package?.currency ?? "VND").toUpperCase(),
-      amount: row.package?.price_cents ?? 0,
+      currency: (row.sale_currency ?? row.package?.currency ?? "VND").toUpperCase(),
+      amount: row.sale_amount_cents ?? row.package?.price_cents ?? 0,
     });
   }
 
