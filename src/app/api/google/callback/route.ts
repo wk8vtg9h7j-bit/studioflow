@@ -57,20 +57,47 @@ export async function GET(request: Request) {
       // Non-fatal: we can still sync without knowing the email.
     }
 
-    // 2b. Which calendar do we mirror into? Prefer the account's primary
-    //     calendar; fall back to the literal "primary" alias.
-    let calendarId = "primary";
+    // 2b. Keep StudioFlow pointed at its intentionally selected calendar.
+    //     Reconnecting Google must not silently switch Hideaway/Downtown into
+    //     the account's primary calendar, which is used by a different studio.
+    const service = createServiceClient();
+    const { data: studio } = await service
+      .from("studios")
+      .select("id,slug,google_calendar_id")
+      .eq("id", studioId)
+      .single();
+
+    let calendarId = studio?.google_calendar_id ?? "primary";
     try {
       const calendar = google.calendar({ version: "v3", auth: client });
       const list = await calendar.calendarList.list();
-      const primary = list.data.items?.find((c) => c.primary);
-      if (primary?.id) calendarId = primary.id;
+      const calendars = list.data.items ?? [];
+
+      const savedCalendarIsAvailable =
+        studio?.google_calendar_id &&
+        calendars.some((item) => item.id === studio.google_calendar_id);
+
+      if (!savedCalendarIsAvailable) {
+        const isStudioFlowPilates =
+          studio?.slug === "hideaway-pilates" ||
+          studio?.slug === "downtown-pilates";
+
+        const sharedStudioFlowCalendar = isStudioFlowPilates
+          ? calendars.find((item) => item.summary === "Hideaway and Downtown")
+          : null;
+
+        const primary = calendars.find((item) => item.primary);
+        calendarId =
+          sharedStudioFlowCalendar?.id ??
+          primary?.id ??
+          studio?.google_calendar_id ??
+          "primary";
+      }
     } catch {
-      // Non-fatal: "primary" is a valid calendar id for the authed account.
+      // Non-fatal. Preserve the saved calendar ID when possible.
     }
 
     // 3. Persist against the studio. The refresh token is encrypted at rest.
-    const service = createServiceClient();
     const { error: updateError } = await service
       .from("studios")
       .update({
