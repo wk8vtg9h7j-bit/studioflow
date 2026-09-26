@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
+import { google } from "googleapis";
 import { createServiceClient } from "@/lib/supabase/server";
+import { createOAuthClient } from "@/lib/google/oauth";
+import { decryptToken } from "@/lib/google/crypto";
 import {
   configuredEmailProvider,
   escapeHtml,
@@ -9,7 +12,7 @@ import {
 export const maxDuration = 60;
 
 const BATCH_SIZE = 40;
-const MAX_ATTEMPTS = 10;
+const MAX_ATTEMPTS = 1000;
 
 type QueueRow = {
   id: string;
@@ -41,7 +44,10 @@ type BookingRow = {
       name: string;
       address: string | null;
       timezone: string | null;
+      id: string;
       google_account_email: string | null;
+      google_refresh_token: string | null;
+      google_token_status: string | null;
     } | null;
     class_type: { name: string | null } | null;
     instructor: { display_name: string | null } | null;
@@ -59,17 +65,6 @@ export async function GET(request: Request) {
 
   if (request.headers.get("authorization") !== `Bearer ${secret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const provider = configuredEmailProvider();
-  if (!provider) {
-    return NextResponse.json(
-      {
-        error:
-          "Booking emails are queued, but no supported email provider is configured.",
-      },
-      { status: 503 },
-    );
   }
 
   const service = createServiceClient();
@@ -99,6 +94,8 @@ export async function GET(request: Request) {
     });
   }
 
+  const provider = configuredEmailProvider();
+
   const bookingIds = Array.from(new Set(queue.map((row) => row.booking_id)));
   const { data: bookingData, error: bookingError } = await service
     .from("bookings")
@@ -118,7 +115,9 @@ export async function GET(request: Request) {
            name,
            address,
            timezone,
-           google_account_email
+           google_account_email,
+           google_refresh_token,
+           google_token_status
          ),
          class_type:class_types ( name ),
          instructor:instructors ( display_name )
@@ -193,10 +192,15 @@ export async function GET(request: Request) {
           instructor,
           isWaitlist,
         });
-        const sent = await sendEmail(provider, {
-          to: customerEmail,
-          ...customerMessage,
-        });
+        const sent = provider
+          ? await sendEmail(provider, {
+              to: customerEmail,
+              ...customerMessage,
+            })
+          : await sendViaStudioGmail(session.studio, {
+              to: [customerEmail],
+              ...customerMessage,
+            });
 
         if (sent.ok) {
           customerSentAt = now;
@@ -233,10 +237,15 @@ export async function GET(request: Request) {
           isWaitlist,
           bookingId: item.booking_id,
         });
-        const sent = await sendEmail(provider, {
-          to: adminRecipients,
-          ...adminMessage,
-        });
+        const sent = provider
+          ? await sendEmail(provider, {
+              to: adminRecipients,
+              ...adminMessage,
+            })
+          : await sendViaStudioGmail(session.studio, {
+              to: adminRecipients,
+              ...adminMessage,
+            });
 
         if (sent.ok) {
           adminSentAt = now;
@@ -272,7 +281,7 @@ export async function GET(request: Request) {
     adminEmailed,
     failed,
     remaining: remaining ?? 0,
-    provider: provider.kind,
+    delivery: provider ? provider.kind : "google-gmail",
   });
 }
 
@@ -439,4 +448,75 @@ function formatWhen(value: string, timeZone: string): string {
     hour12: false,
     timeZone,
   }).format(new Date(value));
+}
+
+
+async function sendViaStudioGmail(
+  studio:
+    | {
+        id: string;
+        google_account_email: string | null;
+        google_refresh_token: string | null;
+        google_token_status: string | null;
+      }
+    | null,
+  message: {
+    to: string[];
+    subject: string;
+    text: string;
+    html: string;
+  },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (
+    !studio ||
+    studio.google_token_status !== "connected" ||
+    !studio.google_refresh_token
+  ) {
+    return {
+      ok: false,
+      error: "Studio Google account is not connected.",
+    };
+  }
+
+  try {
+    const client = createOAuthClient();
+    client.setCredentials({
+      refresh_token: decryptToken(studio.google_refresh_token),
+    });
+
+    const gmail = google.gmail({ version: "v1", auth: client });
+    const from = studio.google_account_email || "info@rechargeddanang.com";
+    const subject = `=?UTF-8?B?${Buffer.from(message.subject).toString("base64")}?=`;
+    const raw = [
+      `From: ${from}`,
+      `To: ${message.to.join(", ")}`,
+      `Subject: ${subject}`,
+      "MIME-Version: 1.0",
+      'Content-Type: text/html; charset="UTF-8"',
+      "Content-Transfer-Encoding: 8bit",
+      "",
+      message.html,
+    ].join("\r\n");
+
+    await gmail.users.messages.send({
+      userId: "me",
+      requestBody: {
+        raw: Buffer.from(raw)
+          .toString("base64")
+          .replace(/\+/g, "-")
+          .replace(/\//g, "_")
+          .replace(/=+$/g, ""),
+      },
+    });
+
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error instanceof Error
+          ? `Google Gmail: ${error.message}`
+          : "Google Gmail send failed",
+    };
+  }
 }
