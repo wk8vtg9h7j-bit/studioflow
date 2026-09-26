@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/sync-google",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/booking-emails",
+      "schedule": "* * * * *"
     }
   ]
 }
