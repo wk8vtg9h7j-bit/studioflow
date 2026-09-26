@@ -85,12 +85,74 @@ export async function GET(request: Request) {
 
   const queue = (queueData ?? []) as QueueRow[];
   if (queue.length === 0) {
+    const { data: studioHealthRows } = await service
+      .from("studios")
+      .select("id,name,google_refresh_token,google_token_status")
+      .eq("active", true);
+
+    const gmailHealth: Array<{
+      studio: string;
+      connected: boolean;
+      gmailSend: boolean;
+      error?: string;
+    }> = [];
+
+    for (const studio of studioHealthRows ?? []) {
+      const row = studio as {
+        id: string;
+        name: string;
+        google_refresh_token: string | null;
+        google_token_status: string | null;
+      };
+
+      if (
+        row.google_token_status !== "connected" ||
+        !row.google_refresh_token
+      ) {
+        gmailHealth.push({
+          studio: row.name,
+          connected: false,
+          gmailSend: false,
+        });
+        continue;
+      }
+
+      try {
+        const client = createOAuthClient();
+        client.setCredentials({
+          refresh_token: decryptToken(row.google_refresh_token),
+        });
+        const access = await client.getAccessToken();
+        const token = access.token;
+        if (!token) throw new Error("No access token returned");
+
+        const info = await client.getTokenInfo(token);
+        gmailHealth.push({
+          studio: row.name,
+          connected: true,
+          gmailSend: info.scopes.includes(
+            "https://www.googleapis.com/auth/gmail.send",
+          ),
+        });
+      } catch (error) {
+        gmailHealth.push({
+          studio: row.name,
+          connected: true,
+          gmailSend: false,
+          error: error instanceof Error ? error.message : "Token check failed",
+        });
+      }
+    }
+
+    console.log("booking email oauth health", gmailHealth);
+
     return NextResponse.json({
       attempted: 0,
       customerEmailed: 0,
       adminEmailed: 0,
       failed: 0,
       remaining: 0,
+      gmailHealth,
     });
   }
 
