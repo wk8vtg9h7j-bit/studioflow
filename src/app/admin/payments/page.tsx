@@ -324,7 +324,13 @@ export default async function PaymentsPage({
   // or a walk-in — so flatten both into one label before handing it to the form.
   const customerOptions = ((customerData ?? []) as unknown as (CustomerRef & {
     id: string;
-  })[]).map((c) => ({ id: c.id, name: nameOf(c) }));
+  })[])
+    .map((c) => ({
+      id: c.id,
+      name: nameOf(c),
+      email: c.profile?.email ?? c.email ?? null,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   // First-purchase-per-customer => "New". Computed over the ascending list, but
   // seeded with everyone who already bought before the window so a long-standing
@@ -605,6 +611,29 @@ export default async function PaymentsPage({
       </section>
 
       <section className="card p-4 sm:p-5">
+        <div className="mb-5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-soft">
+            Quick product sale
+          </p>
+          <div className="mt-1 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-ink">
+                Record a customer product purchase
+              </h2>
+              <p className="mt-1 text-sm text-ink-muted">
+                Tap the product, choose the customer and payment method, then record the sale.
+              </p>
+            </div>
+          </div>
+        </div>
+        <RecordSale
+          products={products}
+          customers={customerOptions}
+          studios={studioOptions}
+        />
+      </section>
+
+      <section className="card p-4 sm:p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-ink-soft">
@@ -809,14 +838,6 @@ export default async function PaymentsPage({
             </p>
           </div>
 
-          <div className="card mt-6 p-5">
-            <h2 className="mb-4 text-sm font-semibold text-ink">Record a sale</h2>
-            <RecordSale
-              products={products}
-              customers={customerOptions}
-              studios={studioOptions}
-            />
-          </div>
         </aside>
       </div>
     </div>
