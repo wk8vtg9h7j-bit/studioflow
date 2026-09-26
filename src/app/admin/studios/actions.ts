@@ -121,10 +121,10 @@ export async function toggleStudioActiveAction(formData: FormData) {
   revalidatePath("/admin/studios");
 }
 
-// Disconnect Google Calendar for a studio: clear the stored token + calendar
-// metadata and flip the status back to "disconnected". We do NOT revoke the
-// token with Google here (the admin can do that from their Google account);
-// dropping it locally is enough to stop sync and re-prompt consent next time.
+// Disconnect Google Calendar for a studio: clear the token/account connection
+// and flip the status back to "disconnected". Keep google_calendar_id so a
+// later reconnect returns to the same intentionally selected calendar instead
+// of silently falling back to the Google account's primary calendar.
 export async function disconnectGoogleAction(formData: FormData) {
   await requireRole("admin", "/admin/studios");
 
@@ -136,7 +136,6 @@ export async function disconnectGoogleAction(formData: FormData) {
     .from("studios")
     .update({
       google_refresh_token: null,
-      google_calendar_id: null,
       google_account_email: null,
       google_token_status: "disconnected",
       google_last_synced_at: null,
