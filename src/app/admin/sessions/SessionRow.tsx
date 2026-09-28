@@ -28,6 +28,7 @@ import {
   type PrivateCustomerSearchResult,
 } from "./actions";
 import { RegisterPanel } from "./RegisterPanel";
+import { GroupBookingPanel } from "./GroupBookingPanel";
 
 export function SessionRow({
   session,
@@ -52,6 +53,7 @@ export function SessionRow({
   const [fillPending, startFillTransition] = useTransition();
   const [privateBookPending, startPrivateBookTransition] = useTransition();
   const [showPrivateBooking, setShowPrivateBooking] = useState(false);
+  const [showGroupBooking, setShowGroupBooking] = useState(false);
   const [privateCustomerId, setPrivateCustomerId] = useState("");
   const [privateCustomerQuery, setPrivateCustomerQuery] = useState("");
   const [privateCustomers, setPrivateCustomers] = useState<
@@ -152,7 +154,7 @@ export function SessionRow({
 
   return (
     <li className="card overflow-hidden">
-      <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-3 px-4 py-4 sm:flex sm:gap-4 sm:px-5">
+      <div className="flex items-center gap-4 px-5 py-4">
         <span
           className="h-12 w-1.5 shrink-0 rounded-full"
           style={{ backgroundColor: color }}
@@ -160,7 +162,7 @@ export function SessionRow({
         />
 
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2">
             <p className="truncate font-medium text-ink">{heading}</p>
             {cancelled ? (
               <span className="badge bg-stone-100 text-ink-muted">
@@ -172,12 +174,12 @@ export function SessionRow({
               </span>
             )}
           </div>
-          <p className="mt-0.5 text-xs leading-relaxed text-ink-muted sm:truncate">
+          <p className="truncate text-xs text-ink-muted">
             {formatSessionWhen(session.starts_at, tz)} ·{" "}
             {formatSessionTimeRange(session.starts_at, session.ends_at, tz)}
           </p>
-          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5 text-xs text-ink-soft">
-            <span className="min-w-0 basis-full sm:basis-auto sm:truncate">
+          <div className="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-ink-soft">
+            <span className="min-w-0 truncate">
               {session.studio?.name ?? "Unknown studio"}
               {" · "}
               {session.instructor?.display_name ?? "Unassigned"}
@@ -195,11 +197,11 @@ export function SessionRow({
           </div>
         </div>
 
-        <div className="col-span-2 grid w-full grid-cols-2 gap-2 sm:ml-auto sm:flex sm:w-auto sm:shrink-0 sm:items-center">
+        <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
             onClick={() => setShowRegister((v) => !v)}
-            className="btn-secondary w-full sm:w-auto"
+            className="btn-secondary"
             title="Mark who attended and who didn't"
           >
             {showRegister ? "Hide register" : "Register"}
@@ -208,7 +210,7 @@ export function SessionRow({
           <button
             type="button"
             onClick={() => setEditing((v) => !v)}
-            className="btn-secondary w-full sm:w-auto"
+            className="btn-secondary"
           >
             {editing ? "Close" : "Edit"}
           </button>
@@ -217,29 +219,39 @@ export function SessionRow({
             <button
               type="button"
               onClick={() => setShowPrivateBooking((v) => !v)}
-              className="btn-ghost w-full sm:w-auto"
+              className="btn-ghost"
               disabled={booked >= session.capacity}
               title="Book an existing customer into this private class"
             >
               {showPrivateBooking ? "Close booking" : "Book customer"}
             </button>
           ) : !cancelled ? (
-            <button
-              type="button"
-              onClick={toggleFill}
-              className="btn-ghost w-full sm:w-auto"
-              disabled={fillPending || (held === 0 && openSeats === 0)}
-              title={
-                held > 0
-                  ? "Release the held seats so customers can book again"
-                  : "Hold the remaining seats so customers see this class as full"
-              }
-            >
-              {fillPending ? "Saving…" : held > 0 ? "Unfill" : "Fill"}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setShowGroupBooking((v) => !v)}
+                className="btn-ghost"
+                title="Book an existing customer or create a new customer"
+              >
+                {showGroupBooking ? "Close booking" : "Book customer"}
+              </button>
+              <button
+                type="button"
+                onClick={toggleFill}
+                className="btn-ghost"
+                disabled={fillPending || (held === 0 && openSeats === 0)}
+                title={
+                  held > 0
+                    ? "Release the held seats so customers can book again"
+                    : "Hold the remaining seats so customers see this class as full"
+                }
+              >
+                {fillPending ? "Saving…" : held > 0 ? "Unfill" : "Fill"}
+              </button>
+            </>
           ) : null}
 
-          <form action={setSessionStatusAction} className="w-full sm:w-auto">
+          <form action={setSessionStatusAction}>
             <input type="hidden" name="id" value={session.id} />
             <input
               type="hidden"
@@ -248,7 +260,7 @@ export function SessionRow({
             />
             <button
               type="submit"
-              className="btn-ghost w-full sm:w-auto"
+              className="btn-ghost"
               title={cancelled ? "Restore session" : "Cancel session"}
             >
               {cancelled ? "Restore" : "Cancel"}
@@ -257,8 +269,15 @@ export function SessionRow({
         </div>
       </div>
 
+      {showGroupBooking && !isPrivate && !cancelled && (
+        <GroupBookingPanel
+          sessionId={session.id}
+          onClose={() => setShowGroupBooking(false)}
+        />
+      )}
+
       {showPrivateBooking && isPrivate && !cancelled && (
-        <div className="border-t border-stone-200 bg-stone-50 px-4 py-4 sm:px-5">
+        <div className="border-t border-stone-200 bg-stone-50 px-5 py-4">
           <div className="max-w-xl space-y-3">
             <div>
               <h3 className="text-sm font-semibold text-ink">
@@ -353,13 +372,13 @@ export function SessionRow({
       )}
 
       {showRegister && (
-        <div className="border-t border-stone-200 bg-stone-50 px-4 py-4 sm:px-5">
+        <div className="border-t border-stone-200 bg-stone-50 px-5 py-4">
           <RegisterPanel sessionId={session.id} />
         </div>
       )}
 
       {editing && (
-        <div className="border-t border-stone-200 bg-stone-50 px-4 py-4 sm:px-5">
+        <div className="border-t border-stone-200 bg-stone-50 px-5 py-4">
           <SessionForm
             session={session}
             studios={studios}
