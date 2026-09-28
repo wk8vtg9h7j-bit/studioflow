@@ -28,6 +28,7 @@ import {
   type PrivateCustomerSearchResult,
 } from "./actions";
 import { RegisterPanel } from "./RegisterPanel";
+import { GroupBookingPanel } from "./GroupBookingPanel";
 
 export function SessionRow({
   session,
@@ -52,6 +53,7 @@ export function SessionRow({
   const [fillPending, startFillTransition] = useTransition();
   const [privateBookPending, startPrivateBookTransition] = useTransition();
   const [showPrivateBooking, setShowPrivateBooking] = useState(false);
+  const [showGroupBooking, setShowGroupBooking] = useState(false);
   const [privateCustomerId, setPrivateCustomerId] = useState("");
   const [privateCustomerQuery, setPrivateCustomerQuery] = useState("");
   const [privateCustomers, setPrivateCustomers] = useState<
@@ -224,19 +226,29 @@ export function SessionRow({
               {showPrivateBooking ? "Close booking" : "Book customer"}
             </button>
           ) : !cancelled ? (
-            <button
-              type="button"
-              onClick={toggleFill}
-              className="btn-ghost"
-              disabled={fillPending || (held === 0 && openSeats === 0)}
-              title={
-                held > 0
-                  ? "Release the held seats so customers can book again"
-                  : "Hold the remaining seats so customers see this class as full"
-              }
-            >
-              {fillPending ? "Saving…" : held > 0 ? "Unfill" : "Fill"}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setShowGroupBooking((v) => !v)}
+                className="btn-ghost"
+                title="Book an existing customer or create a new customer"
+              >
+                {showGroupBooking ? "Close booking" : "Book customer"}
+              </button>
+              <button
+                type="button"
+                onClick={toggleFill}
+                className="btn-ghost"
+                disabled={fillPending || (held === 0 && openSeats === 0)}
+                title={
+                  held > 0
+                    ? "Release the held seats so customers can book again"
+                    : "Hold the remaining seats so customers see this class as full"
+                }
+              >
+                {fillPending ? "Saving…" : held > 0 ? "Unfill" : "Fill"}
+              </button>
+            </>
           ) : null}
 
           <form action={setSessionStatusAction}>
@@ -256,6 +268,13 @@ export function SessionRow({
           </form>
         </div>
       </div>
+
+      {showGroupBooking && !isPrivate && !cancelled && (
+        <GroupBookingPanel
+          sessionId={session.id}
+          onClose={() => setShowGroupBooking(false)}
+        />
+      )}
 
       {showPrivateBooking && isPrivate && !cancelled && (
         <div className="border-t border-stone-200 bg-stone-50 px-5 py-4">
