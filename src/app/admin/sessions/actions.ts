@@ -291,6 +291,128 @@ export async function setFillerSeatsAction(
 }
 
 // ----------------------------------------------------------------------------
+// Admin booking for regular/group classes.
+//
+// Uses service-role-only database helpers so reception can book on behalf of an
+// existing customer without impersonating their login. The database function
+// mirrors book_session() atomically: capacity, waitlist, duplicate protection,
+// credit balance, booking row, and ledger spend are one transaction.
+// ----------------------------------------------------------------------------
+const AdminGroupBookingSchema = z.object({
+  session_id: z.string().uuid("Could not identify the class."),
+  customer_id: z.string().uuid("Choose a customer."),
+  spots: z.coerce
+    .number()
+    .int()
+    .refine((value) => value === 1 || value === 2, "Choose 1 or 2 spots."),
+});
+
+export async function adminBookGroupCustomerAction(
+  _prev: SessionActionState,
+  formData: FormData,
+): Promise<SessionActionState> {
+  await requireRole("admin", "/admin/sessions");
+
+  const parsed = AdminGroupBookingSchema.safeParse({
+    session_id: formData.get("session_id"),
+    customer_id: formData.get("customer_id"),
+    spots: formData.get("spots") ?? "1",
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Check the booking." };
+  }
+
+  const svc = createServiceClient();
+  const { data, error } = await svc.rpc("admin_book_customer", {
+    p_session_id: parsed.data.session_id,
+    p_customer_id: parsed.data.customer_id,
+    p_spots: parsed.data.spots,
+  });
+
+  if (error) return { error: error.message };
+
+  const status =
+    data && typeof data === "object" && "status" in data
+      ? String((data as { status: unknown }).status)
+      : "booked";
+
+  revalidatePath("/admin/sessions");
+  revalidatePath("/admin/customers");
+  revalidatePath("/admin/payments");
+  revalidatePath("/book");
+  revalidatePath("/my-bookings");
+
+  return {
+    ok: true,
+    message:
+      status === "waitlisted"
+        ? "Customer added to the waitlist. No credit was spent."
+        : `Customer booked for ${parsed.data.spots} spot${parsed.data.spots === 1 ? "" : "s"}. Google Calendar will update shortly.`,
+  };
+}
+
+const AdminNewGroupBookingSchema = z.object({
+  session_id: z.string().uuid("Could not identify the class."),
+  name: z.string().trim().min(1, "Enter the customer name.").max(120),
+  email: z
+    .string()
+    .trim()
+    .email("Enter a valid email address.")
+    .optional()
+    .or(z.literal(""))
+    .transform((value) => (value ? value : null)),
+});
+
+export async function adminCreateAndBookGroupCustomerAction(
+  _prev: SessionActionState,
+  formData: FormData,
+): Promise<SessionActionState> {
+  await requireRole("admin", "/admin/sessions");
+
+  const parsed = AdminNewGroupBookingSchema.safeParse({
+    session_id: formData.get("session_id"),
+    name: formData.get("name"),
+    email: formData.get("email") ?? "",
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Check the customer." };
+  }
+
+  const svc = createServiceClient();
+  const { data, error } = await svc.rpc("admin_create_customer_and_book", {
+    p_session_id: parsed.data.session_id,
+    p_name: parsed.data.name,
+    p_email: parsed.data.email,
+    p_spots: 1,
+  });
+
+  if (error) return { error: error.message };
+
+  const booking =
+    data && typeof data === "object" && "booking" in data
+      ? (data as { booking?: unknown }).booking
+      : null;
+  const status =
+    booking && typeof booking === "object" && "status" in booking
+      ? String((booking as { status: unknown }).status)
+      : "booked";
+
+  revalidatePath("/admin/sessions");
+  revalidatePath("/admin/customers");
+  revalidatePath("/admin/payments");
+  revalidatePath("/book");
+  revalidatePath("/my-bookings");
+
+  return {
+    ok: true,
+    message:
+      status === "waitlisted"
+        ? "Customer created with 1 starter credit and added to the waitlist. The credit was not spent."
+        : "Customer created with 1 starter credit and booked. The starter credit was used for this class.",
+  };
+}
+
+// ----------------------------------------------------------------------------
 // Admin booking for a private class.
 //
 // Creates a real booking for an existing customer and spends private credits.
