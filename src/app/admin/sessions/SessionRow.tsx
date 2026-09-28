@@ -49,6 +49,7 @@ export function SessionRow({
   // The roster is fetched by RegisterPanel only once it's opened, so this flag
   // is also what keeps the sessions list from loading every booking on screen.
   const [showRegister, setShowRegister] = useState(false);
+  const [showMobileActions, setShowMobileActions] = useState(false);
   const router = useRouter();
   const [fillPending, startFillTransition] = useTransition();
   const [privateBookPending, startPrivateBookTransition] = useTransition();
@@ -154,14 +155,14 @@ export function SessionRow({
 
   return (
     <li className="card overflow-hidden">
-      <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-4 px-4 py-4 sm:flex sm:items-center sm:gap-4 sm:px-5">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 px-4 py-4 sm:flex sm:items-center sm:gap-4 sm:px-5">
         <span
-          className="h-full min-h-16 w-1.5 shrink-0 rounded-full sm:h-12 sm:min-h-0"
+          className="h-full min-h-20 w-1.5 shrink-0 rounded-full sm:h-12 sm:min-h-0"
           style={{ backgroundColor: color }}
           aria-hidden
         />
 
-        <div className="min-w-0">
+        <div className="min-w-0 sm:flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <p className="min-w-0 font-medium leading-snug text-ink sm:truncate">
               {heading}
@@ -196,7 +197,17 @@ export function SessionRow({
           </div>
         </div>
 
-        <div className="col-span-2 grid grid-cols-2 gap-2 border-t border-stone-200 pt-3 sm:col-span-1 sm:ml-auto sm:flex sm:shrink-0 sm:items-center sm:border-t-0 sm:pt-0">
+        <button
+          type="button"
+          onClick={() => setShowMobileActions((value) => !value)}
+          className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm font-semibold text-ink shadow-sm sm:hidden"
+          aria-expanded={showMobileActions}
+          aria-controls={`session-actions-${session.id}`}
+        >
+          {showMobileActions ? "Close" : "Manage"}
+        </button>
+
+        <div className="hidden sm:ml-auto sm:flex sm:shrink-0 sm:items-center sm:gap-2">
           <button
             type="button"
             onClick={() => setShowRegister((v) => !v)}
@@ -267,6 +278,88 @@ export function SessionRow({
           </form>
         </div>
       </div>
+
+      {showMobileActions && (
+        <div
+          id={`session-actions-${session.id}`}
+          className="border-t border-stone-200 bg-stone-50 px-4 py-3 sm:hidden"
+        >
+          <div className="grid grid-cols-2 gap-2">
+            {!cancelled && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (isPrivate) {
+                    setShowPrivateBooking((value) => !value);
+                  } else {
+                    setShowGroupBooking((value) => !value);
+                  }
+                  setShowMobileActions(false);
+                }}
+                className="btn-primary col-span-2 w-full"
+                disabled={isPrivate && booked >= session.capacity}
+              >
+                {(isPrivate ? showPrivateBooking : showGroupBooking)
+                  ? "Close booking"
+                  : "Book customer"}
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowRegister((value) => !value);
+                setShowMobileActions(false);
+              }}
+              className="btn-secondary w-full"
+            >
+              {showRegister ? "Hide register" : "Register"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setEditing((value) => !value);
+                setShowMobileActions(false);
+              }}
+              className="btn-secondary w-full"
+            >
+              {editing ? "Close edit" : "Edit"}
+            </button>
+
+            {!cancelled && !isPrivate && (
+              <button
+                type="button"
+                onClick={() => {
+                  toggleFill();
+                  setShowMobileActions(false);
+                }}
+                className="btn-ghost w-full"
+                disabled={fillPending || (held === 0 && openSeats === 0)}
+              >
+                {fillPending ? "Saving…" : held > 0 ? "Unfill" : "Fill"}
+              </button>
+            )}
+
+            <form
+              action={setSessionStatusAction}
+              className={`w-full ${
+                cancelled || isPrivate ? "col-span-2" : ""
+              }`}
+            >
+              <input type="hidden" name="id" value={session.id} />
+              <input
+                type="hidden"
+                name="status"
+                value={cancelled ? "scheduled" : "cancelled"}
+              />
+              <button type="submit" className="btn-ghost w-full">
+                {cancelled ? "Restore" : "Cancel"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showGroupBooking && !isPrivate && !cancelled && (
         <GroupBookingPanel
