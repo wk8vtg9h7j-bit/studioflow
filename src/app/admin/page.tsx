@@ -96,6 +96,17 @@ export default async function AdminOverviewPage() {
     `${previousMonthKey}-01T00:00:00`,
     FALLBACK_TZ,
   );
+  const monthElapsedMs = todayEnd.getTime() - monthStart.getTime();
+  const previousMonthComparableEnd = new Date(
+    Math.min(
+      monthStart.getTime(),
+      previousMonthStart.getTime() + monthElapsedMs,
+    ),
+  );
+  const weekElapsedMs = todayEnd.getTime() - weekStart.getTime();
+  const previousWeekComparableEnd = new Date(
+    Math.min(weekStart.getTime(), previousWeekStart.getTime() + weekElapsedMs),
+  );
 
   const sevenDaysOut = new Date(now.getTime() + 7 * DAY_MS);
 
@@ -113,6 +124,7 @@ export default async function AdminOverviewPage() {
     todaySessionsRes,
     monthSessionsRes,
     upcomingSessionsRes,
+    next7BookingsRes,
     allAttendedRes,
     recentBookingsRes,
     recentPurchasesRes,
@@ -141,12 +153,12 @@ export default async function AdminOverviewPage() {
       .select("sale_amount_cents,sale_currency,created_at")
       .eq("reason", "purchase")
       .gte("created_at", previousMonthStart.toISOString())
-      .lt("created_at", monthStart.toISOString()),
+      .lt("created_at", previousMonthComparableEnd.toISOString()),
     service
       .from("sales")
       .select("total_cents,currency,created_at")
       .gte("created_at", previousMonthStart.toISOString())
-      .lt("created_at", monthStart.toISOString()),
+      .lt("created_at", previousMonthComparableEnd.toISOString()),
     service
       .from("credit_ledger")
       .select("sale_amount_cents,sale_currency,created_at")
@@ -163,12 +175,12 @@ export default async function AdminOverviewPage() {
       .select("sale_amount_cents,sale_currency,created_at")
       .eq("reason", "purchase")
       .gte("created_at", previousWeekStart.toISOString())
-      .lt("created_at", weekStart.toISOString()),
+      .lt("created_at", previousWeekComparableEnd.toISOString()),
     service
       .from("sales")
       .select("total_cents,currency,created_at")
       .gte("created_at", previousWeekStart.toISOString())
-      .lt("created_at", weekStart.toISOString()),
+      .lt("created_at", previousWeekComparableEnd.toISOString()),
     service
       .from("sessions")
       .select(
@@ -195,6 +207,13 @@ export default async function AdminOverviewPage() {
       .limit(10),
     service
       .from("bookings")
+      .select("spots_count,session:sessions!inner(starts_at,status)")
+      .in("status", ["booked", "attended"])
+      .gte("session.starts_at", nowIso)
+      .lt("session.starts_at", sevenDaysOut.toISOString())
+      .eq("session.status", "scheduled"),
+    service
+      .from("bookings")
       .select(
         "id,customer_id,status,spots_count,booked_at,session:sessions!inner(id,starts_at,studio_id,status)",
       )
@@ -205,6 +224,7 @@ export default async function AdminOverviewPage() {
       .select(
         "id,status,booked_at,cancelled_at,spots_count,customer:customers(name,email,profile:profiles(full_name,email)),session:sessions(title,starts_at,studio:studios(name,timezone),class_type:class_types(name))",
       )
+      .in("status", ["booked", "cancelled"])
       .order("updated_at", { ascending: false })
       .limit(12),
     service
@@ -369,14 +389,11 @@ export default async function AdminOverviewPage() {
     )
     .reduce((sum, row) => sum + (row.spots_count ?? 1), 0);
 
-  const next7SessionIds = new Set(
-    upcomingSessions
-      .filter((session) => Date.parse(session.starts_at) < sevenDaysOut.getTime())
-      .map((session) => session.id),
-  );
-  const next7Bookings = seatRows
-    .filter((row) => next7SessionIds.has(row.session_id))
-    .reduce((sum, row) => sum + (row.spots_count ?? 1), 0);
+  const next7Bookings = (
+    (next7BookingsRes.data ?? []) as unknown as Array<{
+      spots_count: number | null;
+    }>
+  ).reduce((sum, row) => sum + (row.spots_count ?? 1), 0);
 
   const activeCustomers30 = analytics.filter(
     (row) =>
