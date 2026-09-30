@@ -1,26 +1,42 @@
 // ============================================================================
 // Admin · Customers (CRM)
 //
-// Performance notes:
-// - customer/profile records are fetched once,
-// - search/status filtering happens server-side before rendering,
-// - only one page (50 rows) is hydrated,
-// - credit balances are calculated from one batched ledger query rather than
-//   two RPC round-trips per customer.
+// Adds actionable CRM segments and customer intelligence on top of the existing
+// contact / package tools. All analytics are derived read-only from the existing
+// bookings, credit ledger and retail sales tables.
 // ============================================================================
-import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
 import type { Package } from "@/lib/types";
+import {
+  CUSTOMER_SEGMENTS,
+  segmentMeta,
+  type CustomerSegmentKey,
+} from "@/lib/customerAnalytics";
+import { loadCustomerAnalytics } from "@/lib/customerAnalytics.server";
 import { CustomerRow, type CustomerWithProfile } from "./CustomerRow";
 import { AddCustomer } from "./AddCustomer";
 
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 50;
+const FEATURED_SEGMENTS: CustomerSegmentKey[] = [
+  "registered_never_booked",
+  "one_credit",
+  "expiring_7d",
+  "first_visit_no_package",
+  "inactive_30",
+  "zero_credits",
+];
 
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; page?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    status?: string;
+    segment?: string;
+    page?: string;
+  }>;
 }) {
   const params = await searchParams;
   const q = params.q?.trim() ?? "";
@@ -30,50 +46,50 @@ export default async function CustomersPage({
     params.status === "inactive"
       ? params.status
       : "";
+  const selectedSegment = segmentMeta(params.segment)?.key;
   const requestedPage = Math.max(1, Number(params.page ?? "1") || 1);
 
-  const supabase = await createClient();
   const service = createServiceClient();
-
-  const [customersRes, packagesRes] = await Promise.all([
-    supabase
-      .from("customers")
-      .select("*, profile:profiles(full_name,email,phone)")
-      .order("created_at", { ascending: false }),
-    supabase
+  const [analytics, packagesRes] = await Promise.all([
+    loadCustomerAnalytics(),
+    service
       .from("packages")
       .select("*")
       .eq("active", true)
       .order("price_cents", { ascending: true }),
   ]);
-
-  const allCustomers = (customersRes.data ?? []) as CustomerWithProfile[];
   const packages = (packagesRes.data ?? []) as Package[];
 
-  const counts = allCustomers.reduce(
-    (acc, customer) => {
+  const counts = analytics.reduce(
+    (acc, row) => {
       acc.total += 1;
-      if (customer.status === "active") acc.active += 1;
-      else if (customer.status === "lead") acc.leads += 1;
-      else if (customer.status === "inactive") acc.inactive += 1;
+      if (row.customer.status === "active") acc.active += 1;
+      else if (row.customer.status === "lead") acc.leads += 1;
+      else if (row.customer.status === "inactive") acc.inactive += 1;
       return acc;
     },
     { total: 0, active: 0, leads: 0, inactive: 0 },
   );
 
+  const segmentCounts = new Map<CustomerSegmentKey, number>();
+  for (const segment of CUSTOMER_SEGMENTS) segmentCounts.set(segment.key, 0);
+  for (const row of analytics) {
+    for (const segment of row.segments) {
+      segmentCounts.set(segment, (segmentCounts.get(segment) ?? 0) + 1);
+    }
+  }
+
   const needle = q.toLowerCase();
-  const filtered = allCustomers.filter((customer) => {
-    if (status && customer.status !== status) return false;
+  const filtered = analytics.filter((row) => {
+    if (status && row.customer.status !== status) return false;
+    if (selectedSegment && !row.segments.includes(selectedSegment)) return false;
     if (!needle) return true;
 
     const haystack = [
-      customer.profile?.full_name,
-      customer.profile?.email,
-      customer.profile?.phone,
-      customer.name,
-      customer.email,
-      customer.phone,
-      ...(customer.tags ?? []),
+      row.name,
+      row.email,
+      row.phone,
+      ...(row.customer.tags ?? []),
     ]
       .filter(Boolean)
       .join(" ")
@@ -86,77 +102,108 @@ export default async function CustomersPage({
   const page = Math.min(requestedPage, totalPages);
   const start = (page - 1) * PAGE_SIZE;
   const customers = filtered.slice(start, start + PAGE_SIZE);
-
-  const balanceById = new Map<
-    string,
-    { regular: number; private: number }
-  >();
-
-  for (const customer of customers) {
-    balanceById.set(customer.id, { regular: 0, private: 0 });
-  }
-
-  if (customers.length > 0) {
-    const now = new Date();
-    const { data: ledgerRows } = await service
-      .from("credit_ledger")
-      .select("customer_id,delta,pool,expires_at")
-      .in(
-        "customer_id",
-        customers.map((customer) => customer.id),
-      );
-
-    for (const row of ledgerRows ?? []) {
-      const item = row as {
-        customer_id: string;
-        delta: number;
-        pool: string | null;
-        expires_at: string | null;
-      };
-
-      if (item.expires_at && new Date(item.expires_at) <= now) continue;
-
-      const balance = balanceById.get(item.customer_id);
-      if (!balance) continue;
-
-      if ((item.pool ?? "regular") === "private") {
-        balance.private += item.delta;
-      } else {
-        balance.regular += item.delta;
-      }
-    }
-  }
+  const currentSegmentMeta = selectedSegment
+    ? segmentMeta(selectedSegment)
+    : null;
 
   function pageHref(nextPage: number): string {
     const next = new URLSearchParams();
     if (q) next.set("q", q);
     if (status) next.set("status", status);
+    if (selectedSegment) next.set("segment", selectedSegment);
     if (nextPage > 1) next.set("page", String(nextPage));
     const qs = next.toString();
     return qs ? `/admin/customers?${qs}` : "/admin/customers";
   }
 
+  const exportParams = new URLSearchParams();
+  if (q) exportParams.set("q", q);
+  if (status) exportParams.set("status", status);
+  if (selectedSegment) exportParams.set("segment", selectedSegment);
+  const exportHref = `/admin/customers/export${
+    exportParams.toString() ? `?${exportParams.toString()}` : ""
+  }`;
+
   return (
     <div className="space-y-8">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink">
-          Customers
-        </h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          Your CRM — contact details, lifecycle status, tags, and credit
-          balances for every member.
-        </p>
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-ink">
+            Customers
+          </h1>
+          <p className="mt-1 text-sm text-ink-muted">
+            CRM, customer value, visit behaviour, credits and sales opportunities.
+          </p>
+        </div>
+        <a href="/admin/marketing" className="btn-secondary w-full sm:w-auto">
+          Marketing opportunities
+        </a>
       </header>
+
+      <section>
+        <div className="mb-3 flex items-end justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-ink-soft">
+              Needs attention
+            </p>
+            <p className="mt-1 text-sm text-ink-muted">
+              Click a segment to open the exact customer list.
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+          {FEATURED_SEGMENTS.map((key) => {
+            const meta = segmentMeta(key)!;
+            const active = selectedSegment === key;
+            return (
+              <a
+                key={key}
+                href={`/admin/customers?segment=${key}`}
+                className={`card p-4 transition hover:shadow-card ${
+                  active ? "ring-2 ring-brand-500" : ""
+                }`}
+              >
+                <p className="text-2xl font-semibold tabular-nums text-ink">
+                  {segmentCounts.get(key) ?? 0}
+                </p>
+                <p className="mt-1 text-sm font-medium text-ink">{meta.shortLabel}</p>
+                <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+                  {meta.campaign}
+                </p>
+              </a>
+            );
+          })}
+        </div>
+      </section>
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
         <section className="space-y-4 lg:col-span-2">
           <AddCustomer />
 
+          {currentSegmentMeta && (
+            <div className="card border-brand-200 bg-brand-50/40 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-ink">
+                    {currentSegmentMeta.label}
+                  </p>
+                  <p className="mt-1 text-xs text-ink-muted">
+                    {currentSegmentMeta.description} Suggested use:{" "}
+                    {currentSegmentMeta.campaign}.
+                  </p>
+                </div>
+                <a href={exportHref} className="btn-secondary shrink-0">
+                  Export emails CSV
+                </a>
+              </div>
+            </div>
+          )}
+
           <form
             method="get"
-            className="card flex flex-wrap items-end gap-3 p-4"
+            className="card grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4"
           >
-            <div className="min-w-[14rem] flex-1">
+            <div className="sm:col-span-2 xl:col-span-2">
               <label className="label" htmlFor="customer-search">
                 Search
               </label>
@@ -170,7 +217,7 @@ export default async function CustomersPage({
               />
             </div>
 
-            <div className="min-w-[10rem]">
+            <div>
               <label className="label" htmlFor="customer-status">
                 Status
               </label>
@@ -187,14 +234,38 @@ export default async function CustomersPage({
               </select>
             </div>
 
-            <button type="submit" className="btn-primary">
-              Filter
-            </button>
-            {(q || status) && (
-              <a href="/admin/customers" className="btn-secondary">
-                Clear
+            <div>
+              <label className="label" htmlFor="customer-segment">
+                Segment
+              </label>
+              <select
+                id="customer-segment"
+                name="segment"
+                className="input"
+                defaultValue={selectedSegment ?? ""}
+              >
+                <option value="">All customers</option>
+                {CUSTOMER_SEGMENTS.map((segment) => (
+                  <option key={segment.key} value={segment.key}>
+                    {segment.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex gap-2 sm:col-span-2 xl:col-span-4">
+              <button type="submit" className="btn-primary">
+                Filter
+              </button>
+              {(q || status || selectedSegment) && (
+                <a href="/admin/customers" className="btn-secondary">
+                  Clear
+                </a>
+              )}
+              <a href={exportHref} className="btn-ghost ml-auto">
+                Export CSV
               </a>
-            )}
+            </div>
           </form>
 
           <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">
@@ -204,17 +275,19 @@ export default async function CustomersPage({
 
           {customers.length > 0 ? (
             <ul className="space-y-3">
-              {customers.map((customer) => (
+              {customers.map((row) => (
                 <CustomerRow
-                  key={customer.id}
-                  customer={customer}
-                  regularBalance={
-                    balanceById.get(customer.id)?.regular ?? 0
-                  }
-                  privateBalance={
-                    balanceById.get(customer.id)?.private ?? 0
-                  }
+                  key={row.customer.id}
+                  customer={row.customer as CustomerWithProfile}
+                  regularBalance={row.regularCredits}
+                  privateBalance={row.privateCredits}
                   packages={packages}
+                  visits={row.visits}
+                  totalSpendCents={row.totalSpendCents}
+                  spendCurrency={row.spendCurrency}
+                  lastVisitAt={row.lastVisitAt}
+                  nextBookingAt={row.nextBookingAt}
+                  segments={row.segments}
                 />
               ))}
             </ul>
@@ -245,7 +318,7 @@ export default async function CustomersPage({
         </section>
 
         <aside className="lg:col-span-1">
-          <div className="card sticky top-24 p-5">
+          <div className="card p-4 sm:p-5 lg:sticky lg:top-24">
             <h2 className="mb-4 text-sm font-semibold text-ink">At a glance</h2>
             <dl className="space-y-3">
               <SummaryStat label="Total members" value={counts.total} />
@@ -253,9 +326,29 @@ export default async function CustomersPage({
               <SummaryStat label="Leads" value={counts.leads} />
               <SummaryStat label="Inactive" value={counts.inactive} />
             </dl>
+
+            <div className="my-5 h-px bg-stone-200" />
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
+              All opportunities
+            </p>
+            <div className="space-y-2">
+              {CUSTOMER_SEGMENTS.map((segment) => (
+                <a
+                  key={segment.key}
+                  href={`/admin/customers?segment=${segment.key}`}
+                  className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-stone-50"
+                >
+                  <span className="text-ink-muted">{segment.shortLabel}</span>
+                  <span className="font-semibold tabular-nums text-ink">
+                    {segmentCounts.get(segment.key) ?? 0}
+                  </span>
+                </a>
+              ))}
+            </div>
+
             <p className="mt-5 text-xs text-ink-soft">
-              Only 50 customer records are rendered at a time so the CRM stays
-              responsive as your member list grows.
+              Spend combines snapshotted package payments and recorded retail
+              purchases. Credits use the same FIFO expiry logic as StudioFlow.
             </p>
           </div>
         </aside>
