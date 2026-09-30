@@ -18,6 +18,7 @@ const ADMIN_NAV: NavItem[] = [
   { href: "/admin/class-types", label: "Class types" },
   { href: "/admin/instructors", label: "Instructors" },
   { href: "/admin/customers", label: "Customers" },
+  { href: "/admin/marketing", label: "Marketing" },
   { href: "/admin/packages", label: "Packages" },
   { href: "/admin/products", label: "Products" },
   { href: "/admin/payments", label: "Payments" },
