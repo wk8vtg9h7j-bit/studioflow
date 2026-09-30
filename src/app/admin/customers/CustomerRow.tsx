@@ -15,6 +15,7 @@ import {
   humanizeLabel,
 } from "@/lib/format";
 import type { Customer, Package, Profile } from "@/lib/types";
+import type { CustomerSegmentKey } from "@/lib/customerAnalytics";
 import { CustomerForm } from "./CustomerForm";
 import {
   grantPackageAction,
@@ -51,11 +52,23 @@ export function CustomerRow({
   regularBalance,
   privateBalance,
   packages,
+  visits,
+  totalSpendCents,
+  spendCurrency,
+  lastVisitAt,
+  nextBookingAt,
+  segments,
 }: {
   customer: CustomerWithProfile;
   regularBalance: number;
   privateBalance: number;
   packages: Package[];
+  visits: number;
+  totalSpendCents: number;
+  spendCurrency: string;
+  lastVisitAt: string | null;
+  nextBookingAt: string | null;
+  segments: CustomerSegmentKey[];
 }) {
   const [editing, setEditing] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
@@ -119,6 +132,50 @@ export function CustomerRow({
             {email ?? "No email"}
             {phone ? ` · ${phone}` : ""}
           </p>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-ink-soft">
+            <span>
+              <strong className="font-semibold text-ink-muted">{visits}</strong>{" "}
+              visit{visits === 1 ? "" : "s"}
+            </span>
+            <span>
+              Spend{" "}
+              <strong className="font-semibold text-ink-muted">
+                {formatMoney(totalSpendCents, spendCurrency)}
+              </strong>
+            </span>
+            <span>
+              Last{" "}
+              <strong className="font-semibold text-ink-muted">
+                {lastVisitAt ? shortDate(lastVisitAt) : "Never"}
+              </strong>
+            </span>
+            {nextBookingAt && (
+              <span>
+                Next{" "}
+                <strong className="font-semibold text-brand-700">
+                  {shortDate(nextBookingAt)}
+                </strong>
+              </span>
+            )}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {customerClassifications(segments, visits).map((label) => (
+              <span
+                key={label}
+                className={`badge ${
+                  label === "High value"
+                    ? "bg-violet-50 text-violet-700"
+                    : label === "At risk" || label === "Lapsed"
+                      ? "bg-amber-50 text-amber-700"
+                      : label === "New"
+                        ? "bg-sky-50 text-sky-700"
+                        : "bg-emerald-50 text-emerald-700"
+                }`}
+              >
+                {label}
+              </span>
+            ))}
+          </div>
         </div>
 
         <div className="flex shrink-0 items-center gap-4">
@@ -592,6 +649,26 @@ function DeleteCustomer({
       </form>
     </div>
   );
+}
+
+function shortDate(value: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+  }).format(new Date(value));
+}
+
+function customerClassifications(
+  segments: CustomerSegmentKey[],
+  visits: number,
+): string[] {
+  const labels: string[] = [];
+  if (segments.includes("high_value")) labels.push("High value");
+  if (visits === 0) labels.push("New");
+  else if (segments.includes("inactive_60")) labels.push("Lapsed");
+  else if (segments.includes("inactive_30")) labels.push("At risk");
+  else labels.push("Active");
+  return labels.slice(0, 2);
 }
 
 function initials(name: string): string {
