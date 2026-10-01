@@ -16,6 +16,10 @@ import type { OAuth2Client } from "google-auth-library";
 import { createServiceClient } from "@/lib/supabase/server";
 import { createOAuthClient } from "./oauth";
 import { decryptToken } from "./crypto";
+import {
+  getBookingPaymentStatuses,
+  type BookingPaymentStatus,
+} from "@/lib/bookingPaymentStatus.server";
 import type { BookingStatus, SessionStatus, Studio } from "@/lib/types";
 
 type StudioForSync = Pick<
@@ -48,12 +52,15 @@ type SessionForSync = {
 
 type BookingForSync = {
   id: string;
+  customer_id: string;
   status: BookingStatus;
+  credits_spent: number;
   spots_count: number;
   google_event_ids: string[] | null;
   name: string;
   email: string | null;
   phone: string | null;
+  payment_status: BookingPaymentStatus;
 };
 
 export class StudioNotConnectedError extends Error {
@@ -179,6 +186,10 @@ function bookingEventBody(
       ? booking.name
       : `${booking.name} guest ${spotIndex}`;
   const description: string[] = [];
+  const paymentLabel =
+    booking.payment_status === "package" ? "PACKAGE" : "PAYMENT DUE";
+
+  description.push(`Payment: ${paymentLabel}`);
 
   if (session.instructor_name) {
     description.push(`Instructor: ${session.instructor_name}`);
@@ -191,7 +202,7 @@ function bookingEventBody(
   description.push(`StudioFlow booking ${booking.id}`);
 
   return {
-    summary: `${name}: ${sessionName(session)}`,
+    summary: `${name} · ${paymentLabel} · ${sessionName(session)}`,
     description: description.join("\n"),
     colorId: eventColorId(studio),
     start: { dateTime: session.starts_at, timeZone: studio.timezone },
@@ -201,6 +212,7 @@ function bookingEventBody(
         studioflow_booking_id: booking.id,
         studioflow_session_id: session.id,
         studioflow_spot: String(spotIndex + 1),
+        studioflow_payment_status: booking.payment_status,
       },
     },
   };
@@ -444,17 +456,19 @@ export async function syncSessionById(sessionId: string): Promise<SyncResult> {
     const { data: bookingRows, error: bookingError } = await service
       .from("bookings")
       .select(
-        "id,status,spots_count,google_event_ids,customer:customers(name,email,phone,profile:profiles(full_name,email,phone))",
+        "id,customer_id,status,credits_spent,spots_count,google_event_ids,customer:customers(name,email,phone,profile:profiles(full_name,email,phone))",
       )
       .eq("session_id", session.id)
       .order("booked_at", { ascending: true });
 
     if (bookingError) throw bookingError;
 
-    const bookings: BookingForSync[] = (bookingRows ?? []).map((row) => {
+    const baseBookings = (bookingRows ?? []).map((row) => {
       const item = row as unknown as {
         id: string;
+        customer_id: string;
         status: BookingStatus;
+        credits_spent: number | null;
         spots_count: number | null;
         google_event_ids: string[] | null;
         customer:
@@ -475,7 +489,9 @@ export async function syncSessionById(sessionId: string): Promise<SyncResult> {
       const customer = item.customer;
       return {
         id: item.id,
+        customer_id: item.customer_id,
         status: item.status,
+        credits_spent: item.credits_spent ?? 0,
         spots_count: Math.max(item.spots_count ?? 1, 1),
         google_event_ids: item.google_event_ids,
         name:
@@ -488,6 +504,19 @@ export async function syncSessionById(sessionId: string): Promise<SyncResult> {
         phone: customer?.profile?.phone ?? customer?.phone ?? null,
       };
     });
+
+    const paymentStatuses = await getBookingPaymentStatuses(
+      baseBookings.map((booking) => ({
+        id: booking.id,
+        customerId: booking.customer_id,
+        creditsSpent: booking.credits_spent,
+      })),
+    );
+
+    const bookings: BookingForSync[] = baseBookings.map((booking) => ({
+      ...booking,
+      payment_status: paymentStatuses.get(booking.id) ?? "payment_due",
+    }));
 
     let created = 0;
     let updated = 0;
