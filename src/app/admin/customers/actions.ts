@@ -15,6 +15,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireRole } from "@/lib/auth";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { queueCustomerBookingCalendarSync } from "@/lib/bookingPaymentStatus.server";
 
 export type CustomerActionState = {
   error?: string;
@@ -296,6 +297,8 @@ export async function grantPackageAction(
       p_pool: "private",
     }),
   ]);
+
+  await queueCustomerBookingCalendarSync(customer_id);
 
   revalidatePath("/admin/customers");
   return {
