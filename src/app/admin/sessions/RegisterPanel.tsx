@@ -97,6 +97,15 @@ export function RegisterPanel({ sessionId }: { sessionId: string }) {
                 {row.name}
                 {row.spots_count > 1 ? ` — ${row.spots_count} spots` : ""}
               </span>
+              <span
+                className={`badge ${
+                  row.payment_status === "package"
+                    ? "bg-emerald-50 text-emerald-700"
+                    : "bg-amber-50 text-amber-800"
+                }`}
+              >
+                {row.payment_status === "package" ? "PACKAGE" : "PAYMENT DUE"}
+              </span>
               <span className={`badge ${STATUS_BADGE[row.status]}`}>
                 {STATUS_LABEL[row.status]}
               </span>
@@ -148,8 +157,9 @@ export function RegisterPanel({ sessionId }: { sessionId: string }) {
       )}
 
       <p className="text-xs text-ink-soft">
-        Credits are not returned for a no-show — the seat was held. Attendance
-        feeds payroll, so marking a no-show lowers the head count for this class.
+        PACKAGE means the booking is covered by a paid package. PAYMENT DUE means
+        the customer only has starter/manual credits or no paid package coverage,
+        so payment should be collected. Credits are not returned for a no-show.
       </p>
     </div>
   );
