@@ -16,7 +16,12 @@ import { z } from "zod";
 import { requireRole } from "@/lib/auth";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 
-export type CustomerActionState = { error?: string; ok?: boolean };
+export type CustomerActionState = {
+  error?: string;
+  ok?: boolean;
+  regularBalance?: number;
+  privateBalance?: number;
+};
 export type AddCustomerState = { error?: string; ok?: boolean; message?: string };
 
 export type CustomerBookingHistoryItem = {
@@ -281,8 +286,25 @@ export async function grantPackageAction(
     return { error: error.message };
   }
 
+  const [regularRes, privateRes] = await Promise.all([
+    supabase.rpc("credit_balance", {
+      p_customer: customer_id,
+      p_pool: "regular",
+    }),
+    supabase.rpc("credit_balance", {
+      p_customer: customer_id,
+      p_pool: "private",
+    }),
+  ]);
+
   revalidatePath("/admin/customers");
-  return { ok: true };
+  return {
+    ok: true,
+    regularBalance:
+      typeof regularRes.data === "number" ? regularRes.data : undefined,
+    privateBalance:
+      typeof privateRes.data === "number" ? privateRes.data : undefined,
+  };
 }
 
 // ----------------------------------------------------------------------------
@@ -359,8 +381,25 @@ export async function adjustCreditsAction(
     return { error: error.message };
   }
 
+  const [regularRes, privateRes] = await Promise.all([
+    supabase.rpc("credit_balance", {
+      p_customer: customer_id,
+      p_pool: "regular",
+    }),
+    supabase.rpc("credit_balance", {
+      p_customer: customer_id,
+      p_pool: "private",
+    }),
+  ]);
+
   revalidatePath("/admin/customers");
-  return { ok: true };
+  return {
+    ok: true,
+    regularBalance:
+      typeof regularRes.data === "number" ? regularRes.data : undefined,
+    privateBalance:
+      typeof privateRes.data === "number" ? privateRes.data : undefined,
+  };
 }
 
 // ----------------------------------------------------------------------------
