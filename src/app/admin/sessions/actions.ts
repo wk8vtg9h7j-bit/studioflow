@@ -16,6 +16,10 @@ import { fromZonedTime } from "date-fns-tz";
 import { z } from "zod";
 import { requireRole } from "@/lib/auth";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import {
+  getBookingPaymentStatuses,
+  type BookingPaymentStatus,
+} from "@/lib/bookingPaymentStatus.server";
 import type { BookingStatus } from "@/lib/types";
 
 const SessionSchema = z.object({
@@ -835,10 +839,12 @@ export async function searchPrivateCustomersAction(
 
 export type RegisterRow = {
   id: string;
+  customer_id: string;
   name: string;
   status: BookingStatus;
   credits_spent: number;
   spots_count: number;
+  payment_status: BookingPaymentStatus;
 };
 
 export type RegisterData = {
@@ -877,7 +883,7 @@ export async function getRegisterDataAction(
   const { data: bookingRows } = await supabase
     .from("bookings")
     .select(
-      "id, status, credits_spent, spots_count, customer:customers(name, profile:profiles(full_name))",
+      "id, customer_id, status, credits_spent, spots_count, customer:customers(name, profile:profiles(full_name))",
     )
     .eq("session_id", sessionId)
     .neq("status", "cancelled")
@@ -885,18 +891,29 @@ export async function getRegisterDataAction(
 
   const rows = (bookingRows ?? []) as unknown as {
     id: string;
+    customer_id: string;
     status: BookingStatus;
     credits_spent: number | null;
     spots_count: number | null;
     customer: unknown;
   }[];
 
+  const paymentStatuses = await getBookingPaymentStatuses(
+    rows.map((row) => ({
+      id: row.id,
+      customerId: row.customer_id,
+      creditsSpent: row.credits_spent ?? 0,
+    })),
+  );
+
   const roster: RegisterRow[] = rows.map((r) => ({
     id: r.id,
+    customer_id: r.customer_id,
     name: resolveName(r.customer),
     status: r.status,
     credits_spent: r.credits_spent ?? 0,
     spots_count: r.spots_count ?? 1,
+    payment_status: paymentStatuses.get(r.id) ?? "payment_due",
   }));
 
   const sessionInfo = session as
