@@ -1,45 +1,43 @@
-// ============================================================================
-// GET /api/google/callback?code=<...>&state=<studioId>
-//
-// The redirect target Google sends the admin back to after consent. We:
-//   1. exchange the one-time `code` for tokens (incl. the long-lived refresh
-//      token) via the OAuth2 client,
-//   2. resolve which account was connected (email) and which calendar to mirror
-//      sessions into (the account's primary calendar),
-//   3. encrypt the refresh token and persist it + the calendar id/email against
-//      the studio row carried in `state`, flipping google_token_status to
-//      "connected".
-//
-// Runs with no user session (Google calls this URL directly), so all DB writes
-// use the service-role client. Any failure redirects back to /admin/studios
-// with an error message rather than surfacing a raw 500.
-// ============================================================================
 import { NextResponse } from "next/server";
 import { google } from "googleapis";
 import { createServiceClient } from "@/lib/supabase/server";
-import { createOAuthClient } from "@/lib/google/oauth";
+import {
+  createOAuthClient,
+  parseCustomerConsentState,
+} from "@/lib/google/oauth";
 import { encryptToken } from "@/lib/google/crypto";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
-  const studioId = url.searchParams.get("state");
+  const rawState = url.searchParams.get("state");
   const oauthError = url.searchParams.get("error");
 
-  const back = (params: string) =>
-    NextResponse.redirect(new URL(`/admin/studios?${params}`, url.origin));
+  const isCustomerState = rawState?.startsWith("customer:") ?? false;
+  const customerId =
+    isCustomerState && rawState ? parseCustomerConsentState(rawState) : null;
+  const studioId = isCustomerState ? null : rawState;
 
-  // The admin declined consent, or Google reported a problem.
+  const adminBack = (params: string) =>
+    NextResponse.redirect(new URL(`/admin/studios?${params}`, url.origin));
+  const customerBack = (params: string) =>
+    NextResponse.redirect(new URL(`/my-bookings?${params}`, url.origin));
+  const back = isCustomerState ? customerBack : adminBack;
+
   if (oauthError) {
     return back(`error=${encodeURIComponent(`Google: ${oauthError}`)}`);
   }
-  if (!code || !studioId) {
-    return back("error=Missing+code+or+studio");
+  if (!code || !rawState) {
+    return back("error=Missing+OAuth+code+or+state");
+  }
+  if (isCustomerState && !customerId) {
+    return customerBack("error=Invalid+Google+connection+state");
+  }
+  if (!isCustomerState && !studioId) {
+    return adminBack("error=Missing+studio");
   }
 
   try {
-    // 1. Exchange the code for tokens. offline + prompt=consent (set on the
-    //    consent URL) guarantees a refresh token is present here.
     const client = createOAuthClient();
     const { tokens } = await client.getToken(code);
     if (!tokens.refresh_token) {
@@ -47,24 +45,68 @@ export async function GET(request: Request) {
     }
     client.setCredentials(tokens);
 
-    // 2a. Which Google account did they connect?
     let accountEmail: string | null = null;
     try {
       const oauth2 = google.oauth2({ version: "v2", auth: client });
       const me = await oauth2.userinfo.get();
       accountEmail = me.data.email ?? null;
     } catch {
-      // Non-fatal: we can still sync without knowing the email.
+      // Email is helpful for display only; calendar sync does not depend on it.
     }
 
-    // 2b. Keep StudioFlow pointed at its intentionally selected calendar.
-    //     Reconnecting Google must not silently switch Hideaway/Downtown into
-    //     the account's primary calendar, which is used by a different studio.
     const service = createServiceClient();
+
+    if (customerId) {
+      const { error: connectionError } = await service
+        .from("customer_google_connections")
+        .upsert(
+          {
+            customer_id: customerId,
+            google_refresh_token: encryptToken(tokens.refresh_token),
+            google_calendar_id: "primary",
+            google_account_email: accountEmail,
+            google_token_status: "connected",
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "customer_id" },
+        );
+
+      if (connectionError) {
+        return customerBack(
+          `error=${encodeURIComponent(
+            `Could not save Google connection: ${connectionError.message}`,
+          )}`,
+        );
+      }
+
+      await service
+        .from("customers")
+        .update({ calendar_auto_add: true })
+        .eq("id", customerId);
+
+      const { data: futureSessions } = await service
+        .from("sessions")
+        .select("id")
+        .eq("status", "scheduled")
+        .gt("starts_at", new Date().toISOString());
+
+      const sessionIds = (futureSessions ?? []).map((row) => row.id);
+      if (sessionIds.length > 0) {
+        await service
+          .from("bookings")
+          .update({ customer_calendar_sync_pending_at: new Date().toISOString() })
+          .eq("customer_id", customerId)
+          .eq("status", "booked")
+          .in("session_id", sessionIds);
+      }
+
+      return customerBack("notice=Google+Calendar+connected");
+    }
+
     const { data: studio } = await service
       .from("studios")
       .select("id,slug,google_calendar_id")
-      .eq("id", studioId)
+      .eq("id", studioId as string)
       .single();
 
     let calendarId = studio?.google_calendar_id ?? "primary";
@@ -94,10 +136,9 @@ export async function GET(request: Request) {
           "primary";
       }
     } catch {
-      // Non-fatal. Preserve the saved calendar ID when possible.
+      // Preserve the selected studio calendar if listing calendars fails.
     }
 
-    // 3. Persist against the studio. The refresh token is encrypted at rest.
     const { error: updateError } = await service
       .from("studios")
       .update({
@@ -106,15 +147,17 @@ export async function GET(request: Request) {
         google_account_email: accountEmail,
         google_token_status: "connected",
       })
-      .eq("id", studioId);
+      .eq("id", studioId as string);
 
     if (updateError) {
-      return back(
-        `error=${encodeURIComponent(`Could not save token: ${updateError.message}`)}`,
+      return adminBack(
+        `error=${encodeURIComponent(
+          `Could not save token: ${updateError.message}`,
+        )}`,
       );
     }
 
-    return back("notice=Google+Calendar+connected");
+    return adminBack("notice=Google+Calendar+connected");
   } catch (err) {
     const message = err instanceof Error ? err.message : "OAuth callback failed";
     return back(`error=${encodeURIComponent(message)}`);
