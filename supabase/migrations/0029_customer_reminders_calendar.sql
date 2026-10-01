@@ -89,7 +89,10 @@ begin
 
   return new;
 end;
-$$;
+$;
+
+revoke execute on function public.mark_session_customer_calendars_pending()
+  from public, anon, authenticated;
 
 drop trigger if exists trg_mark_session_customer_calendars_pending
   on public.sessions;
