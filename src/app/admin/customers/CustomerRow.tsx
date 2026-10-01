@@ -6,7 +6,8 @@
 // ============================================================================
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useFormState } from "react-dom";
 import { SubmitButton } from "@/app/(auth)/SubmitButton";
 import {
@@ -75,6 +76,35 @@ export function CustomerRow({
   const [showHistory, setShowHistory] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [history, setHistory] = useState<CustomerHistoryResult | null>(null);
+  const [displayRegularBalance, setDisplayRegularBalance] =
+    useState(regularBalance);
+  const [displayPrivateBalance, setDisplayPrivateBalance] =
+    useState(privateBalance);
+  const router = useRouter();
+
+  useEffect(() => {
+    setDisplayRegularBalance(regularBalance);
+  }, [regularBalance]);
+
+  useEffect(() => {
+    setDisplayPrivateBalance(privateBalance);
+  }, [privateBalance]);
+
+  const handleCreditsChanged = useCallback(
+    (nextRegular?: number, nextPrivate?: number) => {
+      if (typeof nextRegular === "number") {
+        setDisplayRegularBalance(nextRegular);
+      }
+      if (typeof nextPrivate === "number") {
+        setDisplayPrivateBalance(nextPrivate);
+      }
+
+      setHistory(null);
+      router.refresh();
+    },
+    [router],
+  );
+
   const isWalkIn = !customer.profile;
   const name =
     customer.profile?.full_name ?? customer.name ?? "Unnamed customer";
@@ -181,13 +211,17 @@ export function CustomerRow({
         <div className="flex shrink-0 items-center gap-4">
           <div className="flex items-center gap-3 text-right">
             <div>
-              <p className="text-sm font-semibold text-ink">{regularBalance}</p>
+              <p className="text-sm font-semibold text-ink">
+                {displayRegularBalance}
+              </p>
               <p className="text-[10px] uppercase tracking-wide text-ink-soft">
                 regular
               </p>
             </div>
             <div>
-              <p className="text-sm font-semibold text-brand-700">{privateBalance}</p>
+              <p className="text-sm font-semibold text-brand-700">
+                {displayPrivateBalance}
+              </p>
               <p className="text-[10px] uppercase tracking-wide text-ink-soft">
                 private
               </p>
@@ -247,8 +281,15 @@ export function CustomerRow({
           {isWalkIn && (
             <AttachLogin customerId={customer.id} defaultName={name} />
           )}
-          <GrantPackage customerId={customer.id} packages={packages} />
-          <AdjustCredits customerId={customer.id} />
+          <GrantPackage
+            customerId={customer.id}
+            packages={packages}
+            onCreditsChanged={handleCreditsChanged}
+          />
+          <AdjustCredits
+            customerId={customer.id}
+            onCreditsChanged={handleCreditsChanged}
+          />
         </div>
       )}
     </li>
@@ -440,14 +481,26 @@ function AttachLogin({
 function GrantPackage({
   customerId,
   packages,
+  onCreditsChanged,
 }: {
   customerId: string;
   packages: Package[];
+  onCreditsChanged: (regular?: number, privateCredits?: number) => void;
 }) {
   const [state, formAction] = useFormState(
     grantPackageAction,
     grantInitialState,
   );
+
+  useEffect(() => {
+    if (!state.ok) return;
+    onCreditsChanged(state.regularBalance, state.privateBalance);
+  }, [
+    state.ok,
+    state.regularBalance,
+    state.privateBalance,
+    onCreditsChanged,
+  ]);
 
   if (packages.length === 0) {
     return (
@@ -526,11 +579,27 @@ function GrantPackage({
   );
 }
 
-function AdjustCredits({ customerId }: { customerId: string }) {
+function AdjustCredits({
+  customerId,
+  onCreditsChanged,
+}: {
+  customerId: string;
+  onCreditsChanged: (regular?: number, privateCredits?: number) => void;
+}) {
   const [state, formAction] = useFormState(
     adjustCreditsAction,
     adjustInitialState,
   );
+
+  useEffect(() => {
+    if (!state.ok) return;
+    onCreditsChanged(state.regularBalance, state.privateBalance);
+  }, [
+    state.ok,
+    state.regularBalance,
+    state.privateBalance,
+    onCreditsChanged,
+  ]);
 
   return (
     <div className="border-t border-stone-200 pt-4">
