@@ -47,6 +47,7 @@ type SessionForSync = {
   filler_seats: number;
   capacity: number;
   class_type_name: string | null;
+  class_type_pool: string;
   instructor_name: string | null;
 };
 
@@ -361,7 +362,7 @@ export async function syncSessionById(sessionId: string): Promise<SyncResult> {
   const { data: sessionData, error: sessionError } = await service
     .from("sessions")
     .select(
-      "id,title,starts_at,ends_at,room,notes,status,google_event_id,google_filler_event_ids,filler_seats,capacity,studio_id,class_type:class_types(name),instructor:instructors(display_name)",
+      "id,title,starts_at,ends_at,room,notes,status,google_event_id,google_filler_event_ids,filler_seats,capacity,studio_id,class_type:class_types(name,pool),instructor:instructors(display_name)",
     )
     .eq("id", sessionId)
     .single();
@@ -388,7 +389,7 @@ export async function syncSessionById(sessionId: string): Promise<SyncResult> {
     filler_seats: number | null;
     capacity: number;
     studio_id: string;
-    class_type: { name: string | null } | null;
+    class_type: { name: string | null; pool: string | null } | null;
     instructor: { display_name: string | null } | null;
   };
 
@@ -405,6 +406,7 @@ export async function syncSessionById(sessionId: string): Promise<SyncResult> {
     filler_seats: sessionRow.filler_seats ?? 0,
     capacity: sessionRow.capacity,
     class_type_name: sessionRow.class_type?.name ?? null,
+    class_type_pool: sessionRow.class_type?.pool ?? "regular",
     instructor_name: sessionRow.instructor?.display_name ?? null,
   };
 
@@ -510,6 +512,7 @@ export async function syncSessionById(sessionId: string): Promise<SyncResult> {
         id: booking.id,
         customerId: booking.customer_id,
         creditsSpent: booking.credits_spent,
+        pool: session.class_type_pool,
       })),
     );
 
