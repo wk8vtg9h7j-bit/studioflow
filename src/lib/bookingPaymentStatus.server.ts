@@ -8,6 +8,7 @@ export type BookingPaymentInput = {
   id: string;
   customerId: string;
   creditsSpent: number;
+  pool: string;
 };
 
 type LedgerRow = {
@@ -18,6 +19,7 @@ type LedgerRow = {
   expires_at: string | null;
   created_at: string;
   booking_id: string | null;
+  pool: string | null;
 };
 
 type Bucket = {
@@ -56,7 +58,7 @@ export async function getBookingPaymentStatuses(
     const { data, error } = await service
       .from("credit_ledger")
       .select(
-        "id,customer_id,delta,reason,expires_at,created_at,booking_id",
+        "id,customer_id,delta,reason,expires_at,created_at,booking_id,pool",
       )
       .in("customer_id", customerIds)
       .order("created_at", { ascending: true })
@@ -70,11 +72,15 @@ export async function getBookingPaymentStatuses(
     if (page.length < PAGE_SIZE) break;
   }
 
-  const bucketsByCustomer = new Map<string, Bucket[]>();
+  const bucketsByCustomerPool = new Map<string, Bucket[]>();
   const paidCoveredBookingIds = new Set<string>();
 
+  const bucketKey = (customerId: string, pool: string | null | undefined) =>
+    `${customerId}:${pool ?? "regular"}`;
+
   for (const row of ledgerRows) {
-    const buckets = bucketsByCustomer.get(row.customer_id) ?? [];
+    const key = bucketKey(row.customer_id, row.pool);
+    const buckets = bucketsByCustomerPool.get(key) ?? [];
 
     if (row.delta > 0) {
       const refundedPaidBooking =
@@ -87,7 +93,7 @@ export async function getBookingPaymentStatuses(
         expiresAt: row.expires_at ? Date.parse(row.expires_at) : null,
         paid: row.reason === "purchase" || refundedPaidBooking,
       });
-      bucketsByCustomer.set(row.customer_id, buckets);
+      bucketsByCustomerPool.set(key, buckets);
       continue;
     }
 
@@ -119,9 +125,12 @@ export async function getBookingPaymentStatuses(
   }
 
   const nowMs = Date.now();
-  const activePaidByCustomer = new Map<string, number>();
-  for (const customerId of customerIds) {
-    const paidRemaining = (bucketsByCustomer.get(customerId) ?? []).reduce(
+  const activePaidByCustomerPool = new Map<string, number>();
+  for (const booking of bookings) {
+    const key = bucketKey(booking.customerId, booking.pool);
+    if (activePaidByCustomerPool.has(key)) continue;
+
+    const paidRemaining = (bucketsByCustomerPool.get(key) ?? []).reduce(
       (sum, bucket) => {
         if (!bucket.paid || bucket.remaining <= 0) return sum;
         if (bucket.expiresAt !== null && bucket.expiresAt <= nowMs) return sum;
@@ -129,14 +138,16 @@ export async function getBookingPaymentStatuses(
       },
       0,
     );
-    activePaidByCustomer.set(customerId, paidRemaining);
+    activePaidByCustomerPool.set(key, paidRemaining);
   }
 
   for (const booking of bookings) {
     const bookingAlreadyPaid = paidCoveredBookingIds.has(booking.id);
     const creditsNeeded = Math.max(booking.creditsSpent, 1);
     const activePaidCredits =
-      activePaidByCustomer.get(booking.customerId) ?? 0;
+      activePaidByCustomerPool.get(
+        bucketKey(booking.customerId, booking.pool),
+      ) ?? 0;
 
     result.set(
       booking.id,
