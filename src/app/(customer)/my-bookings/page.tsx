@@ -8,7 +8,8 @@
 // The same window is re-checked server-side in cancelBookingAction, so hiding
 // the button here is a courtesy, not the enforcement.
 // ============================================================================
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { requireRole } from "@/lib/auth";
 import { BookingRow, type BookingWithSession } from "./BookingRow";
 import { getLocale } from "@/lib/locale-server";
 
@@ -22,9 +23,31 @@ export default async function MyBookingsPage({
   searchParams: Promise<{ error?: string; notice?: string }>;
 }) {
   const { error, notice } = await searchParams;
-  const locale = await getLocale();
+  const [locale, profile] = await Promise.all([
+    getLocale(),
+    requireRole("customer", "/my-bookings"),
+  ]);
   const vi = locale === "vi";
   const supabase = await createClient();
+  const service = createServiceClient();
+
+  const { data: customer } = await service
+    .from("customers")
+    .select("id,calendar_auto_add")
+    .eq("profile_id", profile.id)
+    .maybeSingle();
+
+  const { data: calendarConnection } = customer
+    ? await service
+        .from("customer_google_connections")
+        .select("google_account_email,google_token_status")
+        .eq("customer_id", customer.id)
+        .maybeSingle()
+    : { data: null };
+
+  const calendarConnected =
+    customer?.calendar_auto_add === true &&
+    calendarConnection?.google_token_status === "connected";
 
   // RLS limits this to the member's own bookings. We pull the full session
   // context for each so every row can render when/where/who without extra round
@@ -105,6 +128,50 @@ export default async function MyBookingsPage({
             </>
           )}
         </p>
+      </div>
+
+      <div className="card px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-ink">
+            {vi ? "Lịch & nhắc lớp" : "Calendar & reminders"}
+          </h2>
+          {calendarConnected && (
+            <span className="badge bg-emerald-50 text-emerald-700">
+              {vi ? "Đã kết nối" : "Connected"}
+            </span>
+          )}
+        </div>
+        <p className="mt-1.5 text-sm leading-relaxed text-ink-muted">
+          {vi
+            ? "Bạn sẽ nhận email nhắc khoảng 3 giờ trước mỗi lớp đã đặt."
+            : "You’ll receive an email reminder about 3 hours before every booked class."}
+        </p>
+
+        {calendarConnected ? (
+          <div className="mt-3 space-y-3">
+            <p className="text-sm leading-relaxed text-ink-muted">
+              {vi
+                ? `Google Calendar đã kết nối${calendarConnection?.google_account_email ? ` với ${calendarConnection.google_account_email}` : ""}. Các lớp mới sẽ tự động được thêm với thông báo trước 3 giờ.`
+                : `Google Calendar is connected${calendarConnection?.google_account_email ? ` as ${calendarConnection.google_account_email}` : ""}. New bookings are added automatically with a 3-hour calendar alert.`}
+            </p>
+            <form action="/api/google/customer/disconnect" method="post">
+              <button type="submit" className="btn-secondary">
+                {vi ? "Ngắt kết nối Google Calendar" : "Disconnect Google Calendar"}
+              </button>
+            </form>
+          </div>
+        ) : (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <p className="max-w-xl text-sm leading-relaxed text-ink-muted">
+              {vi
+                ? "Nếu bạn tập thường xuyên, hãy kết nối Google Calendar để các lớp mới được thêm tự động vào lịch cá nhân."
+                : "If you’re a regular member, connect Google Calendar and new bookings will be added directly to your personal calendar."}
+            </p>
+            <a href="/api/google/customer/connect" className="btn-primary">
+              {vi ? "Kết nối Google Calendar" : "Connect Google Calendar"}
+            </a>
+          </div>
+        )}
       </div>
 
       {error && (
