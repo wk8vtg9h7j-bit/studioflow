@@ -9,16 +9,22 @@
 // and the calendar scope so we can create/update/delete events on the studio's
 // calendar.
 // ============================================================================
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { google } from "googleapis";
 import type { OAuth2Client } from "google-auth-library";
 
 // Read + write events, and list calendars so the callback can resolve the
 // primary calendar id for the connected account.
-const SCOPES = [
+const STUDIO_SCOPES = [
   "https://www.googleapis.com/auth/calendar.events",
   "https://www.googleapis.com/auth/calendar.readonly",
   "https://www.googleapis.com/auth/userinfo.email",
   "https://www.googleapis.com/auth/gmail.send",
+];
+
+const CUSTOMER_SCOPES = [
+  "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/userinfo.email",
 ];
 
 function required(name: string): string {
@@ -45,8 +51,45 @@ export function buildConsentUrl(studioId: string): string {
   return client.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
-    scope: SCOPES,
+    scope: STUDIO_SCOPES,
     state: studioId,
+    include_granted_scopes: true,
+  });
+}
+
+
+function signCustomerState(customerId: string): string {
+  const payload = `customer:${customerId}`;
+  const signature = createHmac("sha256", required("TOKEN_ENCRYPTION_KEY"))
+    .update(payload)
+    .digest("base64url");
+  return `${payload}:${signature}`;
+}
+
+export function parseCustomerConsentState(state: string): string | null {
+  const match = state.match(/^customer:([0-9a-f-]{36}):([A-Za-z0-9_-]+)$/i);
+  if (!match) return null;
+
+  const customerId = match[1];
+  const supplied = Buffer.from(match[2], "utf8");
+  const expected = Buffer.from(
+    createHmac("sha256", required("TOKEN_ENCRYPTION_KEY"))
+      .update(`customer:${customerId}`)
+      .digest("base64url"),
+    "utf8",
+  );
+
+  if (supplied.length !== expected.length) return null;
+  return timingSafeEqual(supplied, expected) ? customerId : null;
+}
+
+export function buildCustomerConsentUrl(customerId: string): string {
+  const client = createOAuthClient();
+  return client.generateAuthUrl({
+    access_type: "offline",
+    prompt: "consent",
+    scope: CUSTOMER_SCOPES,
+    state: signCustomerState(customerId),
     include_granted_scopes: true,
   });
 }
