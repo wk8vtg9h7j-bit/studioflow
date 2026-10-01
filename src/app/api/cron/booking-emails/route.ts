@@ -68,6 +68,8 @@ export async function GET(request: Request) {
   }
 
   const service = createServiceClient();
+  const provider = configuredEmailProvider();
+  const reminderStats = await processThreeHourReminders(service, provider);
 
   const { data: queueData, error: queueError } = await service
     .from("booking_email_notifications")
@@ -91,10 +93,9 @@ export async function GET(request: Request) {
       adminEmailed: 0,
       failed: 0,
       remaining: 0,
+      reminders: reminderStats,
     });
   }
-
-  const provider = configuredEmailProvider();
 
   const bookingIds = Array.from(new Set(queue.map((row) => row.booking_id)));
   const { data: bookingData, error: bookingError } = await service
@@ -282,7 +283,316 @@ export async function GET(request: Request) {
     failed,
     remaining: remaining ?? 0,
     delivery: provider ? provider.kind : "google-gmail",
+    reminders: reminderStats,
   });
+}
+
+
+async function processThreeHourReminders(
+  service: ReturnType<typeof createServiceClient>,
+  provider: ReturnType<typeof configuredEmailProvider>,
+) {
+  const now = new Date();
+  const reminderCutoff = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+
+  const { data: sessionData, error: sessionError } = await service
+    .from("sessions")
+    .select(
+      `id,starts_at,ends_at,title,room,status,
+       studio:studios(
+         id,name,address,timezone,
+         google_account_email,google_refresh_token,google_token_status
+       ),
+       class_type:class_types(name),
+       instructor:instructors(display_name)`,
+    )
+    .eq("status", "scheduled")
+    .gt("starts_at", now.toISOString())
+    .lte("starts_at", reminderCutoff.toISOString())
+    .order("starts_at", { ascending: true })
+    .limit(BATCH_SIZE);
+
+  if (sessionError || !sessionData || sessionData.length === 0) {
+    return {
+      attempted: 0,
+      sent: 0,
+      failed: sessionError ? 1 : 0,
+      skipped: 0,
+    };
+  }
+
+  type ReminderSession = {
+    id: string;
+    starts_at: string;
+    ends_at: string;
+    title: string | null;
+    room: string | null;
+    studio: {
+      id: string;
+      name: string;
+      address: string | null;
+      timezone: string | null;
+      google_account_email: string | null;
+      google_refresh_token: string | null;
+      google_token_status: string | null;
+    } | null;
+    class_type: { name: string | null } | null;
+    instructor: { display_name: string | null } | null;
+  };
+
+  type ReminderBooking = {
+    id: string;
+    session_id: string;
+    booked_at: string;
+    spots_count: number;
+    customer: {
+      reminder_email_enabled: boolean;
+      name: string | null;
+      email: string | null;
+      profile: {
+        full_name: string | null;
+        email: string | null;
+      } | null;
+    } | null;
+  };
+
+  type ReminderLog = {
+    booking_id: string;
+    session_starts_at: string;
+    sent_at: string | null;
+    attempts: number;
+  };
+
+  const sessions = (sessionData ?? []) as unknown as ReminderSession[];
+  const sessionById = new Map(sessions.map((session) => [session.id, session]));
+  const sessionIds = sessions.map((session) => session.id);
+
+  const { data: bookingData, error: bookingError } = await service
+    .from("bookings")
+    .select(
+      `id,session_id,booked_at,spots_count,
+       customer:customers(
+         reminder_email_enabled,name,email,
+         profile:profiles(full_name,email)
+       )`,
+    )
+    .eq("status", "booked")
+    .in("session_id", sessionIds)
+    .limit(BATCH_SIZE * 4);
+
+  if (bookingError) {
+    return { attempted: 0, sent: 0, failed: 1, skipped: 0 };
+  }
+
+  const bookings = ((bookingData ?? []) as unknown as ReminderBooking[]).filter(
+    (booking) => {
+      const session = sessionById.get(booking.session_id);
+      if (!session || booking.customer?.reminder_email_enabled === false) {
+        return false;
+      }
+      const reminderAt =
+        Date.parse(session.starts_at) - 3 * 60 * 60 * 1000;
+      return Date.parse(booking.booked_at) <= reminderAt;
+    },
+  );
+
+  if (bookings.length === 0) {
+    return { attempted: 0, sent: 0, failed: 0, skipped: 0 };
+  }
+
+  const bookingIds = bookings.map((booking) => booking.id);
+  const { data: existingData } = await service
+    .from("booking_reminder_notifications")
+    .select("booking_id,session_starts_at,sent_at,attempts")
+    .in("booking_id", bookingIds);
+
+  const key = (bookingId: string, startsAt: string) =>
+    `${bookingId}|${Date.parse(startsAt)}`;
+  const existing = new Map(
+    ((existingData ?? []) as ReminderLog[]).map((row) => [
+      key(row.booking_id, row.session_starts_at),
+      row,
+    ]),
+  );
+
+  const newRows = bookings
+    .filter((booking) => {
+      const session = sessionById.get(booking.session_id);
+      return (
+        !!session &&
+        !existing.has(key(booking.id, session.starts_at))
+      );
+    })
+    .map((booking) => {
+      const session = sessionById.get(booking.session_id) as ReminderSession;
+      return {
+        booking_id: booking.id,
+        session_starts_at: session.starts_at,
+      };
+    });
+
+  if (newRows.length > 0) {
+    await service
+      .from("booking_reminder_notifications")
+      .upsert(newRows, {
+        onConflict: "booking_id,session_starts_at",
+        ignoreDuplicates: true,
+      });
+  }
+
+  let sentCount = 0;
+  let failed = 0;
+  let skipped = 0;
+  let attempted = 0;
+
+  for (const booking of bookings) {
+    const session = sessionById.get(booking.session_id);
+    if (!session) continue;
+
+    const prior = existing.get(key(booking.id, session.starts_at));
+    if (prior?.sent_at) {
+      skipped += 1;
+      continue;
+    }
+
+    attempted += 1;
+    const customer = booking.customer;
+    const customerName =
+      customer?.profile?.full_name?.trim() ||
+      customer?.name?.trim() ||
+      "Guest";
+    const customerEmail =
+      customer?.profile?.email?.trim() || customer?.email?.trim() || null;
+    const timezone = session.studio?.timezone || "Asia/Ho_Chi_Minh";
+    const className =
+      session.title?.trim() ||
+      session.class_type?.name?.trim() ||
+      "Pilates class";
+    const studioName = session.studio?.name ?? "Pilates studio";
+    const studioAddress = session.studio?.address?.trim() || null;
+    const instructor = session.instructor?.display_name?.trim() || null;
+    const when = formatWhen(session.starts_at, timezone);
+    const attempts = (prior?.attempts ?? 0) + 1;
+    const stamp = new Date().toISOString();
+
+    if (!customerEmail) {
+      await service
+        .from("booking_reminder_notifications")
+        .update({
+          sent_at: stamp,
+          attempts,
+          last_error: "Customer has no email address.",
+          updated_at: stamp,
+        })
+        .eq("booking_id", booking.id)
+        .eq("session_starts_at", session.starts_at);
+      skipped += 1;
+      continue;
+    }
+
+    const message = threeHourReminderMessage({
+      customerName,
+      className,
+      when,
+      studioName,
+      studioAddress,
+      instructor,
+    });
+    const result = provider
+      ? await sendEmail(provider, { to: customerEmail, ...message })
+      : await sendViaStudioGmail(session.studio, {
+          to: [customerEmail],
+          ...message,
+        });
+
+    await service
+      .from("booking_reminder_notifications")
+      .update({
+        sent_at: result.ok ? stamp : null,
+        attempts,
+        last_error: result.ok ? null : result.error.slice(0, 2000),
+        updated_at: stamp,
+      })
+      .eq("booking_id", booking.id)
+      .eq("session_starts_at", session.starts_at);
+
+    if (result.ok) sentCount += 1;
+    else failed += 1;
+  }
+
+  return { attempted, sent: sentCount, failed, skipped };
+}
+
+function threeHourReminderMessage(input: {
+  customerName: string;
+  className: string;
+  when: string;
+  studioName: string;
+  studioAddress: string | null;
+  instructor: string | null;
+}) {
+  const {
+    customerName,
+    className,
+    when,
+    studioName,
+    studioAddress,
+    instructor,
+  } = input;
+
+  const subject = `Class reminder: ${className} in about 3 hours`;
+  const details = [
+    className,
+    when,
+    studioName,
+    studioAddress,
+    instructor ? `Instructor: ${instructor}` : null,
+  ].filter(Boolean) as string[];
+
+  const text = [
+    `Hi ${customerName},`,
+    "",
+    "A quick reminder that your Pilates class starts in about 3 hours.",
+    "",
+    ...details,
+    "",
+    "We look forward to seeing you.",
+    "",
+    "— Pilates by Recharged",
+    "",
+    "-----",
+    "",
+    `Xin chào ${customerName},`,
+    "",
+    "Nhắc bạn rằng lớp Pilates của bạn sẽ bắt đầu sau khoảng 3 giờ.",
+    "",
+    ...details,
+    "",
+    "Hẹn gặp bạn tại lớp.",
+  ].join("\n");
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;line-height:1.6;color:#292524;max-width:620px">
+      <h2 style="margin-bottom:8px">Class reminder</h2>
+      <p>Hi ${escapeHtml(customerName)},</p>
+      <p>Your Pilates class starts in about <strong>3 hours</strong>.</p>
+      <div style="background:#fafaf9;border:1px solid #e7e5e4;border-radius:12px;padding:16px;margin:18px 0">
+        <strong>${escapeHtml(className)}</strong><br />
+        ${escapeHtml(when)}<br />
+        ${escapeHtml(studioName)}
+        ${studioAddress ? `<br />${escapeHtml(studioAddress)}` : ""}
+        ${instructor ? `<br />Instructor: ${escapeHtml(instructor)}` : ""}
+      </div>
+      <p>We look forward to seeing you.</p>
+      <p>— Pilates by Recharged</p>
+      <hr style="border:0;border-top:1px solid #e7e5e4;margin:24px 0" />
+      <p>Xin chào ${escapeHtml(customerName)},</p>
+      <p>Nhắc bạn rằng lớp Pilates của bạn sẽ bắt đầu sau khoảng <strong>3 giờ</strong>.</p>
+      <p>Hẹn gặp bạn tại lớp.</p>
+    </div>
+  `;
+
+  return { subject, text, html };
 }
 
 function customerEmailMessage(input: {
