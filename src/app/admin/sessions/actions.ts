@@ -267,7 +267,7 @@ export async function setFillerSeatsAction(
   // held + booked as taken, so an oversized hold would only distort the numbers.
   const { data: row, error: readError } = await supabase
     .from("sessions")
-    .select("capacity,starts_at")
+    .select("capacity,starts_at,class_type:class_types(pool)")
     .eq("id", id)
     .maybeSingle();
 
@@ -903,6 +903,9 @@ export async function getRegisterDataAction(
       id: row.id,
       customerId: row.customer_id,
       creditsSpent: row.credits_spent ?? 0,
+      pool:
+        ((session as unknown as { class_type?: { pool?: string | null } | null })
+          ?.class_type?.pool ?? "regular"),
     })),
   );
 
