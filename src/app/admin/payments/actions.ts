@@ -14,6 +14,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireRole } from "@/lib/auth";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { queueCustomerBookingCalendarSync } from "@/lib/bookingPaymentStatus.server";
 import type { Product } from "@/lib/types";
 
 export type SaleActionState = { error?: string; ok?: boolean };
@@ -222,6 +223,8 @@ export async function deletePaymentAction(
     .eq("reason", "purchase");
 
   if (error) return { error: error.message };
+
+  await queueCustomerBookingCalendarSync(row.customer_id);
 
   revalidatePath("/admin/payments");
   revalidatePath("/admin/customers");
