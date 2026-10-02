@@ -197,15 +197,33 @@ export function SessionRow({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowMobileActions((value) => !value)}
-          className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm font-semibold text-ink shadow-sm sm:hidden"
-          aria-expanded={showMobileActions}
-          aria-controls={`session-actions-${session.id}`}
-        >
-          {showMobileActions ? "Close" : "Manage"}
-        </button>
+        <div className="flex shrink-0 items-center gap-2 sm:hidden">
+          {!cancelled && !isPrivate && (
+            <button
+              type="button"
+              onClick={toggleFill}
+              className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm font-semibold text-ink shadow-sm"
+              disabled={fillPending || (held === 0 && openSeats === 0)}
+              title={
+                held > 0
+                  ? "Release the held seats so customers can book again"
+                  : "Hold the remaining seats so customers see this class as full"
+              }
+            >
+              {fillPending ? "Saving…" : held > 0 ? "Unfill" : "Fill"}
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setShowMobileActions((value) => !value)}
+            className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm font-semibold text-ink shadow-sm"
+            aria-expanded={showMobileActions}
+            aria-controls={`session-actions-${session.id}`}
+          >
+            {showMobileActions ? "Close" : "Manage"}
+          </button>
+        </div>
 
         <div className="hidden sm:ml-auto sm:flex sm:shrink-0 sm:items-center sm:gap-2">
           <button
@@ -327,25 +345,9 @@ export function SessionRow({
               {editing ? "Close edit" : "Edit"}
             </button>
 
-            {!cancelled && !isPrivate && (
-              <button
-                type="button"
-                onClick={() => {
-                  toggleFill();
-                  setShowMobileActions(false);
-                }}
-                className="btn-ghost w-full"
-                disabled={fillPending || (held === 0 && openSeats === 0)}
-              >
-                {fillPending ? "Saving…" : held > 0 ? "Unfill" : "Fill"}
-              </button>
-            )}
-
             <form
               action={setSessionStatusAction}
-              className={`w-full ${
-                cancelled || isPrivate ? "col-span-2" : ""
-              }`}
+              className="col-span-2 w-full"
             >
               <input type="hidden" name="id" value={session.id} />
               <input
