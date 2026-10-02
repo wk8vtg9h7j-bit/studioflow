@@ -294,6 +294,41 @@ export async function setFillerSeatsAction(
   };
 }
 
+async function refreshPastSessionPayroll(
+  svc: ReturnType<typeof createServiceClient>,
+  sessionId: string,
+) {
+  const { data: session } = await svc
+    .from("sessions")
+    .select("ends_at,instructor_id")
+    .eq("id", sessionId)
+    .maybeSingle();
+
+  if (
+    !session ||
+    !session.instructor_id ||
+    Date.parse(session.ends_at) > Date.now()
+  ) {
+    return;
+  }
+
+  const { data: payroll } = await svc
+    .from("session_payroll")
+    .select("status")
+    .eq("session_id", sessionId)
+    .maybeSingle();
+
+  // Late walk-ins should immediately affect a missing/pending payroll row, but
+  // must not silently rewrite a payroll record that an admin already approved
+  // or paid.
+  if (payroll && payroll.status !== "pending") return;
+
+  await svc.rpc("recalc_payroll", {
+    p_session_id: sessionId,
+    p_attendance: null,
+  });
+}
+
 // ----------------------------------------------------------------------------
 // Admin booking for regular/group classes.
 //
@@ -340,7 +375,12 @@ export async function adminBookGroupCustomerAction(
       ? String((data as { status: unknown }).status)
       : "booked";
 
+  if (status === "attended") {
+    await refreshPastSessionPayroll(svc, parsed.data.session_id);
+  }
+
   revalidatePath("/admin/sessions");
+  revalidatePath("/admin/payroll");
   revalidatePath("/admin/customers");
   revalidatePath("/admin/payments");
   revalidatePath("/book");
@@ -349,9 +389,11 @@ export async function adminBookGroupCustomerAction(
   return {
     ok: true,
     message:
-      status === "waitlisted"
-        ? "Customer added to the waitlist. No credit was spent."
-        : `Customer booked for ${parsed.data.spots} spot${parsed.data.spots === 1 ? "" : "s"}. Google Calendar will update shortly.`,
+      status === "attended"
+        ? `Walk-in registered as attended for ${parsed.data.spots} spot${parsed.data.spots === 1 ? "" : "s"}.`
+        : status === "waitlisted"
+          ? "Customer added to the waitlist. No credit was spent."
+          : `Customer booked for ${parsed.data.spots} spot${parsed.data.spots === 1 ? "" : "s"}. Google Calendar will update shortly.`,
   };
 }
 
@@ -401,7 +443,12 @@ export async function adminCreateAndBookGroupCustomerAction(
       ? String((booking as { status: unknown }).status)
       : "booked";
 
+  if (status === "attended") {
+    await refreshPastSessionPayroll(svc, parsed.data.session_id);
+  }
+
   revalidatePath("/admin/sessions");
+  revalidatePath("/admin/payroll");
   revalidatePath("/admin/customers");
   revalidatePath("/admin/payments");
   revalidatePath("/book");
@@ -410,9 +457,11 @@ export async function adminCreateAndBookGroupCustomerAction(
   return {
     ok: true,
     message:
-      status === "waitlisted"
-        ? "Customer created with 1 starter credit and added to the waitlist. The credit was not spent."
-        : "Customer created with 1 starter credit and booked. The starter credit was used for this class.",
+      status === "attended"
+        ? "Walk-in customer created and registered as attended. The starter credit was used for this class."
+        : status === "waitlisted"
+          ? "Customer created with 1 starter credit and added to the waitlist. The credit was not spent."
+          : "Customer created with 1 starter credit and booked. The starter credit was used for this class.",
   };
 }
 
@@ -437,17 +486,18 @@ export async function adminBookPrivateCustomerAction(
 
   const { data: session, error: sessionError } = await svc
     .from("sessions")
-    .select("id,status,starts_at,capacity,class_type_id")
+    .select("id,status,starts_at,ends_at,capacity,class_type_id,instructor_id")
     .eq("id", sessionId)
     .maybeSingle();
 
   if (sessionError) return { error: sessionError.message };
   if (!session) return { error: "That private class could not be found." };
-  if (session.status !== "scheduled") {
-    return { error: "This class is not open for booking." };
+  const hasStarted = Date.parse(session.starts_at) <= Date.now();
+  if (!["scheduled", "completed"].includes(session.status)) {
+    return { error: "This class is not open for admin registration." };
   }
-  if (new Date(session.starts_at).getTime() <= Date.now()) {
-    return { error: "This class has already started." };
+  if (!hasStarted && session.status !== "scheduled") {
+    return { error: "This class is not open for booking." };
   }
 
   const { data: classType, error: typeError } = await svc
@@ -523,10 +573,10 @@ export async function adminBookPrivateCustomerAction(
     const { data: restored, error: restoreError } = await svc
       .from("bookings")
       .update({
-        status: "booked",
+        status: hasStarted ? "attended" : "booked",
         booked_at: new Date().toISOString(),
         cancelled_at: null,
-        checked_in_at: null,
+        checked_in_at: hasStarted ? new Date().toISOString() : null,
         credits_spent: cost,
         source: "admin",
       })
@@ -544,7 +594,8 @@ export async function adminBookPrivateCustomerAction(
       .insert({
         session_id: sessionId,
         customer_id: customerId,
-        status: "booked",
+        status: hasStarted ? "attended" : "booked",
+        checked_in_at: hasStarted ? new Date().toISOString() : null,
         credits_spent: cost,
         source: "admin",
       })
@@ -586,14 +637,21 @@ export async function adminBookPrivateCustomerAction(
     return { error: ledgerError.message };
   }
 
+  if (hasStarted) {
+    await refreshPastSessionPayroll(svc, sessionId);
+  }
+
   revalidatePath("/admin/sessions");
   revalidatePath("/admin/notifications");
+  revalidatePath("/admin/payroll");
   revalidatePath("/book");
   revalidatePath("/my-bookings");
 
   return {
     ok: true,
-    message: "Customer booked. Google Calendar will update shortly.",
+    message: hasStarted
+      ? "Walk-in registered as attended."
+      : "Customer booked. Google Calendar will update shortly.",
   };
 }
 
@@ -630,7 +688,7 @@ export async function bookCustomerIntoPrivateSessionAction(
   const { data: session, error: sessionError } = await svc
     .from("sessions")
     .select(
-      "id,capacity,status,starts_at,class_type:class_types(credits_cost,pool)",
+      "id,capacity,status,starts_at,ends_at,instructor_id,class_type:class_types(credits_cost,pool)",
     )
     .eq("id", session_id)
     .maybeSingle();
@@ -642,17 +700,20 @@ export async function bookCustomerIntoPrivateSessionAction(
     capacity: number;
     status: string;
     starts_at: string;
+    ends_at: string;
+    instructor_id: string | null;
     class_type: { credits_cost: number | null; pool: string | null } | null;
   };
 
-  if (s.status !== "scheduled") {
-    return { error: "Only scheduled sessions can be booked." };
+  const hasStarted = Date.parse(s.starts_at) <= Date.now();
+  if (!["scheduled", "completed"].includes(s.status)) {
+    return { error: "This private session is not open for admin registration." };
+  }
+  if (!hasStarted && s.status !== "scheduled") {
+    return { error: "This private session is not open for booking." };
   }
   if (s.class_type?.pool !== "private") {
     return { error: "This action is only available for private classes." };
-  }
-  if (new Date(s.starts_at).getTime() <= Date.now()) {
-    return { error: "This private session has already started." };
   }
 
   const { data: customer, error: customerError } = await svc
@@ -712,10 +773,10 @@ export async function bookCustomerIntoPrivateSessionAction(
     const { data: updated, error: updateError } = await svc
       .from("bookings")
       .update({
-        status: "booked",
+        status: hasStarted ? "attended" : "booked",
         credits_spent: cost,
         cancelled_at: null,
-        checked_in_at: null,
+        checked_in_at: hasStarted ? bookedAt : null,
         booked_at: bookedAt,
         source: "admin",
       })
@@ -734,7 +795,8 @@ export async function bookCustomerIntoPrivateSessionAction(
       .insert({
         session_id,
         customer_id,
-        status: "booked",
+        status: hasStarted ? "attended" : "booked",
+        checked_in_at: hasStarted ? bookedAt : null,
         credits_spent: cost,
         source: "admin",
       })
@@ -774,10 +836,20 @@ export async function bookCustomerIntoPrivateSessionAction(
     return { error: ledgerError.message };
   }
 
+  if (hasStarted) {
+    await refreshPastSessionPayroll(svc, session_id);
+  }
+
   revalidatePath("/admin/sessions");
+  revalidatePath("/admin/payroll");
   revalidatePath("/book");
   revalidatePath("/my-bookings");
-  return { ok: true };
+  return {
+    ok: true,
+    message: hasStarted
+      ? "Walk-in registered as attended."
+      : "Customer booked into private class.",
+  };
 }
 
 export type PrivateCustomerSearchResult = {
