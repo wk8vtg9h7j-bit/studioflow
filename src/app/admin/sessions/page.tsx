@@ -116,6 +116,7 @@ export default async function SessionsPage({
     rangeLabel = `All dates matching “${q}”`;
   } else {
     query = query
+      .neq("status", "cancelled")
       .gte("starts_at", weekStart.toISOString())
       .lt("starts_at", weekEnd.toISOString());
     rangeLabel = `${formatInTimeZone(weekStart, FALLBACK_TZ, "d MMM")} – ${formatInTimeZone(
