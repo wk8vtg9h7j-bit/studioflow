@@ -294,6 +294,41 @@ export async function setFillerSeatsAction(
   };
 }
 
+async function refreshPastSessionPayroll(
+  svc: ReturnType<typeof createServiceClient>,
+  sessionId: string,
+) {
+  const { data: session } = await svc
+    .from("sessions")
+    .select("ends_at,instructor_id")
+    .eq("id", sessionId)
+    .maybeSingle();
+
+  if (
+    !session ||
+    !session.instructor_id ||
+    Date.parse(session.ends_at) > Date.now()
+  ) {
+    return;
+  }
+
+  const { data: payroll } = await svc
+    .from("session_payroll")
+    .select("status")
+    .eq("session_id", sessionId)
+    .maybeSingle();
+
+  // Late walk-ins should immediately affect a missing/pending payroll row, but
+  // must not silently rewrite a payroll record that an admin already approved
+  // or paid.
+  if (payroll && payroll.status !== "pending") return;
+
+  await svc.rpc("recalc_payroll", {
+    p_session_id: sessionId,
+    p_attendance: null,
+  });
+}
+
 // ----------------------------------------------------------------------------
 // Admin booking for regular/group classes.
 //
@@ -340,7 +375,12 @@ export async function adminBookGroupCustomerAction(
       ? String((data as { status: unknown }).status)
       : "booked";
 
+  if (status === "attended") {
+    await refreshPastSessionPayroll(svc, parsed.data.session_id);
+  }
+
   revalidatePath("/admin/sessions");
+  revalidatePath("/admin/payroll");
   revalidatePath("/admin/customers");
   revalidatePath("/admin/payments");
   revalidatePath("/book");
@@ -349,9 +389,11 @@ export async function adminBookGroupCustomerAction(
   return {
     ok: true,
     message:
-      status === "waitlisted"
-        ? "Customer added to the waitlist. No credit was spent."
-        : `Customer booked for ${parsed.data.spots} spot${parsed.data.spots === 1 ? "" : "s"}. Google Calendar will update shortly.`,
+      status === "attended"
+        ? `Walk-in registered as attended for ${parsed.data.spots} spot${parsed.data.spots === 1 ? "" : "s"}.`
+        : status === "waitlisted"
+          ? "Customer added to the waitlist. No credit was spent."
+          : `Customer booked for ${parsed.data.spots} spot${parsed.data.spots === 1 ? "" : "s"}. Google Calendar will update shortly.`,
   };
 }
 
@@ -401,7 +443,12 @@ export async function adminCreateAndBookGroupCustomerAction(
       ? String((booking as { status: unknown }).status)
       : "booked";
 
+  if (status === "attended") {
+    await refreshPastSessionPayroll(svc, parsed.data.session_id);
+  }
+
   revalidatePath("/admin/sessions");
+  revalidatePath("/admin/payroll");
   revalidatePath("/admin/customers");
   revalidatePath("/admin/payments");
   revalidatePath("/book");
@@ -410,9 +457,11 @@ export async function adminCreateAndBookGroupCustomerAction(
   return {
     ok: true,
     message:
-      status === "waitlisted"
-        ? "Customer created with 1 starter credit and added to the waitlist. The credit was not spent."
-        : "Customer created with 1 starter credit and booked. The starter credit was used for this class.",
+      status === "attended"
+        ? "Walk-in customer created and registered as attended. The starter credit was used for this class."
+        : status === "waitlisted"
+          ? "Customer created with 1 starter credit and added to the waitlist. The credit was not spent."
+          : "Customer created with 1 starter credit and booked. The starter credit was used for this class.",
   };
 }
 
