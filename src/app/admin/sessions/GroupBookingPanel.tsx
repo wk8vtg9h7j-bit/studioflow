@@ -226,8 +226,9 @@ export function GroupBookingPanel({
             </div>
 
             <p className="text-xs text-ink-soft">
-              The normal class credit cost is deducted from the customer. If the
-              class is full, normal waitlist rules apply and no credit is spent.
+              The normal class credit cost is deducted from the customer. Future
+              classes use normal booking/waitlist rules. If the class has already
+              started, an admin-added walk-in is registered as Attended.
             </p>
 
             <button
