@@ -229,6 +229,16 @@ const GrantSchema = z.object({
   payment_method: z.enum(PAYMENT_METHODS, {
     errorMap: () => ({ message: "Choose how it was paid (QR, card, or cash)." }),
   }),
+  sale_price_cents: z
+    .union([
+      z.coerce
+        .number()
+        .int("Sale price must be a whole number.")
+        .min(0, "Sale price cannot be negative.")
+        .max(100_000_000, "Sale price is too large."),
+      z.literal(""),
+    ])
+    .optional(),
 });
 
 export async function grantPackageAction(
@@ -241,12 +251,14 @@ export async function grantPackageAction(
     customer_id: formData.get("customer_id"),
     package_id: formData.get("package_id"),
     payment_method: formData.get("payment_method"),
+    sale_price_cents: formData.get("sale_price_cents") ?? "",
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Check the form." };
   }
 
-  const { customer_id, package_id, payment_method } = parsed.data;
+  const { customer_id, package_id, payment_method, sale_price_cents } =
+    parsed.data;
   const supabase = await createClient();
 
   // Look up the package so we know how many clips it grants and how long they
@@ -264,6 +276,19 @@ export async function grantPackageAction(
     return { error: "That package is no longer available." };
   }
 
+  const salePrice =
+    sale_price_cents === "" || sale_price_cents === undefined
+      ? pkg.price_cents
+      : sale_price_cents;
+
+  // This field is intended for discounts/promotions. The package's catalog
+  // price stays untouched so later sales still default to the normal price.
+  if (salePrice > pkg.price_cents) {
+    return {
+      error: `Discounted sale price cannot be higher than the package list price (${pkg.price_cents} ${pkg.currency}).`,
+    };
+  }
+
   // Clips expire validity_days after the grant. credit_balance() ignores
   // ledger rows whose expires_at has passed.
   const expiresAt = new Date(
@@ -279,7 +304,7 @@ export async function grantPackageAction(
     expires_at: expiresAt,
     payment_method,
     pool: pkg.pool ?? "regular",
-    sale_amount_cents: pkg.price_cents,
+    sale_amount_cents: salePrice,
     sale_currency: pkg.currency ?? "VND",
   });
 
