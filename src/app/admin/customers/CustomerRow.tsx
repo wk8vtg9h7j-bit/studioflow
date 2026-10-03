@@ -491,6 +491,16 @@ function GrantPackage({
     grantPackageAction,
     grantInitialState,
   );
+  const [selectedPackageId, setSelectedPackageId] = useState("");
+  const [salePrice, setSalePrice] = useState("");
+
+  const selectedPackage =
+    packages.find((pkg) => pkg.id === selectedPackageId) ?? null;
+  const parsedSalePrice = salePrice === "" ? null : Number(salePrice);
+  const discountAmount =
+    selectedPackage && parsedSalePrice !== null && Number.isFinite(parsedSalePrice)
+      ? Math.max(0, selectedPackage.price_cents - parsedSalePrice)
+      : 0;
 
   useEffect(() => {
     if (!state.ok) return;
@@ -527,7 +537,16 @@ function GrantPackage({
             id={`pkg-${customerId}`}
             name="package_id"
             className="input"
-            defaultValue=""
+            value={selectedPackageId}
+            onChange={(event) => {
+              const nextId = event.target.value;
+              const nextPackage =
+                packages.find((pkg) => pkg.id === nextId) ?? null;
+              setSelectedPackageId(nextId);
+              setSalePrice(
+                nextPackage ? String(nextPackage.price_cents) : "",
+              );
+            }}
             required
           >
             <option value="" disabled>
@@ -541,6 +560,40 @@ function GrantPackage({
             ))}
           </select>
         </div>
+
+        {selectedPackage && (
+          <div>
+            <label className="label" htmlFor={`sale-price-${customerId}`}>
+              Sale price ({selectedPackage.currency})
+            </label>
+            <input
+              id={`sale-price-${customerId}`}
+              name="sale_price_cents"
+              type="number"
+              min={0}
+              max={selectedPackage.price_cents}
+              step={1}
+              className="input"
+              value={salePrice}
+              onChange={(event) => setSalePrice(event.target.value)}
+              required
+            />
+            <p className="mt-1 text-xs text-ink-soft">
+              List price:{" "}
+              {formatMoney(
+                selectedPackage.price_cents,
+                selectedPackage.currency,
+              )}
+              {discountAmount > 0
+                ? ` · Discount: ${formatMoney(
+                    discountAmount,
+                    selectedPackage.currency,
+                  )}`
+                : " · Change this amount only when giving a discount."}
+              {" "}The package&apos;s normal price will not change.
+            </p>
+          </div>
+        )}
 
         <div>
           <label className="label" htmlFor={`pay-${customerId}`}>
