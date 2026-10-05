@@ -34,6 +34,8 @@ export type LandingStudio = {
   blurb: string;
   classes: LandingClass[];
   scheduleLabel: string; // the day the shown lineup is for, e.g. "Fri 26 Jun"
+  weekdayTimes: string[];
+  weekendTimes: string[];
 };
 
 type Pkg = {
@@ -186,16 +188,43 @@ export default function LandingExperience({
             <h2 className="text-xl font-semibold tracking-tight text-ink">
               {vi ? "Lịch lớp" : "Weekly schedule"} · {studio?.short}
             </h2>
-            {studio?.scheduleLabel && (
-              <p className="mt-1 text-sm text-ink-muted">
-                {vi ? "Lớp từ" : "Classes from"} {studio.scheduleLabel}
-              </p>
-            )}
+            <p className="mt-1 text-sm text-ink-muted">
+              {vi ? "Lịch cố định hàng tuần" : "Current recurring timetable"}
+            </p>
           </div>
           <span className="text-sm text-ink-muted">
             {vi ? "50 phút · tối đa 4 người" : "50 min · max 4 people"}
           </span>
         </div>
+
+        {studio &&
+          (studio.weekdayTimes.length > 0 || studio.weekendTimes.length > 0) && (
+            <div className="mb-6 grid gap-3 sm:grid-cols-2">
+              <div className="card px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-soft">
+                  {vi ? "Thứ 2 – Thứ 6" : "Monday – Friday"}
+                </p>
+                <p className="mt-1 text-sm font-medium text-ink">
+                  {studio.weekdayTimes.join(" · ")}
+                </p>
+              </div>
+              <div className="card px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-soft">
+                  {vi ? "Thứ 7 – Chủ nhật" : "Saturday – Sunday"}
+                </p>
+                <p className="mt-1 text-sm font-medium text-ink">
+                  {studio.weekendTimes.join(" · ")}
+                </p>
+              </div>
+            </div>
+          )}
+
+        {studio?.scheduleLabel && (
+          <p className="mb-3 text-sm font-medium text-ink-muted">
+            {vi ? "Lớp sắp tới" : "Next classes"} · {studio.scheduleLabel}
+          </p>
+        )}
+
         {studio && studio.classes.length > 0 ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {studio.classes.map((c, i) => (
