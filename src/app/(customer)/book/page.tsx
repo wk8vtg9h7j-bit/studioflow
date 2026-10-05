@@ -42,6 +42,7 @@ export default async function BookPage({
   const locale = await getLocale();
   const vi = locale === "vi";
   const supabase = await createClient();
+  const service = createServiceClient();
 
   const nowIso = new Date().toISOString();
   const today = todayStamp();
@@ -90,6 +91,17 @@ export default async function BookPage({
 
   // Who am I, and how many credits do I have to spend?
   const { data: customerId } = await supabase.rpc("my_customer_id");
+  let requiresPaymentNotice = false;
+
+  if (customerId) {
+    const { data: customer } = await service
+      .from("customers")
+      .select("payment_notice_acknowledged_at")
+      .eq("id", customerId)
+      .maybeSingle();
+    requiresPaymentNotice = !customer?.payment_notice_acknowledged_at;
+  }
+
   // Credits live in two pools that never mix, so we ask for each separately.
   let regularCredits = 0;
   let privateCredits = 0;
@@ -133,7 +145,6 @@ export default async function BookPage({
     if (s.filler_seats > 0) bookedBySession.set(s.id, s.filler_seats);
   }
   if (sessions.length > 0) {
-    const service = createServiceClient();
     const { data: seatRows } = await service
       .from("bookings")
       .select("session_id,spots_count")
@@ -163,6 +174,19 @@ export default async function BookPage({
             : "One day at a time. Times are shown in each studio's local timezone. Booking spends credits from your balance."}
         </p>
       </div>
+
+      {requiresPaymentNotice && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="text-sm font-semibold text-amber-900">
+            {vi ? "Lưu ý về tín dụng khởi đầu" : "About your starter booking credit"}
+          </p>
+          <p className="mt-1 text-sm leading-relaxed text-amber-800">
+            {vi
+              ? "1 tín dụng khởi đầu giúp bạn giữ chỗ cho lớp thường đầu tiên — đây không phải là lớp miễn phí. Nếu chưa mua gói trả phí, bạn sẽ thanh toán tại studio sau buổi tập. Giá lớp lẻ thường hiện tại là 400.000 ₫."
+              : "Your 1 starter credit lets you reserve your first regular class — it is not a free class. If you have not purchased a paid package, payment is due at the studio after class. The current single regular class price is 400,000 VND."}
+          </p>
+        </div>
+      )}
 
       {error && (
         <div className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
@@ -205,6 +229,7 @@ export default async function BookPage({
                   booked={bookedBySession.get(session.id) ?? 0}
                   myStatus={myStatusBySession.get(session.id) ?? null}
                   locale={locale}
+                  requiresPaymentNotice={requiresPaymentNotice}
                 />
               ))}
             </ul>
@@ -231,9 +256,13 @@ export default async function BookPage({
               </div>
             </dl>
             <p className="mt-4 text-xs leading-relaxed text-ink-muted">
-              {vi
-                ? "Tín dụng thường dùng cho lớp thường và tín dụng riêng dùng cho lớp riêng. Hai loại không được dùng lẫn nhau. Hết tín dụng? Hãy mua thêm gói tập."
-                : "Regular credits book regular classes and private credits book private ones — the two never mix. Out of credits? Purchase a package to top up."}
+              {requiresPaymentNotice
+                ? vi
+                  ? "Tín dụng khởi đầu là tín dụng đặt chỗ, không phải lớp miễn phí. Nếu chưa có gói trả phí, thanh toán sau buổi tập."
+                  : "Your starter credit is a booking credit, not a free class. If you are not covered by a paid package, payment is due after class."
+                : vi
+                  ? "Tín dụng thường dùng cho lớp thường và tín dụng riêng dùng cho lớp riêng. Hai loại không được dùng lẫn nhau. Hết tín dụng? Hãy mua thêm gói tập."
+                  : "Regular credits book regular classes and private credits book private ones — the two never mix. Out of credits? Purchase a package to top up."}
             </p>
           </div>
         </aside>
