@@ -15,6 +15,7 @@ import LandingExperience, {
 } from "./LandingExperience";
 import { getLocale } from "@/lib/locale-server";
 import { LanguageProvider } from "@/components/LanguageProvider";
+import { WEEKLY_STUDIO_SCHEDULE } from "@/lib/studioSchedule";
 
 export const dynamic = "force-dynamic";
 
@@ -106,6 +107,7 @@ export default async function HomePage() {
     let entry = byStudio.get(key);
     if (!entry) {
       const copy = STUDIO_COPY[key] ?? STUDIO_COPY.default;
+      const weeklySchedule = WEEKLY_STUDIO_SCHEDULE[key];
       entry = {
         key,
         name: studio.name,
@@ -115,6 +117,8 @@ export default async function HomePage() {
         blurb: copy.blurb,
         classes: [],
         scheduleLabel: formatInTimeZone(row.starts_at, tz, "EEE d MMM"),
+        weekdayTimes: weeklySchedule?.weekdayTimes ?? [],
+        weekendTimes: weeklySchedule?.weekendTimes ?? [],
       };
       byStudio.set(key, entry);
       dayByStudio.set(key, day);
@@ -149,6 +153,8 @@ export default async function HomePage() {
       blurb: STUDIO_COPY.default.blurb,
       classes: [],
       scheduleLabel: "",
+      weekdayTimes: [],
+      weekendTimes: [],
     });
   }
 
