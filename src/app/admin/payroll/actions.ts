@@ -60,7 +60,9 @@ export async function approvePayrollAction(formData: FormData) {
       status: "admin_approved",
       admin_approved_at: new Date().toISOString(),
     })
-    .eq("id", id);
+    .eq("id", id)
+    .gt("computed_amount", 0)
+    .neq("status", "paid");
 
   revalidatePath("/admin/payroll");
 }
@@ -80,7 +82,9 @@ export async function markPaidAction(formData: FormData) {
       status: "paid",
       paid_at: new Date().toISOString(),
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("status", "admin_approved")
+    .gt("computed_amount", 0);
 
   revalidatePath("/admin/payroll");
 }
