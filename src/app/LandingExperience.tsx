@@ -166,6 +166,17 @@ export default function LandingExperience({
             {vi ? "Tôi đã có tài khoản" : "I have an account"}
           </Link>
         </div>
+
+        <div className="reveal mt-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left">
+          <p className="text-sm font-semibold text-amber-900">
+            {vi ? "Đặt trước, thanh toán sau buổi tập" : "Reserve now, pay after class"}
+          </p>
+          <p className="mt-1 text-sm leading-relaxed text-amber-800">
+            {vi
+              ? "Khi tạo tài khoản, bạn sẽ thấy 1 tín dụng khởi đầu để giữ chỗ cho lớp thường đầu tiên. Đây là tín dụng đặt chỗ, không phải lớp miễn phí. Nếu chưa mua gói trả phí, bạn thanh toán tại studio sau buổi tập. Lớp lẻ thường: 400.000 ₫."
+              : "When you create an account, you’ll see 1 starter credit so you can reserve your first regular class. It is a booking credit, not a free class. If you haven’t purchased a paid package, you pay at the studio after class. Single regular class: 400,000 VND."}
+          </p>
+        </div>
       </section>
 
       {/* Classes ---------------------------------------------------------- */}
