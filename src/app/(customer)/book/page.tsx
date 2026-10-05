@@ -239,11 +239,25 @@ export default async function BookPage({
         <aside className="order-first lg:order-last lg:col-span-1">
           <div className="card p-5 lg:sticky lg:top-24">
             <h2 className="text-sm font-semibold text-ink">
-              {vi ? "Tín dụng của bạn" : "Your credits"}
+              {requiresPaymentNotice
+                ? vi
+                  ? "Tín dụng đặt chỗ"
+                  : "Your booking credit"
+                : vi
+                  ? "Tín dụng của bạn"
+                  : "Your credits"}
             </h2>
             <dl className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-1">
               <div className="rounded-lg bg-stone-50 px-3 py-2">
-                <dt className="text-xs text-ink-muted">{vi ? "Thường" : "Regular"}</dt>
+                <dt className="text-xs text-ink-muted">
+                  {requiresPaymentNotice
+                    ? vi
+                      ? "Khởi đầu · không miễn phí"
+                      : "Starter · not free"
+                    : vi
+                      ? "Thường"
+                      : "Regular"}
+                </dt>
                 <dd className="text-2xl font-semibold tracking-tight text-ink">
                   {regularCredits}
                 </dd>
