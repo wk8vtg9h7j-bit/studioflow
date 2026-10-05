@@ -61,6 +61,7 @@ export function PayrollRow({ row }: { row: PayrollListRow }) {
     row.session?.studio?.timezone ?? null,
   );
   const amount = formatMajorMoney(row.computed_amount, row.currency);
+  const payable = Number(row.computed_amount ?? 0) > 0;
   const statusClass = STATUS_STYLES[row.status] ?? "bg-stone-100 text-ink-muted";
 
   return (
@@ -106,7 +107,7 @@ export function PayrollRow({ row }: { row: PayrollListRow }) {
       </div>
 
       <div className="flex flex-col items-stretch gap-2 border-t border-stone-200 bg-stone-50 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:px-5">
-        {row.status !== "admin_approved" && row.status !== "paid" && (
+        {payable && row.status !== "admin_approved" && row.status !== "paid" && (
           <form action={approvePayrollAction}>
             <input type="hidden" name="id" value={row.id} />
             <button type="submit" className="btn-secondary">
@@ -115,7 +116,7 @@ export function PayrollRow({ row }: { row: PayrollListRow }) {
           </form>
         )}
 
-        {row.status === "admin_approved" && (
+        {payable && row.status === "admin_approved" && (
           <form action={markPaidAction}>
             <input type="hidden" name="id" value={row.id} />
             <button type="submit" className="btn-primary">
