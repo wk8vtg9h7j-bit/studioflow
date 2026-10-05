@@ -57,6 +57,17 @@ export default function SignupPage() {
         {vi ? "Đặt lớp và quản lý tín dụng của bạn tại một nơi." : "Book classes and manage your credits in one place."}
       </p>
 
+      <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+        <p className="text-sm font-semibold text-amber-900">
+          {vi ? "Tín dụng khởi đầu không phải lớp miễn phí" : "Your starter credit is not a free class"}
+        </p>
+        <p className="mt-1 text-xs leading-relaxed text-amber-800">
+          {vi
+            ? "Sau khi đăng ký, tài khoản có 1 tín dụng đặt chỗ để bạn giữ chỗ cho lớp thường đầu tiên. Nếu chưa mua gói trả phí, bạn thanh toán phí lớp tại studio sau buổi tập."
+            : "After signup, your account gets 1 booking credit so you can reserve your first regular class. If you have not purchased a paid package, the class fee is paid at the studio after class."}
+        </p>
+      </div>
+
       <form action={formAction} className="mt-6 space-y-4">
         <div>
           <label htmlFor="fullName" className="label">

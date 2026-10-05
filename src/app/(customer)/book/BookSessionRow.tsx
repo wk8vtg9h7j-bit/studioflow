@@ -1,3 +1,5 @@
+"use client";
+
 // ============================================================================
 // A single bookable class in the customer browse list. Presentational: it shows
 // when/where the class is, what it's about, how many seats are left, what it
@@ -11,6 +13,7 @@
 // description before they spend a credit. The seat/price summary and the action
 // share a row from `sm` up, where there's width for it.
 // ============================================================================
+import { useRef, useState } from "react";
 import type { SessionWithRelations } from "@/lib/types";
 import { formatSessionDate, formatSessionTimeRange } from "@/lib/format";
 import { SubmitButton } from "@/app/(auth)/SubmitButton";
@@ -22,10 +25,20 @@ type Props = {
   booked: number;
   myStatus: "booked" | "waitlisted" | null;
   locale: Locale;
+  requiresPaymentNotice: boolean;
 };
 
-export function BookSessionRow({ session, booked, myStatus, locale }: Props) {
+export function BookSessionRow({
+  session,
+  booked,
+  myStatus,
+  locale,
+  requiresPaymentNotice,
+}: Props) {
   const vi = locale === "vi";
+  const [showPaymentNotice, setShowPaymentNotice] = useState(false);
+  const pendingFormRef = useRef<HTMLFormElement | null>(null);
+  const acknowledgementRef = useRef<HTMLInputElement | null>(null);
   const capacity = session.capacity ?? 0;
   const available = Math.max(0, capacity - booked);
   const isFull = available <= 0;
@@ -109,8 +122,24 @@ export function BookSessionRow({ session, booked, myStatus, locale }: Props) {
                   : <>You&apos;re {myStatus === "booked" ? "in" : "on the list"}</>}
               </p>
             ) : (
-              <form action={bookSessionAction} className="space-y-2">
+              <form
+                action={bookSessionAction}
+                className="space-y-2"
+                onSubmit={(event) => {
+                  if (!requiresPaymentNotice) return;
+                  if (acknowledgementRef.current?.value === "yes") return;
+                  event.preventDefault();
+                  pendingFormRef.current = event.currentTarget;
+                  setShowPaymentNotice(true);
+                }}
+              >
                 <input type="hidden" name="session_id" value={session.id} />
+                <input
+                  ref={acknowledgementRef}
+                  type="hidden"
+                  name="payment_acknowledged"
+                  value="no"
+                />
                 <label className="block text-xs font-medium text-ink-muted">
                   {vi ? "Số chỗ" : "Spots"}
                   <select
@@ -137,6 +166,66 @@ export function BookSessionRow({ session, booked, myStatus, locale }: Props) {
           </div>
         </div>
       </div>
+
+      {showPaymentNotice && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={`payment-notice-${session.id}`}
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+            <h2
+              id={`payment-notice-${session.id}`}
+              className="text-lg font-semibold text-ink"
+            >
+              {vi ? "Trước khi đặt lớp đầu tiên" : "Before your first booking"}
+            </h2>
+            <div className="mt-3 space-y-3 text-sm leading-relaxed text-ink-muted">
+              <p>
+                {vi
+                  ? "Tài khoản của bạn có 1 tín dụng khởi đầu để bạn có thể giữ chỗ cho lớp thường đầu tiên. Tín dụng này không có nghĩa là lớp học miễn phí."
+                  : "Your account starts with 1 booking credit so you can reserve your first regular class. This credit does not mean the class is free."}
+              </p>
+              <p>
+                {vi
+                  ? "Nếu bạn chưa mua gói trả phí, bạn sẽ thanh toán phí lớp tại studio sau buổi tập. Giá lớp lẻ thường hiện tại là 400.000 ₫."
+                  : "If you have not purchased a paid package, the class fee is paid at the studio after class. The current single regular class price is 400,000 VND."}
+              </p>
+              <p className="font-medium text-ink">
+                {vi
+                  ? "Tiếp tục nghĩa là bạn xác nhận đây là một lượt đặt lớp có tính phí."
+                  : "By continuing, you confirm that this is a paid class booking."}
+              </p>
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  pendingFormRef.current = null;
+                  setShowPaymentNotice(false);
+                }}
+              >
+                {vi ? "Quay lại" : "Go back"}
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => {
+                  if (acknowledgementRef.current) {
+                    acknowledgementRef.current.value = "yes";
+                  }
+                  setShowPaymentNotice(false);
+                  pendingFormRef.current?.requestSubmit();
+                }}
+              >
+                {vi ? "Tôi hiểu · Đặt lớp" : "I understand · Book"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </li>
   );
 }
