@@ -15,10 +15,32 @@
 // formatMoney helper.
 // ============================================================================
 import { requireRole } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { formatMoney } from "@/lib/format";
 import { SalaryRow, type SalaryListRow } from "./SalaryRow";
 
 export const dynamic = "force-dynamic";
+
+type CommissionSaleRow = {
+  id: string;
+  customer_id: string;
+  created_at: string;
+  sale_amount_cents: number | null;
+  sale_currency: string | null;
+  commission_amount_cents: number | null;
+  commission_rate_bps: number | null;
+  package?: { name: string | null } | null;
+  customer?: {
+    name: string | null;
+    email: string | null;
+    profile?: {
+      full_name: string | null;
+      email: string | null;
+    } | null;
+  } | null;
+};
+
+type MinorTotals = Record<string, number>;
 
 export default async function InstructorSalaryPage() {
   const profile = await requireRole("instructor", "/instructor/salary");
@@ -50,6 +72,41 @@ export default async function InstructorSalaryPage() {
 
   const rows = (data ?? []) as unknown as SalaryListRow[];
 
+  const service = createServiceClient();
+  const { data: commissionData } = await service
+    .from("credit_ledger")
+    .select(
+      `id, customer_id, created_at, sale_amount_cents, sale_currency,
+       commission_amount_cents, commission_rate_bps,
+       package:packages(name),
+       customer:customers(
+         name, email,
+         profile:profiles(full_name,email)
+       )`,
+    )
+    .eq("reason", "purchase")
+    .eq("sold_by", profile.id)
+    .gt("commission_amount_cents", 0)
+    .order("created_at", { ascending: false })
+    .limit(250);
+
+  const commissionRows =
+    (commissionData ?? []) as unknown as CommissionSaleRow[];
+  const currentMonth = monthKey(new Date(), "Asia/Ho_Chi_Minh");
+  const monthCommissionRows = commissionRows.filter(
+    (row) =>
+      monthKey(new Date(row.created_at), "Asia/Ho_Chi_Minh") === currentMonth,
+  );
+  const monthCommissionTotals = sumMinor(
+    monthCommissionRows,
+    "commission_amount_cents",
+  );
+  const monthSalesTotals = sumMinor(monthCommissionRows, "sale_amount_cents");
+  const allCommissionTotals = sumMinor(
+    commissionRows,
+    "commission_amount_cents",
+  );
+
   // Totals from the instructor's point of view. "Owed" is everything not yet
   // paid and not in dispute; "paid" is settled. "To confirm" nudges them toward
   // the rows still waiting on their sign-off. Currency is read off the first row.
@@ -71,11 +128,37 @@ export default async function InstructorSalaryPage() {
       <header>
         <h1 className="text-2xl font-semibold tracking-tight text-ink">Salary</h1>
         <p className="mt-1 text-sm text-ink-muted">
-          Your pay per session, computed from the attendance you taught. Confirm
-          a pending row to stand behind its headcount — the admin reviews and
-          approves it next.
+          Your pay per session plus a separate 2.5% commission tracker for paid
+          packages you issue to customers.
         </p>
       </header>
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard
+          label="Commission this month"
+          value={formatMinorTotals(monthCommissionTotals)}
+          detail="2.5% of package sales you issued"
+        />
+        <MetricCard
+          label="Packages sold this month"
+          value={monthCommissionRows.length}
+          detail="Instructor-issued paid packages"
+        />
+        <MetricCard
+          label="Package sales this month"
+          value={formatMinorTotals(monthSalesTotals)}
+          detail="Actual amount charged after discounts"
+        />
+        <MetricCard
+          label="All-time commission"
+          value={formatMinorTotals(allCommissionTotals)}
+          detail={
+            commissionRows.length +
+            " tracked package sale" +
+            (commissionRows.length === 1 ? "" : "s")
+          }
+        />
+      </section>
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
         <section className="lg:col-span-2">
@@ -110,6 +193,90 @@ export default async function InstructorSalaryPage() {
           </div>
         </aside>
       </div>
+
+      <section className="card overflow-hidden">
+        <div className="border-b border-stone-200 px-5 py-4">
+          <h2 className="text-sm font-semibold text-ink">
+            Package commission history
+          </h2>
+          <p className="mt-1 text-xs text-ink-muted">
+            Commission is 2.5% of the amount actually charged for each paid
+            package you issue.
+          </p>
+        </div>
+
+        {commissionRows.length > 0 ? (
+          <ul className="divide-y divide-stone-100">
+            {commissionRows.slice(0, 25).map((sale) => (
+              <li
+                key={sale.id}
+                className="flex flex-col gap-2 px-5 py-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-ink">
+                    {sale.customer?.profile?.full_name?.trim() ||
+                      sale.customer?.name?.trim() ||
+                      sale.customer?.profile?.email ||
+                      sale.customer?.email ||
+                      "Customer"}
+                  </p>
+                  <p className="truncate text-xs text-ink-muted">
+                    {sale.package?.name ?? "Package"} ·{" "}
+                    {formatCommissionDate(sale.created_at)}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-5 text-right">
+                  <div>
+                    <p className="text-xs text-ink-soft">Sale</p>
+                    <p className="text-sm font-medium tabular-nums text-ink">
+                      {formatMoney(
+                        sale.sale_amount_cents ?? 0,
+                        sale.sale_currency ?? "VND",
+                      )}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-ink-soft">
+                      {(sale.commission_rate_bps ?? 250) / 100}% commission
+                    </p>
+                    <p className="text-sm font-semibold tabular-nums text-emerald-700">
+                      {formatMoney(
+                        sale.commission_amount_cents ?? 0,
+                        sale.sale_currency ?? "VND",
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="px-5 py-10 text-center text-sm text-ink-muted">
+            No package commissions yet. A sale appears here when you issue a
+            paid package to a customer.
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: number | string;
+  detail: string;
+}) {
+  return (
+    <div className="card p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-ink-soft">
+        {label}
+      </p>
+      <p className="mt-2 text-xl font-semibold tabular-nums text-ink">{value}</p>
+      <p className="mt-1 text-xs text-ink-muted">{detail}</p>
     </div>
   );
 }
@@ -137,5 +304,58 @@ function formatTotal(amount: number, currency: string): string {
     }).format(amount ?? 0);
   } catch {
     return `${(amount ?? 0).toFixed(2)} ${currency || "GBP"}`;
+  }
+}
+
+
+function monthKey(date: Date, timeZone: string): string {
+  if (Number.isNaN(date.getTime())) return "";
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      year: "numeric",
+      month: "2-digit",
+      timeZone,
+    }).formatToParts(date);
+    const year = parts.find((part) => part.type === "year")?.value ?? "";
+    const month = parts.find((part) => part.type === "month")?.value ?? "";
+    return year && month ? `${year}-${month}` : "";
+  } catch {
+    return "";
+  }
+}
+
+function sumMinor(
+  rows: CommissionSaleRow[],
+  field: "sale_amount_cents" | "commission_amount_cents",
+): MinorTotals {
+  const totals: MinorTotals = {};
+  for (const row of rows) {
+    const currency = (row.sale_currency ?? "VND").toUpperCase();
+    totals[currency] = (totals[currency] ?? 0) + Number(row[field] ?? 0);
+  }
+  return totals;
+}
+
+function formatMinorTotals(totals: MinorTotals): string {
+  const entries = Object.entries(totals).filter(([, amount]) => amount !== 0);
+  if (entries.length === 0) return formatMoney(0, "VND");
+  return entries
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([currency, amount]) => formatMoney(amount, currency))
+    .join(" · ");
+}
+
+function formatCommissionDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  try {
+    return new Intl.DateTimeFormat("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      timeZone: "Asia/Ho_Chi_Minh",
+    }).format(date);
+  } catch {
+    return "";
   }
 }

@@ -32,6 +32,12 @@ export function InstructorCustomerCard({
     [packageId, packages],
   );
 
+  const commissionPreview = useMemo(() => {
+    const amount = Number(salePrice);
+    if (!selectedPackage || !Number.isFinite(amount) || amount <= 0) return 0;
+    return Math.round(amount * 0.025);
+  }, [salePrice, selectedPackage]);
+
   useEffect(() => {
     if (!state.ok) return;
     if (typeof state.regularBalance === "number") {
@@ -125,14 +131,24 @@ export function InstructorCustomerCard({
                 required
               />
               {selectedPackage ? (
-                <p className="mt-1 text-xs text-ink-soft">
-                  List price:{" "}
-                  {formatMoney(
-                    selectedPackage.price_cents,
-                    selectedPackage.currency,
-                  )}
-                  . You can lower the amount for a discount.
-                </p>
+                <div className="mt-1 space-y-1 text-xs text-ink-soft">
+                  <p>
+                    List price:{" "}
+                    {formatMoney(
+                      selectedPackage.price_cents,
+                      selectedPackage.currency,
+                    )}
+                    . You can lower the amount for a discount.
+                  </p>
+                  <p className="font-medium text-emerald-700">
+                    Your commission:{" "}
+                    {formatMoney(
+                      commissionPreview,
+                      selectedPackage.currency,
+                    )}{" "}
+                    (2.5% of the amount charged)
+                  </p>
+                </div>
               ) : null}
             </div>
 
@@ -165,7 +181,12 @@ export function InstructorCustomerCard({
             {state.ok ? (
               <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 sm:col-span-2">
                 Package issued. The customer&apos;s classes left have been
-                updated.
+                updated. Your 2.5% commission is{" "}
+                {formatMoney(
+                  state.commissionAmount ?? 0,
+                  state.commissionCurrency ?? selectedPackage?.currency ?? "VND",
+                )}
+                .
               </p>
             ) : null}
 

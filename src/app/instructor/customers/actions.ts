@@ -11,6 +11,8 @@ export type InstructorPackageState = {
   error?: string;
   regularBalance?: number;
   privateBalance?: number;
+  commissionAmount?: number;
+  commissionCurrency?: string;
 };
 
 const PAYMENT_METHODS = ["qr", "card", "cash"] as const;
@@ -32,7 +34,7 @@ export async function issuePackageAction(
   _prev: InstructorPackageState,
   formData: FormData,
 ): Promise<InstructorPackageState> {
-  await requireRole("instructor", "/instructor/customers");
+  const profile = await requireRole("instructor", "/instructor/customers");
 
   const parsed = IssuePackageSchema.safeParse({
     customer_id: formData.get("customer_id"),
@@ -97,6 +99,9 @@ export async function issuePackageAction(
     pool: pkg.pool ?? "regular",
     sale_amount_cents: sale_price_cents,
     sale_currency: pkg.currency ?? "VND",
+    sold_by: profile.id,
+    commission_rate_bps: 250,
+    commission_amount_cents: Math.round(sale_price_cents * 0.025),
   });
 
   if (error) {
@@ -117,8 +122,10 @@ export async function issuePackageAction(
   await queueCustomerBookingCalendarSync(customer_id);
 
   revalidatePath("/instructor/customers");
+  revalidatePath("/instructor/salary");
   revalidatePath("/admin/customers");
   revalidatePath("/admin/payments");
+  revalidatePath("/admin/payroll");
 
   return {
     ok: true,
@@ -126,5 +133,7 @@ export async function issuePackageAction(
       typeof regularRes.data === "number" ? regularRes.data : undefined,
     privateBalance:
       typeof privateRes.data === "number" ? privateRes.data : undefined,
+    commissionAmount: Math.round(sale_price_cents * 0.025),
+    commissionCurrency: pkg.currency ?? "VND",
   };
 }
