@@ -8,6 +8,7 @@ import { AppShell, type NavItem } from "@/components/AppShell";
 
 const INSTRUCTOR_NAV: NavItem[] = [
   { href: "/instructor", label: "My classes" },
+  { href: "/instructor/customers", label: "Customers" },
   { href: "/instructor/salary", label: "Salary" },
 ];
 
