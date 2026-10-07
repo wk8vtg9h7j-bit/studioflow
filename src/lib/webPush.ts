@@ -34,6 +34,21 @@ function configureVapid() {
   }
 }
 
+function absoluteNavigateUrl(value: string): string {
+  if (/^https?:\/\//i.test(value)) return value;
+
+  const configuredOrigin = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  const productionHost = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+  const deploymentHost = process.env.VERCEL_URL?.trim();
+  const origin =
+    configuredOrigin ||
+    (productionHost ? `https://${productionHost}` : null) ||
+    (deploymentHost ? `https://${deploymentHost}` : null) ||
+    "https://studioflow-steel.vercel.app";
+
+  return new URL(value || "/", origin).toString();
+}
+
 export function webPushConfigured(): boolean {
   return Boolean(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
 }
@@ -44,6 +59,17 @@ export async function sendStudioFlowPush(
 ) {
   configureVapid();
 
+  const declarativePayload = {
+    web_push: 8030,
+    notification: {
+      title: payload.title,
+      body: payload.body,
+      navigate: absoluteNavigateUrl(payload.url),
+      silent: false,
+      ...(payload.tag ? { tag: payload.tag } : {}),
+    },
+  };
+
   return webPush.sendNotification(
     {
       endpoint: subscription.endpoint,
@@ -52,9 +78,10 @@ export async function sendStudioFlowPush(
         auth: subscription.auth,
       },
     },
-    JSON.stringify(payload),
+    JSON.stringify(declarativePayload),
     {
       TTL: 60 * 60,
+      urgency: "high",
     },
   );
 }

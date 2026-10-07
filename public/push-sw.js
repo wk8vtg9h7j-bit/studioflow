@@ -8,7 +8,19 @@ self.addEventListener("push", (event) => {
 
   if (event.data) {
     try {
-      payload = { ...payload, ...event.data.json() };
+      const data = event.data.json();
+
+      if (data?.web_push === 8030 && data?.notification) {
+        payload = {
+          ...payload,
+          title: data.notification.title || payload.title,
+          body: data.notification.body || payload.body,
+          url: data.notification.navigate || payload.url,
+          tag: data.notification.tag || payload.tag,
+        };
+      } else {
+        payload = { ...payload, ...data };
+      }
     } catch {
       payload.body = event.data.text();
     }
