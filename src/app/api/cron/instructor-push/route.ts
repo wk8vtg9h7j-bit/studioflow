@@ -12,6 +12,13 @@ export const maxDuration = 60;
 const BATCH_SIZE = 50;
 const MAX_ATTEMPTS = 12;
 
+function globalBookingRecipientIds(): string[] {
+  return (process.env.BOOKING_PUSH_GLOBAL_INSTRUCTOR_IDS ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
 type QueueRow = {
   id: string;
   booking_id: string;
@@ -134,12 +141,14 @@ export async function GET(request: Request) {
     ((bookingData ?? []) as unknown as BookingRow[]).map((row) => [row.id, row]),
   );
 
+  const globalRecipientIds = globalBookingRecipientIds();
   const instructorIds = Array.from(
-    new Set(
-      Array.from(bookings.values())
+    new Set([
+      ...Array.from(bookings.values())
         .map((booking) => booking.session?.instructor_id)
         .filter((value): value is string => Boolean(value)),
-    ),
+      ...globalRecipientIds,
+    ]),
   );
 
   const sessionIds = Array.from(
@@ -226,26 +235,34 @@ export async function GET(request: Request) {
       continue;
     }
 
-    const instructorId = session.instructor_id;
-    if (!instructorId) {
-      await markHandled(
-        service,
-        item.id,
-        now,
-        nextAttempts,
-        "Session has no assigned instructor.",
-      );
-      continue;
-    }
+    const recipientIds = Array.from(
+      new Set(
+        [session.instructor_id, ...globalRecipientIds].filter(
+          (value): value is string => Boolean(value),
+        ),
+      ),
+    );
 
-    const subscriptions = subscriptionsByInstructor.get(instructorId) ?? [];
+    const subscriptions = Array.from(
+      new Map(
+        recipientIds
+          .flatMap(
+            (instructorId) =>
+              subscriptionsByInstructor.get(instructorId) ?? [],
+          )
+          .map((subscription) => [subscription.endpoint, subscription]),
+      ).values(),
+    );
+
     if (subscriptions.length === 0) {
       await markHandled(
         service,
         item.id,
         now,
         nextAttempts,
-        "Instructor has no push-enabled device.",
+        recipientIds.length === 0
+          ? "No instructor recipient is configured for this booking."
+          : "No booking-notification recipient has a push-enabled device.",
       );
       continue;
     }
