@@ -18,6 +18,12 @@ export const metadata: Metadata = {
   },
   description:
     "Bookings, CRM, instructor payroll, and Google Calendar sync for Pilates studios.",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "StudioFlow",
+    statusBarStyle: "default",
+  },
 };
 
 export default function RootLayout({

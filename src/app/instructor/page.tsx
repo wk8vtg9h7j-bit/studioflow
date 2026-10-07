@@ -17,6 +17,7 @@ import Link from "next/link";
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { formatSessionWhen } from "@/lib/format";
+import { PushNotificationsCard } from "./PushNotificationsCard";
 
 export const dynamic = "force-dynamic";
 
@@ -90,6 +91,10 @@ export default async function InstructorHomePage() {
           </p>
         </div>
       </header>
+
+      <PushNotificationsCard
+        vapidPublicKey={process.env.VAPID_PUBLIC_KEY ?? null}
+      />
 
       <section className="space-y-3">
         <h2 className="text-sm font-semibold text-ink">Upcoming</h2>
