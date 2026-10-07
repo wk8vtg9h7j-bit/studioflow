@@ -54,12 +54,29 @@ type BookingRow = {
   } | null;
 };
 
-type SubscriptionRow = {
+type InstructorSubscriptionRow = {
   id: string;
   instructor_id: string;
   endpoint: string;
   p256dh: string;
   auth: string;
+};
+
+type AdminSubscriptionRow = {
+  id: string;
+  profile_id: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+};
+
+type DeliverySubscription = {
+  id: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  table: "instructor_push_subscriptions" | "admin_push_subscriptions";
+  url: "/instructor" | "/admin";
 };
 
 export async function GET(request: Request) {
@@ -159,7 +176,10 @@ export async function GET(request: Request) {
     ),
   );
 
-  const subscriptionsByInstructor = new Map<string, SubscriptionRow[]>();
+  const subscriptionsByInstructor = new Map<
+    string,
+    InstructorSubscriptionRow[]
+  >();
   if (instructorIds.length > 0) {
     const { data: subscriptionData, error: subscriptionError } = await service
       .from("instructor_push_subscriptions")
@@ -173,11 +193,46 @@ export async function GET(request: Request) {
       );
     }
 
-    for (const subscription of (subscriptionData ?? []) as SubscriptionRow[]) {
-      const list = subscriptionsByInstructor.get(subscription.instructor_id) ?? [];
+    for (const subscription of (subscriptionData ??
+      []) as InstructorSubscriptionRow[]) {
+      const list =
+        subscriptionsByInstructor.get(subscription.instructor_id) ?? [];
       list.push(subscription);
       subscriptionsByInstructor.set(subscription.instructor_id, list);
     }
+  }
+
+  const { data: adminProfileData, error: adminProfileError } = await service
+    .from("profiles")
+    .select("id")
+    .eq("role", "admin");
+
+  if (adminProfileError) {
+    return NextResponse.json(
+      { error: adminProfileError.message },
+      { status: 500 },
+    );
+  }
+
+  const adminProfileIds = (adminProfileData ?? []).map((row) => row.id);
+  let adminSubscriptions: AdminSubscriptionRow[] = [];
+
+  if (adminProfileIds.length > 0) {
+    const { data: adminSubscriptionData, error: adminSubscriptionError } =
+      await service
+        .from("admin_push_subscriptions")
+        .select("id,profile_id,endpoint,p256dh,auth")
+        .in("profile_id", adminProfileIds);
+
+    if (adminSubscriptionError) {
+      return NextResponse.json(
+        { error: adminSubscriptionError.message },
+        { status: 500 },
+      );
+    }
+
+    adminSubscriptions =
+      (adminSubscriptionData ?? []) as AdminSubscriptionRow[];
   }
 
   const occupiedBySession = new Map<string, number>();
@@ -243,14 +298,40 @@ export async function GET(request: Request) {
       ),
     );
 
+    const instructorSubscriptions = recipientIds.flatMap(
+      (instructorId) => subscriptionsByInstructor.get(instructorId) ?? [],
+    );
+
     const subscriptions = Array.from(
-      new Map(
-        recipientIds
-          .flatMap(
-            (instructorId) =>
-              subscriptionsByInstructor.get(instructorId) ?? [],
-          )
-          .map((subscription) => [subscription.endpoint, subscription]),
+      new Map<string, DeliverySubscription>(
+        [
+          ...instructorSubscriptions.map(
+            (subscription): [string, DeliverySubscription] => [
+              subscription.endpoint,
+              {
+                id: subscription.id,
+                endpoint: subscription.endpoint,
+                p256dh: subscription.p256dh,
+                auth: subscription.auth,
+                table: "instructor_push_subscriptions",
+                url: "/instructor",
+              },
+            ],
+          ),
+          ...adminSubscriptions.map(
+            (subscription): [string, DeliverySubscription] => [
+              subscription.endpoint,
+              {
+                id: subscription.id,
+                endpoint: subscription.endpoint,
+                p256dh: subscription.p256dh,
+                auth: subscription.auth,
+                table: "admin_push_subscriptions",
+                url: "/admin",
+              },
+            ],
+          ),
+        ],
       ).values(),
     );
 
@@ -260,9 +341,7 @@ export async function GET(request: Request) {
         item.id,
         now,
         nextAttempts,
-        recipientIds.length === 0
-          ? "No instructor recipient is configured for this booking."
-          : "No booking-notification recipient has a push-enabled device.",
+        "No instructor, Ruby, or admin has a push-enabled device.",
       );
       continue;
     }
@@ -301,7 +380,10 @@ export async function GET(request: Request) {
             p256dh: subscription.p256dh,
             auth: subscription.auth,
           },
-          payload,
+          {
+            ...payload,
+            url: subscription.url,
+          },
         );
         successfulDevices += 1;
         devices += 1;
@@ -311,7 +393,7 @@ export async function GET(request: Request) {
         if (statusCode === 404 || statusCode === 410) {
           staleDevices += 1;
           await service
-            .from("instructor_push_subscriptions")
+            .from(subscription.table)
             .delete()
             .eq("id", subscription.id);
           continue;
