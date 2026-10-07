@@ -29,7 +29,7 @@ function isStandaloneApp() {
   );
 }
 
-function urlBase64ToUint8Array(value: string): Uint8Array {
+function urlBase64ToArrayBuffer(value: string): ArrayBuffer {
   const padding = "=".repeat((4 - (value.length % 4)) % 4);
   const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
   const raw = window.atob(base64);
@@ -39,7 +39,10 @@ function urlBase64ToUint8Array(value: string): Uint8Array {
     bytes[i] = raw.charCodeAt(i);
   }
 
-  return bytes;
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
 }
 
 function serialiseSubscription(subscription: PushSubscription) {
@@ -166,7 +169,7 @@ export function PushNotificationsCard({
         if (!subscription) {
           subscription = await registration.pushManager.subscribe({
             userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+            applicationServerKey: urlBase64ToArrayBuffer(vapidPublicKey),
           });
         }
 
