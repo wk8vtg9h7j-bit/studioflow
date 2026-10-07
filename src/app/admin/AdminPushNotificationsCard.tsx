@@ -103,6 +103,21 @@ export function AdminPushNotificationsCard({
         if (!alive) return;
 
         if (subscription && Notification.permission === "granted") {
+          const payload = serialiseSubscription(subscription);
+          if (!payload) {
+            setState("disabled");
+            return;
+          }
+
+          const saved = await saveAdminPushSubscriptionAction(payload);
+          if (!alive) return;
+
+          if (!saved.ok) {
+            setState("disabled");
+            setMessage(saved.error ?? "Could not register this phone.");
+            return;
+          }
+
           setEndpoint(subscription.endpoint);
           setState("enabled");
         } else {
