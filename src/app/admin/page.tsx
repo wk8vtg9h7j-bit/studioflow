@@ -11,6 +11,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { formatSessionWhen, formatMoney, FALLBACK_TZ } from "@/lib/format";
 import { loadCustomerAnalytics } from "@/lib/customerAnalytics.server";
 import { segmentMeta, type CustomerSegmentKey } from "@/lib/customerAnalytics";
+import { AdminPushNotificationsCard } from "./AdminPushNotificationsCard";
 
 export const dynamic = "force-dynamic";
 
@@ -617,6 +618,10 @@ export default async function AdminOverviewPage() {
           </Link>
         </div>
       </header>
+
+      <AdminPushNotificationsCard
+        vapidPublicKey={process.env.VAPID_PUBLIC_KEY ?? null}
+      />
 
       <section>
         <div className="mb-3">
