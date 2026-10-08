@@ -123,7 +123,7 @@ export async function sendAdminTestPushAction(
       },
       {
         title: "StudioFlow admin notifications are on",
-        body: "You will get an alert for every new confirmed class booking.",
+        body: "You will get an alert for every new confirmed class booking and cancellation.",
         url: "/admin",
         tag: "studioflow-admin-push-test",
       },

@@ -155,7 +155,7 @@ export async function sendInstructorTestPushAction(
       },
       {
         title: "StudioFlow notifications are on",
-        body: "You will get an alert when someone books a class assigned to you.",
+        body: "You will get an alert when someone books or cancels a class assigned to you.",
         url: "/instructor",
         tag: "studioflow-push-test",
       },

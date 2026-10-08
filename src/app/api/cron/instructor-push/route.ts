@@ -23,6 +23,7 @@ type QueueRow = {
   id: string;
   booking_id: string;
   booked_at: string;
+  booking_status: "booked" | "cancelled";
   instructor_push_attempts: number;
 };
 
@@ -103,8 +104,8 @@ export async function GET(request: Request) {
 
   const { data: queueData, error: queueError } = await service
     .from("booking_email_notifications")
-    .select("id,booking_id,booked_at,instructor_push_attempts")
-    .eq("booking_status", "booked")
+    .select("id,booking_id,booked_at,booking_status,instructor_push_attempts")
+    .in("booking_status", ["booked", "cancelled"])
     .is("instructor_push_sent_at", null)
     .lt("instructor_push_attempts", MAX_ATTEMPTS)
     .order("created_at", { ascending: true })
@@ -279,7 +280,7 @@ export async function GET(request: Request) {
       continue;
     }
 
-    if (session.status === "cancelled") {
+    if (item.booking_status === "booked" && session.status === "cancelled") {
       await markHandled(
         service,
         item.id,
@@ -359,14 +360,22 @@ export async function GET(request: Request) {
     const timezone = session.studio?.timezone || "Asia/Ho_Chi_Minh";
     const when = formatWhen(session.starts_at, timezone);
     const spots = Math.max(booking.spots_count ?? 1, 1);
-    const occupied = occupiedBySession.get(session.id) ?? spots;
+    const occupied = occupiedBySession.get(session.id) ?? 0;
+    const isCancellation = item.booking_status === "cancelled";
 
-    const payload = {
-      title: `New booking — ${studioShort}`,
-      body: `${customerName} booked ${spots > 1 ? `${spots} spots · ` : ""}${className}\n${when} · ${occupied}/${session.capacity} booked`,
-      url: "/instructor",
-      tag: `booking-${booking.id}-${item.booked_at}`,
-    };
+    const payload = isCancellation
+      ? {
+          title: `Booking cancelled — ${studioShort}`,
+          body: `${customerName} cancelled ${spots} spot${spots === 1 ? "" : "s"} · ${className}\n${when} · ${occupied}/${session.capacity} booked`,
+          url: "/instructor" as const,
+          tag: `booking-cancelled-${booking.id}-${item.booked_at}`,
+        }
+      : {
+          title: `New booking — ${studioShort}`,
+          body: `${customerName} booked ${spots > 1 ? `${spots} spots · ` : ""}${className}\n${when} · ${occupied}/${session.capacity} booked`,
+          url: "/instructor" as const,
+          tag: `booking-booked-${booking.id}-${item.booked_at}`,
+        };
 
     let successfulDevices = 0;
     let staleDevices = 0;
@@ -434,7 +443,7 @@ export async function GET(request: Request) {
   const { count: remaining } = await service
     .from("booking_email_notifications")
     .select("id", { count: "exact", head: true })
-    .eq("booking_status", "booked")
+    .in("booking_status", ["booked", "cancelled"])
     .is("instructor_push_sent_at", null)
     .lt("instructor_push_attempts", MAX_ATTEMPTS);
 
