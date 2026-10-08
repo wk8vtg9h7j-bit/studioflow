@@ -164,8 +164,8 @@ function errorCode(error: unknown): number | null {
 
 function eventColorId(studio: StudioForSync): string {
   // These are the two colors already used by the old StudioFlow booking events:
-  // Hideaway = green, Downtown = purple.
-  return studio.slug === "downtown-pilates" ? "3" : "10";
+  // Hideaway = orange, Downtown = purple.
+  return studio.slug === "downtown-pilates" ? "3" : "6";
 }
 
 function sessionName(session: SessionForSync): string {
