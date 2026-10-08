@@ -92,6 +92,128 @@ export function calendarForStudio(
 }
 
 
+export type CalendarColorAccessResult = {
+  attempted: number;
+  updated: number;
+  unchanged: number;
+  failed: number;
+  errors: string[];
+};
+
+function calendarColorWriterEmails(): string[] {
+  return (process.env.GOOGLE_CALENDAR_COLOR_WRITER_EMAILS ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export async function ensureCalendarColorWriters(): Promise<CalendarColorAccessResult> {
+  const emails = calendarColorWriterEmails();
+  if (emails.length === 0) {
+    return { attempted: 0, updated: 0, unchanged: 0, failed: 0, errors: [] };
+  }
+
+  const service = createServiceClient();
+  const { data: studios, error } = await service
+    .from("studios")
+    .select(
+      "id,name,slug,timezone,google_calendar_id,google_refresh_token,google_token_status,google_account_email",
+    )
+    .eq("google_token_status", "connected")
+    .not("google_calendar_id", "is", null);
+
+  if (error) {
+    return {
+      attempted: 0,
+      updated: 0,
+      unchanged: 0,
+      failed: emails.length,
+      errors: [error.message],
+    };
+  }
+
+  const uniqueCalendars = new Map<string, StudioForSync>();
+  for (const row of studios ?? []) {
+    const studio = row as StudioForSync;
+    if (
+      studio.google_calendar_id &&
+      !uniqueCalendars.has(studio.google_calendar_id)
+    ) {
+      uniqueCalendars.set(studio.google_calendar_id, studio);
+    }
+  }
+
+  let attempted = 0;
+  let updated = 0;
+  let unchanged = 0;
+  let failed = 0;
+  const errors: string[] = [];
+
+  for (const studio of uniqueCalendars.values()) {
+    if (!studio.google_calendar_id) continue;
+    const calendar = calendarForStudio(studio);
+
+    for (const email of emails) {
+      attempted += 1;
+      const ruleId = `user:${email}`;
+
+      try {
+        let currentRole: string | null = null;
+
+        try {
+          const existing = await calendar.acl.get({
+            calendarId: studio.google_calendar_id,
+            ruleId,
+          });
+          currentRole = existing.data.role ?? null;
+        } catch (lookupError) {
+          if (errorCode(lookupError) !== 404) throw lookupError;
+        }
+
+        if (currentRole === "owner" || currentRole === "writer") {
+          unchanged += 1;
+          continue;
+        }
+
+        if (currentRole) {
+          await calendar.acl.update({
+            calendarId: studio.google_calendar_id,
+            ruleId,
+            requestBody: {
+              scope: { type: "user", value: email },
+              role: "writer",
+            },
+          });
+        } else {
+          await calendar.acl.insert({
+            calendarId: studio.google_calendar_id,
+            sendNotifications: false,
+            requestBody: {
+              scope: { type: "user", value: email },
+              role: "writer",
+            },
+          });
+        }
+
+        updated += 1;
+      } catch (aclError) {
+        failed += 1;
+        const message =
+          aclError instanceof Error ? aclError.message : "Calendar ACL update failed";
+        errors.push(`${email}: ${message}`);
+      }
+    }
+  }
+
+  return {
+    attempted,
+    updated,
+    unchanged,
+    failed,
+    errors: errors.slice(0, 10),
+  };
+}
+
 export async function cleanupLegacyAggregateEvents(
   limit = 40,
 ): Promise<{ deleted: number; scanned: number; failed: number }> {
