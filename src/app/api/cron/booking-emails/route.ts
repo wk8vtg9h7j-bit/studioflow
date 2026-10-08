@@ -74,6 +74,7 @@ export async function GET(request: Request) {
     .select(
       "id,booking_id,booked_at,booking_status,spots_count,customer_sent_at,admin_sent_at,attempts",
     )
+    .in("booking_status", ["booked", "waitlisted"])
     .or("customer_sent_at.is.null,admin_sent_at.is.null")
     .lt("attempts", MAX_ATTEMPTS)
     .order("created_at", { ascending: true })
@@ -272,6 +273,7 @@ export async function GET(request: Request) {
   const { count: remaining } = await service
     .from("booking_email_notifications")
     .select("id", { count: "exact", head: true })
+    .in("booking_status", ["booked", "waitlisted"])
     .or("customer_sent_at.is.null,admin_sent_at.is.null")
     .lt("attempts", MAX_ATTEMPTS);
 
