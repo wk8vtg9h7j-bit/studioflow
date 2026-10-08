@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import {
   cleanupLegacyAggregateEvents,
+  ensureCalendarColorWriters,
   syncSessionById,
 } from "@/lib/google/sync";
 
@@ -27,6 +28,17 @@ export async function GET(request: Request) {
   }
 
   const service = createServiceClient();
+
+  // Shared-calendar viewers only see StudioFlow's per-event colors if Google
+  // grants them event-edit permission. Keep configured instructor/viewer
+  // accounts at writer level on the StudioFlow calendar.
+  const calendarColorAccess = await ensureCalendarColorWriters();
+  if (calendarColorAccess.failed > 0) {
+    console.warn(
+      "[calendar-color-access]",
+      JSON.stringify(calendarColorAccess),
+    );
+  }
 
   // Remove a small batch of orphaned orange aggregate class events first.
   // These are legacy calendar cards that no longer have a sessions.google_event_id
@@ -111,5 +123,6 @@ export async function GET(request: Request) {
     failed,
     remaining: remaining ?? 0,
     legacyAggregateCleanup: legacyCleanup,
+    calendarColorAccess,
   });
 }
