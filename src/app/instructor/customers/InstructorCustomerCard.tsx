@@ -22,6 +22,7 @@ export function InstructorCustomerCard({
 }) {
   const [state, formAction] = useFormState(issuePackageAction, initialState);
   const [open, setOpen] = useState(false);
+  const [showPayments, setShowPayments] = useState(false);
   const [regularBalance, setRegularBalance] = useState(customer.regularBalance);
   const [privateBalance, setPrivateBalance] = useState(customer.privateBalance);
   const [packageId, setPackageId] = useState("");
@@ -57,6 +58,25 @@ export function InstructorCustomerCard({
             {[customer.email, customer.phone].filter(Boolean).join(" · ") ||
               "Walk-in customer"}
           </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {customer.paymentDueBookings.length > 0 ? (
+              <span className="badge bg-amber-50 text-amber-800">
+                PAYMENT DUE · {customer.paymentDueBookings.length} class{customer.paymentDueBookings.length === 1 ? "" : "es"}
+              </span>
+            ) : customer.bookingCount > 0 ? (
+              <span className="badge bg-emerald-50 text-emerald-700">
+                Class bookings covered
+              </span>
+            ) : customer.purchaseHistory.length > 0 ? (
+              <span className="badge bg-sky-50 text-sky-700">
+                Package payment recorded
+              </span>
+            ) : (
+              <span className="badge bg-stone-100 text-ink-muted">
+                No package payments recorded
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-2 sm:w-64">
@@ -64,15 +84,89 @@ export function InstructorCustomerCard({
           <Balance label="Private left" value={privateBalance} />
         </div>
 
-        <button
-          type="button"
-          className="btn-secondary shrink-0"
-          onClick={() => setOpen((value) => !value)}
-          aria-expanded={open}
-        >
-          {open ? "Close" : "Issue package"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="btn-secondary shrink-0"
+            onClick={() => setShowPayments((value) => !value)}
+            aria-expanded={showPayments}
+          >
+            {showPayments ? "Hide payments" : "Packages & payments"}
+          </button>
+          <button
+            type="button"
+            className="btn-secondary shrink-0"
+            onClick={() => setOpen((value) => !value)}
+            aria-expanded={open}
+          >
+            {open ? "Close" : "Issue package"}
+          </button>
+        </div>
       </div>
+
+      {showPayments ? (
+        <section className="space-y-4 border-t border-stone-200 bg-stone-50/40 px-4 py-4">
+          <div>
+            <h3 className="text-sm font-semibold text-ink">Class payment status</h3>
+            {customer.paymentDueBookings.length > 0 ? (
+              <>
+                <p className="mt-1 text-sm font-medium text-amber-800">
+                  Payment due for {customer.paymentDueBookings.length} booking{customer.paymentDueBookings.length === 1 ? "" : "s"}.
+                </p>
+                <p className="mt-1 text-xs text-ink-soft">
+                  These classes are not covered by recorded paid-package credits.
+                  Starter and manual credits are not proof of payment.
+                </p>
+                <ul className="mt-2 divide-y divide-stone-200 rounded-lg border border-stone-200 bg-white">
+                  {customer.paymentDueBookings.map((booking) => (
+                    <li key={booking.id} className="flex flex-wrap justify-between gap-2 px-3 py-2 text-xs">
+                      <span className="font-medium text-ink">{booking.title}</span>
+                      <span className="text-ink-muted">
+                        {booking.startsAt ? displayDate(booking.startsAt) : "Date unknown"} · {booking.status.replaceAll("_", " ")}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <p className="mt-1 text-sm text-ink-muted">
+                {customer.bookingCount > 0
+                  ? "No payment-due bookings detected. Classes are covered by recorded paid packages."
+                  : "No completed or active class bookings to check."}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <h3 className="text-sm font-semibold text-ink">
+              Recorded package purchases ({customer.purchaseHistory.length})
+            </h3>
+            {customer.purchaseHistory.length > 0 ? (
+              <ul className="mt-2 divide-y divide-stone-200 overflow-hidden rounded-lg border border-stone-200 bg-white">
+                {customer.purchaseHistory.map((purchase) => (
+                  <li key={purchase.id} className="flex flex-wrap items-center justify-between gap-3 px-3 py-3 text-xs">
+                    <div className="min-w-0">
+                      <p className="font-medium text-ink">{purchase.packageName}</p>
+                      <p className="mt-1 text-ink-soft">
+                        {purchase.credits} {purchase.pool === "private" ? "private" : "regular"} credits · {displayDate(purchase.createdAt)}
+                      </p>
+                      <p className="mt-1 text-ink-soft">
+                        Method: {paymentMethodLabel(purchase.paymentMethod)}
+                        {purchase.expiresAt ? " · Expires " + displayDate(purchase.expiresAt) : ""}
+                      </p>
+                    </div>
+                    <span className="font-semibold tabular-nums text-emerald-700">
+                      {formatMoney(purchase.amountCents, purchase.currency)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-1 text-sm text-ink-muted">No package payments have been recorded.</p>
+            )}
+          </div>
+        </section>
+      ) : null}
 
       {open ? (
         <div className="border-t border-stone-200 bg-stone-50/50 px-4 py-4">
@@ -209,4 +303,26 @@ function Balance({ label, value }: { label: string; value: number }) {
       </p>
     </div>
   );
+}
+
+function displayDate(value: string): string {
+  return new Date(value).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "Asia/Ho_Chi_Minh",
+  });
+}
+
+function paymentMethodLabel(method: string | null): string {
+  switch (method) {
+    case "qr":
+      return "QR transfer";
+    case "card":
+      return "Card";
+    case "cash":
+      return "Cash";
+    default:
+      return "Not recorded";
+  }
 }
