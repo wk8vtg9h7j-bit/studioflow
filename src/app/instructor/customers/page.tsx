@@ -2,6 +2,12 @@ import { requireRole } from "@/lib/auth";
 import { createServiceClient } from "@/lib/supabase/server";
 import type { Package } from "@/lib/types";
 import { InstructorCustomerCard } from "./InstructorCustomerCard";
+import {
+  getInstructorPaymentOverview,
+  getInstructorCustomerPurchases,
+  type PaymentDueBooking,
+  type CustomerPurchase,
+} from "@/lib/instructorCustomerPayments.server";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +33,9 @@ export type InstructorCustomer = {
   phone: string | null;
   regularBalance: number;
   privateBalance: number;
+  bookingCount: number;
+  paymentDueBookings: PaymentDueBooking[];
+  purchaseHistory: CustomerPurchase[];
 };
 
 const MAX_RESULTS = 30;
@@ -34,12 +43,13 @@ const MAX_RESULTS = 30;
 export default async function InstructorCustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; due?: string }>;
 }) {
   await requireRole("instructor", "/instructor/customers");
 
   const params = await searchParams;
   const q = params.q?.trim() ?? "";
+  const onlyDue = params.due === "1";
   const service = createServiceClient();
 
   const [{ data: rawCustomers, error: customersError }, { data: packageRows }] =
@@ -62,8 +72,12 @@ export default async function InstructorCustomersPage({
 
   if (customersError) throw customersError;
 
+  // The admin attendance register and instructor view share the same
+  // paid-package coverage calculation, including starter/manual credits.
+  const { dueByCustomer, bookingCounts } = await getInstructorPaymentOverview();
+
   const needle = q.toLocaleLowerCase();
-  const filtered = ((rawCustomers ?? []) as unknown as CustomerRow[])
+  const matching = ((rawCustomers ?? []) as unknown as CustomerRow[])
     .filter((customer) => {
       if (!needle) return true;
       const haystack = [
@@ -79,7 +93,11 @@ export default async function InstructorCustomersPage({
         .toLocaleLowerCase();
       return haystack.includes(needle);
     })
-    .slice(0, MAX_RESULTS);
+    .filter((customer) => !onlyDue || (dueByCustomer.get(customer.id)?.length ?? 0) > 0);
+  const filtered = matching.slice(0, MAX_RESULTS);
+  const purchasesByCustomer = await getInstructorCustomerPurchases(
+    filtered.map((customer) => customer.id),
+  );
 
   const customers: InstructorCustomer[] = await Promise.all(
     filtered.map(async (customer) => {
@@ -108,6 +126,9 @@ export default async function InstructorCustomersPage({
           typeof regularRes.data === "number" ? regularRes.data : 0,
         privateBalance:
           typeof privateRes.data === "number" ? privateRes.data : 0,
+        bookingCount: bookingCounts.get(customer.id) ?? 0,
+        paymentDueBookings: dueByCustomer.get(customer.id) ?? [],
+        purchaseHistory: purchasesByCustomer.get(customer.id) ?? [],
       };
     }),
   );
@@ -121,12 +142,24 @@ export default async function InstructorCustomersPage({
           Customers
         </h1>
         <p className="mt-1 text-sm text-ink-muted">
-          Check classes left and issue paid packages. Customer editing and
-          manual credit adjustments remain admin-only.
+          Check classes left, package purchases, recorded payments and who still
+          needs to pay. Customer editing and manual credit adjustments remain admin-only.
         </p>
       </header>
 
+      <div className="flex flex-wrap items-center gap-2">
+        <a
+          href={onlyDue
+            ? (q ? "/instructor/customers?q=" + encodeURIComponent(q) : "/instructor/customers")
+            : "/instructor/customers?due=1" + (q ? "&q=" + encodeURIComponent(q) : "")}
+          className={onlyDue ? "btn-primary" : "btn-secondary"}
+        >
+          {onlyDue ? "Show all customers" : "Show payment due only"}
+        </a>
+      </div>
+
       <form method="get" className="card flex flex-col gap-3 p-4 sm:flex-row">
+        {onlyDue ? <input type="hidden" name="due" value="1" /> : null}
         <div className="min-w-0 flex-1">
           <label className="label" htmlFor="instructor-customer-search">
             Search customer
@@ -145,7 +178,7 @@ export default async function InstructorCustomersPage({
             Search
           </button>
           {q ? (
-            <a href="/instructor/customers" className="btn-secondary">
+            <a href={onlyDue ? "/instructor/customers?due=1" : "/instructor/customers"} className="btn-secondary">
               Clear
             </a>
           ) : null}
@@ -153,9 +186,9 @@ export default async function InstructorCustomersPage({
       </form>
 
       <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">
-        {q
-          ? `${customers.length} result${customers.length === 1 ? "" : "s"}`
-          : `Latest ${customers.length} customers`}
+        {matching.length === 0
+          ? "No matching customers"
+          : `Showing ${customers.length} of ${matching.length} customer${matching.length === 1 ? "" : "s"}${onlyDue ? " needing payment" : ""}`}
       </p>
 
       {customers.length > 0 ? (
