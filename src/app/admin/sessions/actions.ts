@@ -106,6 +106,35 @@ async function resolveInstants(
   return { starts_at: start.toISOString(), ends_at: end.toISOString() };
 }
 
+// Refuse a new/edited session that puts one instructor in two studios at
+// overlapping times. This check protects future edits; existing historical
+// conflicts are handled separately and are never silently rescheduled.
+async function instructorOverlapError(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  instructorId: string | undefined,
+  startsAt: string,
+  endsAt: string,
+  excludeSessionId?: string,
+): Promise<string | null> {
+  if (!instructorId) return null;
+  let query = supabase
+    .from("sessions")
+    .select("id")
+    .eq("instructor_id", instructorId)
+    .eq("status", "scheduled")
+    .lt("starts_at", endsAt)
+    .gt("ends_at", startsAt)
+    .limit(1);
+  if (excludeSessionId) query = query.neq("id", excludeSessionId);
+
+  const { data, error } = await query;
+  if (error) return "Could not check instructor availability: " + error.message;
+  if ((data ?? []).length > 0) {
+    return "This instructor already has a class during this time. Choose another instructor or time.";
+  }
+  return null;
+}
+
 export async function createSessionAction(
   _prev: SessionActionState,
   formData: FormData,
@@ -137,6 +166,11 @@ export async function createSessionAction(
     duration_min,
   );
   if ("error" in instants) return { error: instants.error };
+
+  const conflict = await instructorOverlapError(
+    supabase, instructor_id || undefined, instants.starts_at, instants.ends_at,
+  );
+  if (conflict) return { error: conflict };
 
   const { data: created, error } = await supabase
     .from("sessions")
@@ -200,6 +234,11 @@ export async function updateSessionAction(
     duration_min,
   );
   if ("error" in instants) return { error: instants.error };
+
+  const conflict = await instructorOverlapError(
+    supabase, instructor_id || undefined, instants.starts_at, instants.ends_at, id,
+  );
+  if (conflict) return { error: conflict };
 
   const { error } = await supabase
     .from("sessions")
