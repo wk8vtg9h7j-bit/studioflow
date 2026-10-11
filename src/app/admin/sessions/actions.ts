@@ -280,8 +280,7 @@ export async function setSessionStatusAction(formData: FormData) {
   // Cancelling a studio session must release every unfulfilled booking,
   // whether the class is regular or private. This must happen BEFORE changing
   // the session status, so a refund error never leaves an active booking on a
-  // cancelled class. Also recover a previously cancelled session whose booking
-  // was incorrectly left active (for example by a historical direct edit).
+  // cancelled class. Existing cancelled classes are left untouched.
   if (status === "cancelled") {
     const { data: session, error: sessionError } = await supabase
       .from("sessions")
@@ -291,6 +290,8 @@ export async function setSessionStatusAction(formData: FormData) {
     if (sessionError || !session) {
       throw new Error(sessionError?.message ?? "Class not found.");
     }
+    // Repeated cancellation must not modify historical private bookings.
+    if (session.status === "cancelled") return;
 
     const { data: bookings, error: bookingsError } = await supabase
       .from("bookings")
