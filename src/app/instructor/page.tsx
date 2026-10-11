@@ -29,7 +29,7 @@ type InstructorSessionRow = {
   status: string;
   studio?: { name: string | null; timezone: string | null } | null;
   class_type?: { name: string | null; color: string | null } | null;
-  bookings?: { count: number }[] | null;
+  bookings?: { status: string; spots_count: number | null }[] | null;
 };
 
 export default async function InstructorHomePage() {
@@ -51,7 +51,7 @@ export default async function InstructorHomePage() {
           `id, title, starts_at, ends_at, status,
            studio:studios(name, timezone),
            class_type:class_types(name, color),
-           bookings(count)`,
+           bookings(status,spots_count)`,
         )
         .eq("instructor_id", instructor.id)
         .order("starts_at", { ascending: true })
@@ -136,7 +136,7 @@ function SessionCard({
   const studioName = row.studio?.name ?? null;
   const when = formatSessionWhen(row.starts_at, row.studio?.timezone ?? undefined);
   const color = row.class_type?.color ?? "#d6d3d1";
-  const headcount = row.bookings?.[0]?.count ?? 0;
+  // Only occupied spots count as booked heads. Cancelled / waitlisted /\n  // no-show bookings must not inflate an instructor's roster.\n  const headcount = (row.bookings ?? []).reduce(\n    (total, booking) =>\n      booking.status === "booked" || booking.status === "attended"\n        ? total + (booking.spots_count ?? 1)\n        : total,\n    0,\n  );
   const cancelled = row.status === "cancelled";
 
   return (
