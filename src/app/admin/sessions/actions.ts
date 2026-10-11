@@ -238,42 +238,38 @@ export async function setSessionStatusAction(formData: FormData) {
 
   const supabase = await createClient();
 
-  // Cancelling a private class is a studio-side cancellation, so any customer
-  // still booked into it must get their private credit back. Use the existing
-  // cancel_booking RPC rather than writing a plain +1 adjustment: it traces the
-  // original spend and preserves the source credit's expiry date.
-  //
-  // Do this BEFORE cancelling the session. If a booking refund fails, the
-  // session stays scheduled instead of becoming a cancelled class that still
-  // charged its customer.
+  // Cancelling a studio session must release every unfulfilled booking,
+  // whether the class is regular or private. This must happen BEFORE changing
+  // the session status, so a refund error never leaves an active booking on a
+  // cancelled class. Also recover a previously cancelled session whose booking
+  // was incorrectly left active (for example by a historical direct edit).
   if (status === "cancelled") {
     const { data: session, error: sessionError } = await supabase
       .from("sessions")
-      .select("status,class_type:class_types(pool)")
+      .select("id,status")
       .eq("id", id)
       .maybeSingle();
+    if (sessionError || !session) {
+      throw new Error(sessionError?.message ?? "Class not found.");
+    }
 
-    if (sessionError || !session) return;
+    const { data: bookings, error: bookingsError } = await supabase
+      .from("bookings")
+      .select("id")
+      .eq("session_id", id)
+      .in("status", ["booked", "waitlisted"]);
+    if (bookingsError) throw new Error(bookingsError.message);
 
-    const classType = (session as unknown as {
-      status: string;
-      class_type: { pool: string | null } | null;
-    }).class_type;
-
-    if (session.status !== "cancelled" && classType?.pool === "private") {
-      const { data: bookings, error: bookingsError } = await supabase
-        .from("bookings")
-        .select("id")
-        .eq("session_id", id)
-        .in("status", ["booked", "waitlisted"]);
-
-      if (bookingsError) return;
-
-      for (const booking of bookings ?? []) {
-        const { error: cancelError } = await supabase.rpc("cancel_booking", {
-          p_booking_id: booking.id,
-        });
-        if (cancelError) return;
+    for (const booking of bookings ?? []) {
+      // The RPC restores credits with their original source expiry.
+      const { error: refundError } = await supabase.rpc("cancel_booking", {
+        p_booking_id: booking.id,
+      });
+      if (refundError) {
+        throw new Error(
+          "Could not cancel class because a booking refund failed: " +
+          refundError.message,
+        );
       }
     }
   }
@@ -283,6 +279,7 @@ export async function setSessionStatusAction(formData: FormData) {
 
   revalidatePath("/admin/sessions");
   revalidatePath("/admin/customers");
+  revalidatePath("/instructor");
   revalidatePath("/book");
   revalidatePath("/my-bookings");
 }
