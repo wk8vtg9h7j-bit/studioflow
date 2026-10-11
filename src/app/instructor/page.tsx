@@ -136,7 +136,15 @@ function SessionCard({
   const studioName = row.studio?.name ?? null;
   const when = formatSessionWhen(row.starts_at, row.studio?.timezone ?? undefined);
   const color = row.class_type?.color ?? "#d6d3d1";
-  // Only occupied spots count as booked heads. Cancelled / waitlisted /\n  // no-show bookings must not inflate an instructor's roster.\n  const headcount = (row.bookings ?? []).reduce(\n    (total, booking) =>\n      booking.status === "booked" || booking.status === "attended"\n        ? total + (booking.spots_count ?? 1)\n        : total,\n    0,\n  );
+  // Only occupied spots count as booked heads. Cancelled / waitlisted /
+  // no-show bookings must not inflate an instructor's roster.
+  const headcount = (row.bookings ?? []).reduce(
+    (total, booking) =>
+      booking.status === "booked" || booking.status === "attended"
+        ? total + (booking.spots_count ?? 1)
+        : total,
+    0,
+  );
   const cancelled = row.status === "cancelled";
 
   return (
