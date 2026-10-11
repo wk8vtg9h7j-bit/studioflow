@@ -44,6 +44,14 @@ export default async function InstructorHomePage() {
     .eq("profile_id", profile.id)
     .single();
 
+  // A generated schedule stretches years into the future. Query only the
+  // relevant instructor window so Supabase's default 1,000-row cap can never
+  // silently hide the actual upcoming classes.
+  const now = Date.now();
+  const DAY_MS = 86_400_000;
+  const historyStart = new Date(now - 30 * DAY_MS).toISOString();
+  const upcomingEnd = new Date(now + 45 * DAY_MS).toISOString();
+
   const { data } = instructor
     ? await supabase
         .from("sessions")
@@ -54,20 +62,22 @@ export default async function InstructorHomePage() {
            bookings(status,spots_count)`,
         )
         .eq("instructor_id", instructor.id)
+        .gte("starts_at", historyStart)
+        .lt("starts_at", upcomingEnd)
         .order("starts_at", { ascending: true })
     : { data: [] };
 
   const rows = (data ?? []) as unknown as InstructorSessionRow[];
 
-  // Split on now. Booked sessions in the future are "upcoming"; everything else
-  // (already started/finished, or cancelled) drops into the history list.
-  const now = Date.now();
+  // Only scheduled future classes are upcoming. Cancelled future slots must
+  // never appear under Earlier, which is strictly a past-session history.
   const upcoming: InstructorSessionRow[] = [];
   const past: InstructorSessionRow[] = [];
   for (const row of rows) {
     const started = new Date(row.starts_at).getTime();
-    if (Number.isFinite(started) && started >= now && row.status !== "cancelled") {
-      upcoming.push(row);
+    if (!Number.isFinite(started)) continue;
+    if (started >= now) {
+      if (row.status === "scheduled") upcoming.push(row);
     } else {
       past.push(row);
     }
@@ -97,7 +107,7 @@ export default async function InstructorHomePage() {
       />
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-ink">Upcoming</h2>
+        <h2 className="text-sm font-semibold text-ink">Upcoming · Next 45 days</h2>
         {upcoming.length > 0 ? (
           <ul className="space-y-3">
             {upcoming.map((row) => (
@@ -113,7 +123,7 @@ export default async function InstructorHomePage() {
 
       {past.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-ink">Earlier</h2>
+          <h2 className="text-sm font-semibold text-ink">Earlier · Past 30 days</h2>
           <ul className="space-y-3">
             {past.map((row) => (
               <SessionCard key={row.id} row={row} past />
