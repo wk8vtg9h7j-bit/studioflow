@@ -279,20 +279,6 @@ export function SessionRow({
             </>
           ) : null}
 
-          {cancelled && booked > 0 && (
-            <form action={setSessionStatusAction} className="w-full sm:w-auto">
-              <input type="hidden" name="id" value={session.id} />
-              <input type="hidden" name="status" value="cancelled" />
-              <button
-                type="submit"
-                className="btn-secondary w-full sm:w-auto"
-                title="Cancel stale active bookings and return their original credits"
-              >
-                Resolve bookings
-              </button>
-            </form>
-          )}
-
           <form action={setSessionStatusAction} className="w-full sm:w-auto">
             <input type="hidden" name="id" value={session.id} />
             <input
@@ -358,16 +344,6 @@ export function SessionRow({
             >
               {editing ? "Close edit" : "Edit"}
             </button>
-
-            {cancelled && booked > 0 && (
-              <form action={setSessionStatusAction} className="col-span-2 w-full">
-                <input type="hidden" name="id" value={session.id} />
-                <input type="hidden" name="status" value="cancelled" />
-                <button type="submit" className="btn-secondary w-full">
-                  Resolve bookings
-                </button>
-              </form>
-            )}
 
             <form
               action={setSessionStatusAction}
