@@ -27,6 +27,7 @@ type QueueRow = {
 
 type BookingRow = {
   id: string;
+  status: string;
   customer: {
     name: string | null;
     email: string | null;
@@ -36,6 +37,7 @@ type BookingRow = {
     } | null;
   } | null;
   session: {
+    status: string;
     starts_at: string;
     ends_at: string;
     title: string | null;
@@ -77,7 +79,10 @@ export async function GET(request: Request) {
     .in("booking_status", ["booked", "waitlisted"])
     .or("customer_sent_at.is.null,admin_sent_at.is.null")
     .lt("attempts", MAX_ATTEMPTS)
-    .order("created_at", { ascending: true })
+    // Do not suddenly send weeks-old confirmations when email service recovers.
+    // Older failures remain recorded for administrator review, not delivery.
+    .gte("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+    .order("created_at", { ascending: false })
     .limit(BATCH_SIZE);
 
   if (queueError) {
@@ -102,12 +107,14 @@ export async function GET(request: Request) {
     .from("bookings")
     .select(
       `id,
+       status,
        customer:customers (
          name,
          email,
          profile:profiles ( full_name, email )
        ),
        session:sessions (
+         status,
          starts_at,
          ends_at,
          title,
@@ -156,6 +163,27 @@ export async function GET(request: Request) {
         })
         .eq("id", item.id);
       failed += 1;
+      continue;
+    }
+
+    // Queue events can outlive the booking they described. Never send a
+    // confirmation for a cancelled, superseded or already-started class.
+    const bookingStillCurrent =
+      (item.booking_status === "booked" &&
+        (booking.status === "booked" || booking.status === "attended")) ||
+      (item.booking_status === "waitlisted" && booking.status === "waitlisted");
+    if (
+      !bookingStillCurrent ||
+      session.status !== "scheduled" ||
+      Date.parse(session.starts_at) <= Date.now()
+    ) {
+      await service
+        .from("booking_email_notifications")
+        .update({
+          attempts: MAX_ATTEMPTS,
+          last_error: "Not delivered: booking changed, class cancelled or class already started.",
+        })
+        .eq("id", item.id);
       continue;
     }
 
