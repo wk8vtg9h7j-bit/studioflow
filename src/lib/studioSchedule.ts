@@ -5,7 +5,7 @@ export type WeeklyStudioSchedule = {
 
 export const WEEKLY_STUDIO_SCHEDULE: Record<string, WeeklyStudioSchedule> = {
   "downtown-pilates": {
-    weekdayTimes: ["11:00", "14:00", "16:50", "19:15"],
+    weekdayTimes: ["06:00", "11:00", "14:00", "16:50", "19:15"],
     weekendTimes: ["07:00", "11:30", "18:00"],
   },
   "hideaway-pilates": {
