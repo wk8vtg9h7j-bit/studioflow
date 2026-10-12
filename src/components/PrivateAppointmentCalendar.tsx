@@ -104,7 +104,7 @@ export function PrivateAppointmentCalendar({data,role,notice,error}:{
     <div className="rounded-2xl border border-white/15 bg-white/10 px-5 py-4 backdrop-blur">
      <p className="text-[10px] uppercase tracking-[0.2em] text-white/60">{role==="instructor"?"Duration":"Private credits"}</p>
      <div className="mt-1 text-3xl font-semibold tabular-nums">{role==="instructor"?"50 min":data.creditBalance}</div>
-     {role==="customer"&&<p className="mt-1 text-xs text-white/60">1 credit per session</p>}
+     {role==="customer"&&<p className="mt-1 text-xs text-white/60">{data.creditCost} {data.creditCost===1?"credit":"credits"} per session</p>}
     </div>
    </div>
   </section>
@@ -240,10 +240,10 @@ export function PrivateAppointmentCalendar({data,role,notice,error}:{
        <button className="rounded-xl bg-[#18333b] px-6 py-3 text-sm font-semibold text-white hover:bg-[#274a54]">Send availability request →</button>
       </form> :
       <form className="mt-5" action={bookPrivateSlotAction}><HiddenFields data={data} slotId={selectedState.slot?.id}/>
-       <p className="mb-4 text-sm text-stone-600">Confirm this private appointment using one private package credit.</p>
-       {data.creditBalance>0 ?
-        <button className="rounded-xl bg-[#18333b] px-6 py-3 text-sm font-semibold text-white hover:bg-[#274a54]">Confirm private booking · 1 credit →</button> :
-        <p className="rounded-xl border border-amber-200 bg-white p-4 text-sm text-amber-800">You need one private credit to confirm. Please purchase a private package from the studio, then return to book.</p>}
+       <p className="mb-4 text-sm text-stone-600">Confirm this private appointment using {data.creditCost} private package {data.creditCost===1?"credit":"credits"}.</p>
+       {data.creditBalance>=data.creditCost ?
+        <button className="rounded-xl bg-[#18333b] px-6 py-3 text-sm font-semibold text-white hover:bg-[#274a54]">Confirm private booking · {data.creditCost} {data.creditCost===1?"credit":"credits"} →</button> :
+        <p className="rounded-xl border border-amber-200 bg-white p-4 text-sm text-amber-800">You need {data.creditCost} private {data.creditCost===1?"credit":"credits"} to confirm. Please purchase a private package from the studio, then return to book.</p>}
       </form>
     }
    </div>}
