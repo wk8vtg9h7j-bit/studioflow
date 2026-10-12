@@ -177,197 +177,129 @@ export function SessionRow({
   }
 
   return (
-    <li className="card overflow-hidden">
-      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 px-4 py-4 sm:flex sm:flex-wrap sm:items-center sm:gap-4 sm:px-5">
-        <span
-          className="h-full min-h-20 w-1.5 shrink-0 rounded-full sm:h-12 sm:min-h-0"
-          style={{ backgroundColor: color }}
-          aria-hidden
-        />
+    <li className="card min-w-0 overflow-hidden">
+      {/* Keep the title and session details full-width. Actions never compete
+          with the title for horizontal space at tablet or desktop widths. */}
+      <div className="min-w-0 px-3 py-3 sm:px-4 sm:py-4">
+        <div className="flex min-w-0 items-start gap-3">
+          <span
+            className="mt-0.5 h-12 w-1 shrink-0 rounded-full"
+            style={{ backgroundColor: color }}
+            aria-hidden="true"
+          />
 
-        <div className="min-w-0 sm:flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="min-w-0 font-medium leading-snug text-ink sm:truncate">
-              {heading}
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <h3 className="min-w-0 break-words text-sm font-semibold leading-snug text-ink sm:text-base">
+                {heading}
+              </h3>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                cancelled ? "bg-stone-100 text-stone-600" : "bg-emerald-50 text-emerald-700"
+              }`}>
+                {cancelled ? "Cancelled" : "Scheduled"}
+              </span>
+            </div>
+
+            <p className="mt-1.5 break-words text-xs leading-relaxed text-ink-muted sm:text-sm">
+              {formatSessionWhen(session.starts_at, tz)} ·{" "}
+              {formatSessionTimeRange(session.starts_at, session.ends_at, tz)}
             </p>
-            {cancelled ? (
-              <span className="badge shrink-0 bg-stone-100 text-ink-muted">
-                Cancelled
+            <p className="mt-1 break-words text-xs leading-relaxed text-ink-muted">
+              {session.studio?.name ?? "Unknown studio"} ·{" "}
+              {session.instructor?.display_name ?? "Unassigned"}
+              {session.room ? ` · ${session.room}` : ""}
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+              <span className="font-semibold text-ink-muted">
+                {booked}/{session.capacity} booked
               </span>
-            ) : (
-              <span className="badge shrink-0 bg-emerald-50 text-emerald-700">
-                Scheduled
-              </span>
-            )}
+              {held > 0 && (
+                <span className="rounded-md bg-amber-50 px-1.5 py-0.5 text-amber-800">
+                  {held} held
+                </span>
+              )}
+              {held >= session.capacity && !session.instructor_id && (
+                <span className="text-emerald-700">Instructor free for private classes</span>
+              )}
+            </div>
           </div>
-          <p className="mt-1 text-xs leading-relaxed text-ink-muted sm:truncate">
-            {formatSessionWhen(session.starts_at, tz)} ·{" "}
-            {formatSessionTimeRange(session.starts_at, session.ends_at, tz)}
-          </p>
-          <p className="mt-1 text-xs leading-relaxed text-ink-soft sm:truncate">
-            {session.studio?.name ?? "Unknown studio"}
-            {" · "}
-            {session.instructor?.display_name ?? "Unassigned"}
-            {session.room ? ` · ${session.room}` : ""}
-          </p>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-            <span className="font-semibold text-ink-muted">
-              {booked}/{session.capacity} booked
+        </div>
+
+        {/* Two readable primary actions on phones. At larger widths they are
+            still on their own row, so long studio/instructor names cannot clip. */}
+        <div className="mt-3 grid grid-cols-2 gap-2 border-t border-stone-100 pt-3 sm:flex sm:flex-wrap">
+          <button
+            type="button"
+            onClick={() => toggleRoster("payments")}
+            aria-expanded={showRegister && registerView === "payments"}
+            className="btn-primary min-h-10 min-w-0 whitespace-normal px-2 text-center text-xs leading-snug sm:px-4 sm:text-sm"
+          >
+            <span className="sm:hidden">
+              {showRegister && registerView === "payments" ? "Close payments" : "Payments"}
             </span>
-            {held > 0 ? (
-              <span className="text-ink-soft">{held} held</span>
-            ) : null}
-            {held >= session.capacity && !session.instructor_id ? (
-              <span className="font-medium text-emerald-700">Teacher available for private</span>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-2 sm:hidden">
-          <button
-            type="button"
-            onClick={() => toggleRoster("payments")}
-            aria-expanded={showRegister && registerView === "payments"}
-            className={"min-h-10 rounded-lg px-3 py-2 text-xs font-semibold shadow-sm " +
-              (showRegister && registerView === "payments"
-                ? "bg-stone-900 text-white" : "bg-violet-600 text-white")}
-          >
-            Payments
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowMobileActions((value) => !value)}
-            className="min-h-10 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-ink shadow-sm"
-            aria-expanded={showMobileActions}
-            aria-controls={`session-actions-${session.id}`}
-          >
-            {showMobileActions ? "Close" : "Manage"}
-          </button>
-        </div>
-
-        <div className="hidden sm:ml-auto sm:flex sm:min-w-0 sm:flex-wrap sm:items-center sm:justify-end sm:gap-2">
-          <button
-            type="button"
-            onClick={() => toggleRoster("payments")}
-            aria-expanded={showRegister && registerView === "payments"}
-            className="btn-primary min-h-10 w-full sm:w-auto"
-            title="View customer payment status and collect outstanding payments"
-          >
-            {showRegister && registerView === "payments" ? "Close payments" : "Collect payment"}
+            <span className="hidden sm:inline">
+              {showRegister && registerView === "payments" ? "Close payments" : "Collect payment"}
+            </span>
           </button>
           <button
             type="button"
             onClick={() => toggleRoster("attendance")}
             aria-expanded={showRegister && registerView === "attendance"}
-            className="btn-secondary min-h-10 w-full sm:w-auto"
-            title="Mark who attended and who didn't"
+            className="btn-secondary min-h-10 min-w-0 whitespace-normal px-2 text-center text-xs leading-snug sm:px-4 sm:text-sm"
           >
             {showRegister && registerView === "attendance" ? "Close attendance" : "Attendance"}
           </button>
-
           <button
             type="button"
-            onClick={() => setEditing((v) => !v)}
-            className="btn-secondary w-full sm:w-auto"
+            onClick={() => setShowMobileActions(value => !value)}
+            aria-expanded={showMobileActions}
+            aria-controls={`session-actions-${session.id}`}
+            className="btn-secondary col-span-2 min-h-10 min-w-0 whitespace-normal px-2 text-center text-xs leading-snug sm:px-4 sm:text-sm"
           >
-            {editing ? "Close" : "Edit"}
+            {showMobileActions ? "Close actions" : "More actions"}
+            <span aria-hidden="true">{showMobileActions ? "−" : "+"}</span>
           </button>
-
-          {!cancelled && isPrivate ? (
-            <button
-              type="button"
-              onClick={() => setShowPrivateBooking((v) => !v)}
-              className="btn-ghost col-span-2 w-full sm:col-span-1 sm:w-auto"
-              disabled={booked >= session.capacity}
-              title="Book an existing customer into this private class"
-            >
-              {showPrivateBooking ? "Close booking" : "Book customer"}
-            </button>
-          ) : !cancelled ? (
-            <>
-              <button
-                type="button"
-                onClick={() => setShowGroupBooking((v) => !v)}
-                className="btn-ghost col-span-2 w-full sm:col-span-1 sm:w-auto"
-                title="Book an existing customer or create a new customer"
-              >
-                {showGroupBooking ? "Close booking" : "Book customer"}
-              </button>
-              <button
-                type="button"
-                onClick={toggleFill}
-                className="btn-ghost w-full sm:w-auto"
-                disabled={fillPending || !canToggleFill}
-                title={fillHelp}
-              >
-                {fillPending ? "Saving…" : held > 0 ? "Unfill" : "Fill"}
-              </button>
-            </>
-          ) : null}
-
-          <form action={setSessionStatusAction} className="w-full sm:w-auto">
-            <input type="hidden" name="id" value={session.id} />
-            <input
-              type="hidden"
-              name="status"
-              value={cancelled ? "scheduled" : "cancelled"}
-            />
-            <button
-              type="submit"
-              className="btn-ghost w-full sm:w-auto"
-              title={cancelled ? "Restore session" : "Cancel session"}
-            >
-              {cancelled ? "Restore" : "Cancel"}
-            </button>
-          </form>
         </div>
       </div>
 
       {showMobileActions && (
-        <div
-          id={`session-actions-${session.id}`}
-          className="border-t border-stone-200 bg-stone-50 px-4 py-3 sm:hidden"
-        >
-          <div className="grid grid-cols-2 gap-2">
+        <div id={`session-actions-${session.id}`}
+          className="border-t border-stone-200 bg-stone-50 px-3 py-3 sm:px-4 sm:py-4">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
             {!cancelled && (
               <button
                 type="button"
                 onClick={() => {
                   if (isPrivate) {
-                    setShowPrivateBooking((value) => !value);
+                    setShowPrivateBooking(value => !value);
+                    setShowGroupBooking(false);
                   } else {
-                    setShowGroupBooking((value) => !value);
+                    setShowGroupBooking(value => !value);
+                    setShowPrivateBooking(false);
                   }
+                  setShowRegister(false);
+                  setEditing(false);
                   setShowMobileActions(false);
                 }}
-                className="btn-primary col-span-2 w-full"
+                className="btn-secondary min-h-10 min-w-0 whitespace-normal px-2 text-xs leading-snug sm:px-4 sm:text-sm"
                 disabled={isPrivate && booked >= session.capacity}
               >
                 {(isPrivate ? showPrivateBooking : showGroupBooking)
-                  ? "Close booking"
-                  : "Book customer"}
+                  ? "Close booking" : "Book customer"}
               </button>
             )}
-
             <button
               type="button"
               onClick={() => {
-                toggleRoster("attendance");
-              }}
-              className="btn-secondary w-full"
-            >
-              {showRegister && registerView === "attendance" ? "Close attendance" : "Attendance"}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setEditing((value) => !value);
+                setEditing(value => !value);
+                setShowRegister(false);
+                setShowGroupBooking(false);
+                setShowPrivateBooking(false);
                 setShowMobileActions(false);
               }}
-              className="btn-secondary w-full"
+              className="btn-secondary min-h-10 min-w-0 whitespace-normal px-2 text-xs leading-snug sm:px-4 sm:text-sm"
             >
-              {editing ? "Close edit" : "Edit"}
+              {editing ? "Close edit" : "Edit class"}
             </button>
             {!cancelled && !isPrivate && (
               <button
@@ -375,24 +307,18 @@ export function SessionRow({
                 onClick={() => { toggleFill(); setShowMobileActions(false); }}
                 disabled={fillPending || !canToggleFill}
                 title={fillHelp}
-                className="btn-secondary col-span-2 min-h-10 w-full"
+                className="btn-secondary min-h-10 min-w-0 whitespace-normal px-2 text-xs leading-snug sm:px-4 sm:text-sm"
               >
                 {fillPending ? "Saving…" : held > 0 ? "Unfill class" : "Fill class"}
               </button>
             )}
-
-            <form
-              action={setSessionStatusAction}
-              className="col-span-2 w-full"
-            >
+            <form action={setSessionStatusAction} className="min-w-0">
               <input type="hidden" name="id" value={session.id} />
-              <input
-                type="hidden"
-                name="status"
-                value={cancelled ? "scheduled" : "cancelled"}
-              />
-              <button type="submit" className="btn-ghost w-full">
-                {cancelled ? "Restore" : "Cancel"}
+              <input type="hidden" name="status"
+                value={cancelled ? "scheduled" : "cancelled"} />
+              <button type="submit"
+                className="btn-ghost min-h-10 w-full min-w-0 whitespace-normal px-2 text-xs leading-snug sm:px-4 sm:text-sm">
+                {cancelled ? "Restore class" : "Cancel class"}
               </button>
             </form>
           </div>
@@ -407,7 +333,7 @@ export function SessionRow({
       )}
 
       {showPrivateBooking && isPrivate && !cancelled && (
-        <div className="border-t border-stone-200 bg-stone-50 px-5 py-4">
+        <div className="min-w-0 border-t border-stone-200 bg-stone-50 px-3 py-3 sm:px-4 sm:py-4">
           <div className="max-w-xl space-y-3">
             <div>
               <h3 className="text-sm font-semibold text-ink">
@@ -502,7 +428,7 @@ export function SessionRow({
       )}
 
       {showRegister && (
-        <div className="border-t border-stone-200 bg-stone-50 px-5 py-4">
+        <div className="min-w-0 border-t border-stone-200 bg-stone-50 px-3 py-3 sm:px-4 sm:py-4">
           <RegisterPanel sessionId={session.id} view={registerView} />
         </div>
       )}
