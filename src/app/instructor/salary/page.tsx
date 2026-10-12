@@ -96,15 +96,28 @@ export default async function InstructorSalaryPage({
   const selectedStudio = studioParam(params.studio);
   const profile = await requireRole("instructor", "/instructor/salary");
   const supabase = await createClient();
+  const service = createServiceClient();
+  const commissionPromise = service
+    .from("credit_ledger")
+    .select(
+      "id, customer_id, created_at, sale_amount_cents, sale_currency, commission_amount_cents, commission_rate_bps, package:packages(name), customer:customers(name, email, profile:profiles(full_name,email))",
+    )
+    .eq("reason", "purchase")
+    .eq("sold_by", profile.id)
+    .gt("commission_amount_cents", 0)
+    .order("created_at", { ascending: false })
+    .limit(1000);
+
   const { data: instructor } = await supabase
     .from("instructors")
     .select("id")
     .eq("profile_id", profile.id)
     .single();
 
+
   // !inner ensures session date filters apply to the parent payroll rows;
   // unlike a 1,000-row all-time list, each week shows its complete pay run.
-  const { data, error } = instructor
+  const payrollPromise = instructor
     ? await supabase
         .from("session_payroll")
         .select(
@@ -114,7 +127,13 @@ export default async function InstructorSalaryPage({
         .gte("session.starts_at", week.from)
         .lt("session.starts_at", week.until)
         .order("created_at", { ascending: false })
-    : { data: [], error: null };
+    : Promise.resolve({ data: [], error: null });
+
+
+  const [{ data, error }, { data: commissionData }] = await Promise.all([
+    payrollPromise,
+    commissionPromise,
+  ]);
 
   const allRows = (data ?? []) as unknown as SalaryListRow[];
   const rows = allRows
@@ -139,17 +158,6 @@ export default async function InstructorSalaryPage({
 
   // Commissions remain distinct from class payroll. Never mix a sale's minor
   // units with payroll's major-unit DECIMAL amounts.
-  const service = createServiceClient();
-  const { data: commissionData } = await service
-    .from("credit_ledger")
-    .select(
-      "id, customer_id, created_at, sale_amount_cents, sale_currency, commission_amount_cents, commission_rate_bps, package:packages(name), customer:customers(name, email, profile:profiles(full_name,email))",
-    )
-    .eq("reason", "purchase")
-    .eq("sold_by", profile.id)
-    .gt("commission_amount_cents", 0)
-    .order("created_at", { ascending: false })
-    .limit(1000);
   const commissionRows = (commissionData ?? []) as unknown as CommissionSaleRow[];
   const month = monthKey(new Date());
   const monthSales = commissionRows.filter((row) => monthKey(new Date(row.created_at)) === month);

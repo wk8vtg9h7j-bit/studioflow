@@ -3,6 +3,7 @@
 // and small guards used by role-protected layouts to enforce access.
 // ============================================================================
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import type { Profile, UserRole } from "@/lib/types";
@@ -14,7 +15,7 @@ import {
 } from "@/lib/preview";
 
 // Returns the signed-in user's profile, or null when logged out.
-export async function getProfile(): Promise<Profile | null> {
+export const getProfile = cache(async function getProfile(): Promise<Profile | null> {
   // Preview mode: derive a synthetic profile from the role cookie, no network.
   if (PREVIEW_MODE) {
     const cookieStore = await cookies();
@@ -35,7 +36,7 @@ export async function getProfile(): Promise<Profile | null> {
     .single();
 
   return (profile as Profile | null) ?? null;
-}
+});
 
 // Require a signed-in user. Redirects to login (preserving the target path).
 export async function requireProfile(nextPath?: string): Promise<Profile> {

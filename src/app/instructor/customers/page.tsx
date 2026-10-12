@@ -95,43 +95,40 @@ export default async function InstructorCustomersPage({
     })
     .filter((customer) => !onlyDue || (dueByCustomer.get(customer.id)?.length ?? 0) > 0);
   const filtered = matching.slice(0, MAX_RESULTS);
-  const purchasesByCustomer = await getInstructorCustomerPurchases(
-    filtered.map((customer) => customer.id),
+  // One batched RPC uses the exact existing credit_balance() logic for both
+  // pools, instead of up to 60 individual network round trips per page.
+  const selectedIds = filtered.map((customer) => customer.id);
+  const [purchasesByCustomer, balanceResult] = await Promise.all([
+    getInstructorCustomerPurchases(selectedIds),
+    selectedIds.length > 0
+      ? service.rpc("instructor_customer_balances", { p_customer_ids: selectedIds })
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (balanceResult.error) throw balanceResult.error;
+  type BalanceRow = { customer_id: string; regular_balance: number; private_balance: number };
+  const balanceById = new Map(
+    ((balanceResult.data ?? []) as BalanceRow[]).map((balance) => [balance.customer_id, balance]),
   );
 
-  const customers: InstructorCustomer[] = await Promise.all(
-    filtered.map(async (customer) => {
-      const [regularRes, privateRes] = await Promise.all([
-        service.rpc("credit_balance", {
-          p_customer: customer.id,
-          p_pool: "regular",
-        }),
-        service.rpc("credit_balance", {
-          p_customer: customer.id,
-          p_pool: "private",
-        }),
-      ]);
-
-      return {
-        id: customer.id,
-        name:
-          customer.profile?.full_name?.trim() ||
-          customer.name?.trim() ||
-          customer.profile?.email ||
-          customer.email ||
-          "Customer",
-        email: customer.profile?.email ?? customer.email ?? null,
-        phone: customer.profile?.phone ?? customer.phone ?? null,
-        regularBalance:
-          typeof regularRes.data === "number" ? regularRes.data : 0,
-        privateBalance:
-          typeof privateRes.data === "number" ? privateRes.data : 0,
-        bookingCount: bookingCounts.get(customer.id) ?? 0,
-        paymentDueBookings: dueByCustomer.get(customer.id) ?? [],
-        purchaseHistory: purchasesByCustomer.get(customer.id) ?? [],
-      };
-    }),
-  );
+  const customers: InstructorCustomer[] = filtered.map((customer) => {
+    const balance = balanceById.get(customer.id);
+    return {
+      id: customer.id,
+      name:
+        customer.profile?.full_name?.trim() ||
+        customer.name?.trim() ||
+        customer.profile?.email ||
+        customer.email ||
+        "Customer",
+      email: customer.profile?.email ?? customer.email ?? null,
+      phone: customer.profile?.phone ?? customer.phone ?? null,
+      regularBalance: balance?.regular_balance ?? 0,
+      privateBalance: balance?.private_balance ?? 0,
+      bookingCount: bookingCounts.get(customer.id) ?? 0,
+      paymentDueBookings: dueByCustomer.get(customer.id) ?? [],
+      purchaseHistory: purchasesByCustomer.get(customer.id) ?? [],
+    };
+  });
 
   const packages = (packageRows ?? []) as Package[];
 
