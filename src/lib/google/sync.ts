@@ -580,7 +580,7 @@ export async function syncSessionById(sessionId: string): Promise<SyncResult> {
     const { data: bookingRows, error: bookingError } = await service
       .from("bookings")
       .select(
-        "id,customer_id,status,credits_spent,spots_count,google_event_ids,customer:customers(name,email,phone,profile:profiles(full_name,email,phone))",
+        "id,customer_id,status,booked_at,credits_spent,spots_count,google_event_ids,customer:customers(name,email,phone,profile:profiles(full_name,email,phone))",
       )
       .eq("session_id", session.id)
       .order("booked_at", { ascending: true });
@@ -592,6 +592,7 @@ export async function syncSessionById(sessionId: string): Promise<SyncResult> {
         id: string;
         customer_id: string;
         status: BookingStatus;
+        booked_at: string;
         credits_spent: number | null;
         spots_count: number | null;
         google_event_ids: string[] | null;
@@ -615,6 +616,7 @@ export async function syncSessionById(sessionId: string): Promise<SyncResult> {
         id: item.id,
         customer_id: item.customer_id,
         status: item.status,
+        booked_at: item.booked_at,
         credits_spent: item.credits_spent ?? 0,
         spots_count: Math.max(item.spots_count ?? 1, 1),
         google_event_ids: item.google_event_ids,
@@ -634,6 +636,8 @@ export async function syncSessionById(sessionId: string): Promise<SyncResult> {
         id: booking.id,
         customerId: booking.customer_id,
         creditsSpent: booking.credits_spent,
+        bookedAt: booking.booked_at,
+        status: booking.status,
         pool: session.class_type_pool,
       })),
     );
