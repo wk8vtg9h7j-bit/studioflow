@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { configuredEmailProvider, sendEmail, escapeHtml } from "@/lib/email";
 import { getBookingPaymentStatuses } from "@/lib/bookingPaymentStatus.server";
+import { sendConnectedStudioEmail, type ConnectedStudioMail } from "@/lib/emailGoogle";
 export const maxDuration=60;
 type Customer={id:string;name:string|null;email:string|null;marketing_opt_in:boolean;profile:{full_name:string|null;email:string|null}|null};
 type Booking={id:string;customer_id:string;status:string;session:{starts_at:string;class_type:{pool:string|null}|null}|null};
@@ -12,8 +13,13 @@ export async function GET(request:Request){
   return NextResponse.json({error:"Unauthorized"},{status:401});
  }
  const provider=configuredEmailProvider();
- if(!provider)return NextResponse.json({enabled:false,reason:"Email provider not configured",sent:0});
  const svc=createServiceClient();
+ const {data:studioMail}=provider?{data:null}:await svc.from("studios")
+  .select("id,google_account_email,google_refresh_token,google_token_status")
+  .eq("google_token_status","connected").not("google_refresh_token","is",null)
+  .not("google_account_email","is",null).order("name",{ascending:true}).limit(1).maybeSingle();
+ if(!provider&&!studioMail)return NextResponse.json({enabled:false,reason:"No connected email provider or studio Gmail",sent:0});
+
  const now=new Date();
  const month=now.toISOString().slice(0,7);
  const since=new Date(now.getTime()-65*86400000).toISOString();
@@ -93,8 +99,10 @@ export async function GET(request:Request){
     "You have one class remaining in your Pilates package. We would love to help you continue your practice.":
     "We have missed seeing you at Pilates by Recharged. Whenever you are ready, you can book another class at Downtown or Hideaway.";
   const textBody="Hi "+who+",\n\n"+body+"\n\nPilates by Recharged\nTo stop marketing emails, reply with unsubscribe.";
-  const result=await sendEmail(provider,{to,subject:title,text:textBody,
-   html:"<p>Hi "+escapeHtml(who)+",</p><p>"+escapeHtml(body)+"</p><p>Pilates by Recharged</p><small>To stop marketing emails, reply with unsubscribe.</small>"});
+  const message={to,subject:title,text:textBody,
+   html:"<p>Hi "+escapeHtml(who)+",</p><p>"+escapeHtml(body)+"</p><p>Pilates by Recharged</p><small>To stop marketing emails, reply with unsubscribe.</small>"};
+  const result=provider?await sendEmail(provider,message):
+   await sendConnectedStudioEmail(studioMail as ConnectedStudioMail,message);
   if(result.ok){
    await svc.from("customer_followup_log").update({status:"sent",sent_at:new Date().toISOString()}).eq("id",reservation.id);
    sent++;
