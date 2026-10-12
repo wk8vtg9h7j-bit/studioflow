@@ -290,7 +290,7 @@ export default async function InstructorSalaryPage({
             See recent package commission history
           </summary>
           {commissionRows.length === 0 ? (
-            <p className="px-5 pb-5 text-sm text-ink-muted">No instructor-issued paid packages recorded.</p>
+            <p className="px-5 pb-5 text-sm text-ink-muted">No package commissions recorded yet.</p>
           ) : (
             <ul className="divide-y divide-stone-100 border-t border-stone-100">
               {commissionRows.slice(0, 25).map((sale) => (
