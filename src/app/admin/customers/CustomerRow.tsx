@@ -311,7 +311,7 @@ function CustomerHistoryPanel({
     })),
     ...history.credits.map(c=>({
       id:"c-"+c.id,at:c.createdAt,
-      label:c.reason==="purchase" ? "Credits issued · "+(c.packageName||"Package") : humanizeLabel(c.reason),
+      label:c.reason==="purchase" ? "Credits issued · "+(c.packageName||"Package") : c.reason==="single_class_credit" ? "Paid credit for next class" : humanizeLabel(c.reason),
       detail:(c.delta>0?"+":"")+c.delta+" "+(c.pool==="private"?"private":"regular")+" credit(s)"+
         (c.expiresAt?" · Expires "+new Date(c.expiresAt).toLocaleDateString("en-GB"):""),
       kind:"credit",

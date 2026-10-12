@@ -54,7 +54,7 @@ type ActivePackage = {
   expiresAt: string | null;
   // Where the card came from, so the date line only says "Purchased" when the
   // member actually bought it.
-  source: "purchase" | "refund" | "adjustment";
+  source: "purchase" | "single" | "refund" | "adjustment";
   startedAt: string;
 };
 
@@ -174,6 +174,8 @@ export default async function MyPackagesPage() {
         const source: ActivePackage["source"] =
           row.reason === "purchase"
             ? "purchase"
+            : row.reason === "single_class_credit"
+              ? "single"
             : row.booking_id
               ? "refund"
               : "adjustment";
@@ -183,6 +185,8 @@ export default async function MyPackagesPage() {
           name:
             source === "purchase"
               ? (row.package?.name ?? (vi ? "Gói tập" : "Package"))
+              : source === "single"
+                ? (vi ? "1 buổi đã thanh toán" : "Paid single-class credit")
               : source === "refund"
                 ? (vi ? "Tín dụng được hoàn" : "Credit returned")
                 : (vi ? "Tín dụng được thêm" : "Credits added"),
@@ -262,7 +266,9 @@ export default async function MyPackagesPage() {
       const fallback = positive
         ? r.booking_id
           ? (vi ? "Tín dụng được hoàn" : "Credit returned")
-          : (vi ? "Tín dụng được thêm" : "Credits added")
+          : row.reason === "single_class_credit"
+            ? (vi ? "Đã mua 1 lượt tập tiếp theo" : "1 paid credit for next booking")
+            : (vi ? "Tín dụng được thêm" : "Credits added")
         : (vi ? "Lớp" : "Class");
 
       return {
@@ -368,7 +374,7 @@ export default async function MyPackagesPage() {
                     {vi ? `${pkg.includedFirstVisit} buổi đầu đã được bao gồm trong gói` : `${pkg.includedFirstVisit} first visit class(es) already included · ${pkg.granted} credits added`}
                   </p>}
                   <p className="mt-0.5 text-xs text-ink-soft">
-                    {pkg.source === "purchase"
+                    {pkg.source === "purchase" || pkg.source === "single"
                       ? vi ? "Đã mua" : "Purchased"
                       : vi ? "Đã thêm" : "Added"}{" "}
                     {safeDate(pkg.startedAt) ?? ""}

@@ -35,7 +35,7 @@ const PAGE_SIZE = 1000;
 /**
  * Returns whether each booking is covered by a genuinely paid package.
  *
- * Starter/manual credits are intentionally NOT treated as a package. We replay
+ * Starter/manual credits are intentionally NOT treated as paid; purchased single-class credits ARE. We replay
  * the same FIFO ledger order as credit_balance(), while preserving the source
  * of each positive bucket. A refunded paid-package credit stays paid.
  */
@@ -106,7 +106,7 @@ export async function getBookingPaymentStatuses(
       buckets.push({
         remaining: row.delta,
         expiresAt: row.expires_at ? Date.parse(row.expires_at) : null,
-        paid: row.reason === "purchase" || refundedPaidBooking,
+        paid: row.reason === "purchase" || row.reason === "single_class_credit" || refundedPaidBooking,
       });
       bucketsByCustomerPool.set(key, buckets);
       continue;
