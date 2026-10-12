@@ -63,16 +63,26 @@ export async function loadTodayDesk(role:"admin"|"instructor",profileId:string,r
   .order("booked_at",{ascending:true}):{data:[],error:null};
  if(bookingError)throw bookingError;
  const bookings=(bookingData||[]) as unknown as Booking[];
- const poolById=new Map(all.map(s=>[s.id,s.class_type?.pool||"regular"]));
+ // A class blocked by an admin "Fill" has all seats held and no real clients.
+ // Keep it in the admin desk for management, but omit it from instructors.
+ const withCustomers=new Set(bookings
+  .filter(b=>b.status==="booked"||b.status==="attended")
+  .map(b=>b.session_id));
+ const visibleSessions=role==="instructor"
+  ? all.filter(s=>!((s.filler_seats||0)>=s.capacity&&!withCustomers.has(s.id)))
+  : all;
+ const visibleIds=new Set(visibleSessions.map(s=>s.id));
+ const visibleBookings=bookings.filter(b=>visibleIds.has(b.session_id));
+ const poolById=new Map(visibleSessions.map(s=>[s.id,s.class_type?.pool||"regular"]));
  const {data:attendedHistory}=await svc.from("bookings").select("id,customer_id")
   .eq("status","attended").limit(1000);
  const visitedCount=new Map<string,number>();
  for(const row of attendedHistory||[])visitedCount.set(row.customer_id,(visitedCount.get(row.customer_id)||0)+1);
- const paymentMap=await getBookingPaymentStatuses(bookings.map(b=>({
+ const paymentMap=await getBookingPaymentStatuses(visibleBookings.map(b=>({
   id:b.id,customerId:b.customer_id,creditsSpent:b.credits_spent,
   pool:poolById.get(b.session_id)||"regular",bookedAt:b.booked_at,status:b.status
  })));
- const paymentDue=bookings.filter(b=>b.status==="attended"&&paymentMap.get(b.id)==="payment_due");
+ const paymentDue=visibleBookings.filter(b=>b.status==="attended"&&paymentMap.get(b.id)==="payment_due");
  // Eligibility reads only matching booked credit sources. Requests run in
  // parallel rather than holding up the page one network trip per customer.
  const flags=await Promise.all(paymentDue.map(async b=>{
@@ -81,7 +91,7 @@ export async function loadTodayDesk(role:"admin"|"instructor",profileId:string,r
  }));
  const starter=new Map<string,boolean>(flags);
  const rowsBySession=new Map<string,DeskBooking[]>();
- for(const b of bookings){
+ for(const b of visibleBookings){
   const list=rowsBySession.get(b.session_id)||[];
   list.push({id:b.id,customerId:b.customer_id,
    name:b.customer?.profile?.full_name||b.customer?.name||b.customer?.profile?.email||b.customer?.email||"Customer",
@@ -91,14 +101,14 @@ export async function loadTodayDesk(role:"admin"|"instructor",profileId:string,r
    pool:poolById.get(b.session_id)||"regular"});
   rowsBySession.set(b.session_id,list);
  }
- const sessions=all.map(s=>({
+ const sessions=visibleSessions.map(s=>({
   id:s.id,name:s.title||s.class_type?.name||"Pilates class",at:s.starts_at,
   studio:s.studio?.name||"Studio",slug:s.studio?.slug||"",
   capacity:s.capacity,filler:s.filler_seats||0,instructor:s.instructor?.display_name||"Unassigned",
   pool:s.class_type?.pool||"regular",bookings:rowsBySession.get(s.id)||[]
  }));
  return {day,sessions,packages:(packageRes.data||[]) as CheckoutPackage[],
-  booked:bookings.filter(b=>b.status==="booked"||b.status==="attended").reduce((n,b)=>n+(b.spots_count||1),0),
-  attended:bookings.filter(b=>b.status==="attended").reduce((n,b)=>n+(b.spots_count||1),0),
+  booked:visibleBookings.filter(b=>b.status==="booked"||b.status==="attended").reduce((n,b)=>n+(b.spots_count||1),0),
+  attended:visibleBookings.filter(b=>b.status==="attended").reduce((n,b)=>n+(b.spots_count||1),0),
   due:paymentDue.length};
 }
