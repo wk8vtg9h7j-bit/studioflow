@@ -19,7 +19,7 @@ export default async function FollowupsPage(){
    <Link href="/admin/marketing" className="btn-secondary">Marketing segments →</Link>
   </header>
   <div className="card p-5"><p className="font-semibold">{optedIn||0} customers opted in</p>
-   <p className="mt-2 text-sm text-ink-muted">Runs each morning in Vietnam, up to 12 emails daily. It sends only when an email provider is configured. Each customer/event is deduplicated; failed sends are logged, not repeatedly retried.</p>
+   <p className="mt-2 text-sm text-ink-muted">Runs each morning in Vietnam, up to 12 emails daily. It uses a configured email provider or the existing connected studio Gmail account. Each customer/event is deduplicated; failed sends are logged, not repeatedly retried.</p>
    <p className="mt-2 text-xs text-ink-soft">Only marketing-opted-in customers receive automatic messages. Existing bookings and credit balances are read-only for follow-up targeting.</p>
   </div>
   <section className="card overflow-hidden"><h2 className="border-b border-stone-200 px-4 py-3 font-semibold">Recent delivery log</h2>
