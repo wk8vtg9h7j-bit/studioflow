@@ -12,6 +12,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { notifyInstructor } from "@/lib/instructorUpdates.server";
 import { fromZonedTime } from "date-fns-tz";
 import { z } from "zod";
 import { requireRole } from "@/lib/auth";
@@ -240,6 +241,11 @@ export async function updateSessionAction(
   );
   if (conflict) return { error: conflict };
 
+  const { data: previous, error: priorError } = await supabase.from("sessions")
+    .select("instructor_id").eq("id", id).maybeSingle();
+  if (priorError || !previous) return { error: priorError?.message ?? "Class not found" };
+  const priorInstructor = previous.instructor_id;
+
   const { error } = await supabase
     .from("sessions")
     .update({
@@ -258,9 +264,37 @@ export async function updateSessionAction(
   if (error) return { error: error.message };
 
   revalidatePath("/admin/sessions");
+  revalidatePath("/admin/today");
+  revalidatePath("/admin/payroll");
+  revalidatePath("/instructor");
+  revalidatePath("/instructor/today");
+  revalidatePath("/instructor/salary");
+  revalidatePath("/instructor/private");
+  revalidatePath("/private");
+  if (priorInstructor !== (instructor_id || null)) {
+    const timeLabel = new Intl.DateTimeFormat("en-GB", {
+      weekday: "short", day: "numeric", month: "short",
+      hour: "2-digit", minute: "2-digit", timeZone: "Asia/Ho_Chi_Minh",
+    }).format(new Date(instants.starts_at));
+    const name = title?.trim() || "Pilates class";
+    // Class assignment notices are best-effort; a push failure never reverses
+    // an otherwise valid reassignment. Payroll integrity is guarded in the DB.
+    await Promise.allSettled([
+      ...(priorInstructor
+        ? [notifyInstructor(priorInstructor, "Class reassigned",
+          name + " · " + timeLabel + " has been removed from your teaching schedule.",
+          "/instructor")]
+        : []),
+      ...(instructor_id
+        ? [notifyInstructor(instructor_id, "New class assigned",
+          name + " · " + timeLabel + " is now on your teaching schedule.",
+          "/instructor")]
+        : []),
+    ]);
+  }
   return {
     ok: true,
-    message: "Class updated. Google Calendar will update shortly.",
+    message: "Class updated. Instructor schedules and notifications have been refreshed.",
   };
 }
 

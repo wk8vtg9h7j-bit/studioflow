@@ -5,10 +5,12 @@
 // ============================================================================
 import { requireRole } from "@/lib/auth";
 import { AppShell, type NavItem } from "@/components/AppShell";
+import { InstructorFocusRefresh } from "./InstructorFocusRefresh";
 
 const INSTRUCTOR_NAV: NavItem[] = [
   { href: "/instructor/today", label: "Today" },
   { href: "/instructor", label: "My classes" },
+  { href: "/instructor/private", label: "Private calendar" },
   { href: "/instructor/customers", label: "Customers" },
   { href: "/instructor/salary", label: "Salary" },
 ];
@@ -26,6 +28,7 @@ export default async function InstructorLayout({
       user={profile.full_name ?? profile.email ?? "Instructor"}
       roleLabel="Instructor"
     >
+      <InstructorFocusRefresh />
       {children}
     </AppShell>
   );

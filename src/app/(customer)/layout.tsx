@@ -23,6 +23,7 @@ export default async function CustomerLayout({
 
   const navItems: NavItem[] = [
     { href: "/book", label: vi ? "Đặt lớp" : "Book classes" },
+    { href: "/private", label: vi ? "Lịch tập riêng" : "Private calendar" },
   ];
   const navMenu: { label: string; items: NavMenuItem[] } = {
     label: vi ? "Tài khoản" : "My account",
