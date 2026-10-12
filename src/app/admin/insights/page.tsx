@@ -7,6 +7,7 @@ const FROM="2026-10-12T00:00:00+07:00";
 type Visit={id:string;customer_id:string;session:{starts_at:string;studio:{name:string}|null}|null};
 type Receipt={id:string;kind:string;booking_id:string;amount_cents:number;currency:string;
  created_at:string;booking:{customer_id:string;session:{starts_at:string;studio:{name:string}|null}|null}|null;
+ purchase:{package:{name:string|null}|null}|null;
  seller:{full_name:string|null;email:string|null}|null};
 const money=(value:number)=>formatMoney(value,"VND");
 export default async function InsightsPage(){
@@ -15,7 +16,7 @@ export default async function InsightsPage(){
  const [visitsRes,receiptsRes,studiosRes]=await Promise.all([
   svc.from("bookings").select("id,customer_id,session:sessions(starts_at,studio:studios(name))")
    .eq("status","attended").order("booked_at",{ascending:true}).limit(1000),
-  svc.from("class_checkouts").select("id,kind,booking_id,amount_cents,currency,created_at,booking:bookings(customer_id,session:sessions(starts_at,studio:studios(name))),seller:profiles(full_name,email)")
+  svc.from("class_checkouts").select("id,kind,booking_id,amount_cents,currency,created_at,booking:bookings(customer_id,session:sessions(starts_at,studio:studios(name))),seller:profiles(full_name,email),purchase:credit_ledger(package:packages(name))")
    .gte("created_at",FROM).order("created_at",{ascending:false}).limit(1000),
   svc.from("studios").select("name").eq("active",true),
  ]);
@@ -49,11 +50,17 @@ export default async function InsightsPage(){
  }
  const totalCheckoutRevenue=receipts.filter(r=>r.currency==="VND").reduce((a,r)=>a+r.amount_cents,0);
  const sellers=new Map<string,{count:number;revenue:number}>();
+ const packages=new Map<string,{count:number;revenue:number}>();
  for(const r of receipts.filter(r=>r.kind==="package")){
   const seller=r.seller?.full_name||r.seller?.email||"Staff";
   const s=sellers.get(seller)||{count:0,revenue:0};s.count++;
   if(r.currency==="VND")s.revenue+=r.amount_cents;
   sellers.set(seller,s);
+  const packageName=r.purchase?.package?.name||"Other package";
+  const detail=packages.get(packageName)||{count:0,revenue:0};
+  detail.count++;
+  if(r.currency==="VND")detail.revenue+=r.amount_cents;
+  packages.set(packageName,detail);
  }
  return <div className="space-y-6">
   <header className="flex flex-wrap items-start justify-between gap-4">
@@ -94,6 +101,15 @@ export default async function InsightsPage(){
      <ul className="mt-3 divide-y divide-stone-100">{[...sellers.entries()].sort((a,b)=>b[1].revenue-a[1].revenue).map(([name,s])=>
       <li key={name} className="flex justify-between gap-2 py-2 text-sm">
        <span>{name} · {s.count} packages</span><strong>{money(s.revenue)}</strong></li>)}</ul>}
+   </div>
+   <div className="card p-4"><h2 className="font-semibold">Most popular first-visit packages</h2>
+     {packages.size===0?<p className="mt-3 text-sm text-ink-muted">No linked package checkouts yet.</p>:
+     <ul className="mt-3 divide-y divide-stone-100">
+       {[...packages.entries()].sort((a,b)=>b[1].count-a[1].count).map(([name,p])=>
+       <li key={name} className="flex justify-between gap-3 py-2 text-sm">
+         <span>{name} · {p.count} sold</span><strong>{money(p.revenue)}</strong>
+       </li>)}
+     </ul>}
    </div>
    <div className="card p-4"><h2 className="font-semibold">What these figures mean</h2>
     <p className="mt-2 text-sm text-ink-muted">A conversion occurs when a customer buys a package at checkout that explicitly covers their first attended class. The revenue above includes single-class payments and those linked package purchases, but not unlinked package sales or retail sales. Historic records are left unchanged.</p>
