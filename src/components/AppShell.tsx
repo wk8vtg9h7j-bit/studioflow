@@ -32,8 +32,8 @@ export function AppShell({
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-20 border-b border-stone-200 bg-white/80 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:gap-6 sm:px-6">
-          <Link href="/" className="text-base font-semibold tracking-tight text-ink">
+        <div className="mx-auto flex max-w-6xl min-w-0 items-center gap-2 px-4 py-3 sm:gap-6 sm:px-6">
+          <Link href="/" className="shrink-0 whitespace-nowrap text-base font-semibold tracking-tight text-ink">
             Studio<span className="text-brand-600">Flow</span>
           </Link>
 
@@ -48,8 +48,12 @@ export function AppShell({
             ) : null}
           </nav>
 
-          <div className="ml-auto flex items-center gap-2 sm:gap-3">
-            <MobileNavMenu navItems={navItems} navMenu={navMenu} />
+          <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
+            <MobileNavMenu
+              navItems={navItems}
+              navMenu={navMenu}
+              signOut={<SignOutButton label={locale === "vi" ? "Đăng xuất" : "Sign out"} />}
+            />
             <div className="hidden text-right sm:block">
               <p className="text-sm font-medium leading-tight text-ink">{user}</p>
               <p className="text-xs leading-tight text-ink-soft">{roleLabel}</p>
@@ -85,7 +89,9 @@ export function AppShell({
                 ) : null}
               </Link>
             ) : null}
-            <SignOutButton label={locale === "vi" ? "Đăng xuất" : "Sign out"} />
+            <div className="hidden sm:block">
+              <SignOutButton label={locale === "vi" ? "Đăng xuất" : "Sign out"} />
+            </div>
           </div>
         </div>
       </header>
