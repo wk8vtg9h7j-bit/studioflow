@@ -36,10 +36,11 @@ export function CheckInActions({ bookingId, status, canMark }: {
   );
 }
 export function CheckoutControl({
-  bookingId, pool, creditsSpent, packages, eligibleStarter,
+  bookingId, pool, creditsSpent, packages, eligibleStarter, onSuccess,
 }: {
   bookingId: string; pool: string; creditsSpent: number;
   packages: CheckoutPackage[]; eligibleStarter: boolean;
+  onSuccess?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<"single" | "package">("single");
@@ -47,16 +48,22 @@ export function CheckoutControl({
   const [price, setPrice] = useState(pool === "regular" ? "400000" : "");
   const [state, action] = useFormState(recordCheckoutAction, initial);
   const router = useRouter();
-  useEffect(() => { if (state.ok) { setOpen(false); router.refresh(); } }, [state.ok, router]);
+  useEffect(() => {
+    if (state.ok) {
+      setOpen(false);
+      router.refresh();
+      onSuccess?.();
+    }
+  }, [state.ok, router, onSuccess]);
   const available = useMemo(() => packages.filter(
     p => p.pool === pool && p.credits >= creditsSpent && p.price_cents > 0
   ), [packages, pool, creditsSpent]);
   const selected = available.find(p=>p.id===packageId);
   return <div className="space-y-2">
-    <button type="button" className="btn-primary text-xs" onClick={()=>setOpen(x=>!x)}>
+    <button type="button" aria-expanded={open} className="btn-primary min-h-10 w-full text-sm sm:w-auto" onClick={()=>setOpen(x=>!x)}>
       {open ? "Close checkout" : "Collect payment"}
     </button>
-    {open && <form action={action} className="grid gap-3 rounded-xl border border-stone-200 bg-stone-50 p-4 sm:grid-cols-2">
+    {open && <form action={action} className="grid min-w-0 gap-3 rounded-xl border border-stone-200 bg-white p-3 sm:grid-cols-2 sm:p-4">
       <input type="hidden" name="booking_id" value={bookingId} />
       <input type="hidden" name="kind" value={kind} />
       <input type="hidden" name="package_id" value={kind==="package"?packageId:""} />
@@ -89,7 +96,7 @@ export function CheckoutControl({
       </div>}
       <label className="text-sm font-medium">
         Amount paid ({kind==="package" ? selected?.currency ?? "VND" : "VND"})
-        <input name="amount_cents" className="input mt-1" type="number" min="1"
+        <input name="amount_cents" className="input mt-1 w-full min-w-0" type="number" min="1"
           max={kind==="package" ? selected?.price_cents : 100000000} step="1" value={price}
           onChange={e=>setPrice(e.target.value)} required />
       </label>
@@ -105,7 +112,7 @@ export function CheckoutControl({
       {kind==="package" && <p className="sm:col-span-2 text-xs text-ink-muted">
         Instructor commission: {formatMoney(Math.round(Number(price||0)*0.025), selected?.currency || "VND")} when sold by an instructor.
       </p>}
-      {state.error && <p className="sm:col-span-2 text-sm text-rose-700">{state.error}</p>}
+      {state.error && <p role="alert" className="sm:col-span-2 text-sm text-rose-700">{state.error}</p>}
       <div className="sm:col-span-2"><SubmitButton>Confirm payment & settle class</SubmitButton></div>
     </form>}
     {state.ok && <p className="text-xs text-emerald-700">Payment recorded · +{state.grantedCredits ?? 0} credits issued · Remaining classes: {state.remainingCredits}.</p>}
