@@ -70,7 +70,7 @@ export async function recordCheckoutAction(
     try { await queueCustomerBookingCalendarSync(booking.customer_id); }
     catch (syncError) { console.warn("Checkout saved; calendar queue failed", syncError); }
   }
-  for (const path of ["/admin", "/admin/today", "/admin/insights", "/admin/customers",
+  for (const path of ["/admin", "/admin/today", "/admin/sessions", "/admin/insights", "/admin/customers",
     "/admin/payments", "/admin/marketing", "/instructor/today", "/instructor/customers", "/instructor/salary"]) {
     revalidatePath(path);
   }
