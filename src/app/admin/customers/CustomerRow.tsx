@@ -297,135 +297,48 @@ export function CustomerRow({
 }
 
 function CustomerHistoryPanel({
-  history,
-  loading,
-}: {
-  history: CustomerHistoryResult | null;
-  loading: boolean;
-}) {
-  return (
-    <div className="border-t border-stone-200 bg-stone-50 px-5 py-5">
-      <div className="mb-4">
-        <h3 className="text-sm font-semibold text-ink">Customer history</h3>
-        <p className="mt-1 text-xs text-ink-soft">
-          Latest 100 class bookings and 100 credit/package transactions.
-        </p>
-      </div>
-
-      {loading && (
-        <p className="rounded-lg bg-white px-3 py-4 text-sm text-ink-muted">
-          Loading history…
-        </p>
-      )}
-
-      {!loading && history?.error && (
-        <p className="rounded-lg bg-rose-50 px-3 py-3 text-sm text-rose-700">
-          {history.error}
-        </p>
-      )}
-
-      {!loading && history && !history.error && (
-        <div className="grid gap-6 xl:grid-cols-2">
-          <section>
-            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-              Class history
-            </h4>
-            {history.bookings.length === 0 ? (
-              <p className="rounded-lg bg-white px-3 py-4 text-sm text-ink-muted">
-                No class bookings yet.
-              </p>
-            ) : (
-              <div className="max-h-[28rem] space-y-2 overflow-y-auto pr-1">
-                {history.bookings.map((booking) => (
-                  <div
-                    key={booking.id}
-                    className="rounded-lg border border-stone-200 bg-white px-3 py-3"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-ink">
-                          {booking.session?.title ?? "Deleted class"}
-                        </p>
-                        {booking.session && (
-                          <p className="mt-0.5 text-xs text-ink-muted">
-                            {formatSessionWhen(
-                              booking.session.startsAt,
-                              booking.session.timezone,
-                            )}{" "}
-                            · {booking.session.studio}
-                          </p>
-                        )}
-                      </div>
-                      <span className="badge bg-stone-100 text-ink-muted">
-                        {humanizeLabel(booking.status)}
-                      </span>
-                    </div>
-                    <p className="mt-2 text-xs text-ink-soft">
-                      {booking.spots} spot{booking.spots === 1 ? "" : "s"}
-                      {" · "}
-                      {booking.creditsSpent} credit
-                      {booking.creditsSpent === 1 ? "" : "s"} used
-                      {booking.session?.pool === "private" ? " · Private" : ""}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section>
-            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-              Credit & package activity
-            </h4>
-            {history.credits.length === 0 ? (
-              <p className="rounded-lg bg-white px-3 py-4 text-sm text-ink-muted">
-                No credit activity yet.
-              </p>
-            ) : (
-              <div className="max-h-[28rem] space-y-2 overflow-y-auto pr-1">
-                {history.credits.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-start justify-between gap-3 rounded-lg border border-stone-200 bg-white px-3 py-3"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-ink">
-                        {item.packageName ?? humanizeLabel(item.reason)}
-                      </p>
-                      <p className="mt-0.5 text-xs text-ink-muted">
-                        {new Date(item.createdAt).toLocaleString()}
-                        {item.paymentMethod
-                          ? ` · ${item.paymentMethod.toUpperCase()}`
-                          : ""}
-                      </p>
-                      <p className="mt-1 text-xs text-ink-soft">
-                        {item.pool === "private" ? "Private" : "Regular"} credits
-                        {item.expiresAt
-                          ? ` · expires ${new Date(
-                              item.expiresAt,
-                            ).toLocaleDateString()}`
-                          : ""}
-                      </p>
-                    </div>
-                    <span
-                      className={
-                        item.delta >= 0
-                          ? "text-sm font-semibold text-emerald-700"
-                          : "text-sm font-semibold text-rose-700"
-                      }
-                    >
-                      {item.delta > 0 ? "+" : ""}
-                      {item.delta}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        </div>
-      )}
+  history, loading,
+}: { history: CustomerHistoryResult | null; loading: boolean }) {
+  if (loading) return <div className="border-t px-5 py-4 text-sm text-ink-muted">Loading customer timeline…</div>;
+  if (!history) return null;
+  if (history.error) return <div className="border-t px-5 py-4 text-sm text-rose-700">{history.error}</div>;
+  const events: Array<{id:string;at:string;label:string;detail:string;kind:string;amount?:number;currency?:string}> = [
+    ...history.bookings.map(b=>({
+      id:"b-"+b.id,at:b.bookedAt,
+      label:"Class · "+(b.session?.title||"Booking"),
+      detail:(b.session?.studio||"Studio")+" · "+humanizeLabel(b.status)+" · "+b.creditsSpent+" credit(s) used",
+      kind:"booking",
+    })),
+    ...history.credits.map(c=>({
+      id:"c-"+c.id,at:c.createdAt,
+      label:c.reason==="purchase" ? "Credits issued · "+(c.packageName||"Package") : humanizeLabel(c.reason),
+      detail:(c.delta>0?"+":"")+c.delta+" "+(c.pool==="private"?"private":"regular")+" credit(s)"+
+        (c.expiresAt?" · Expires "+new Date(c.expiresAt).toLocaleDateString("en-GB"):""),
+      kind:"credit",
+    })),
+    ...history.checkouts.map(c=>({
+      id:"p-"+c.id,at:c.createdAt,
+      label:c.kind==="package"?"Package checkout · first class included":"Single class paid",
+      detail:c.paymentMethod.toUpperCase()+" · Receipt linked to booking",
+      kind:"payment",amount:c.amountCents,currency:c.currency,
+    })),
+  ].sort((a,b)=>b.at.localeCompare(a.at));
+  return <section className="space-y-3 border-t border-stone-200 bg-stone-50 px-5 py-5">
+    <div><h3 className="text-sm font-semibold text-ink">Customer timeline</h3>
+     <p className="mt-1 text-xs text-ink-muted">Bookings, credit changes, package sales and linked payments in one chronological history. Existing records remain unchanged.</p>
     </div>
-  );
+    {events.length===0?<p className="text-sm text-ink-muted">No activity recorded.</p>:
+     <ol className="max-h-[32rem] space-y-2 overflow-y-auto">
+      {events.map(event=><li key={event.id} className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-stone-200 bg-white p-3">
+       <div className="min-w-0"><p className="text-sm font-medium text-ink">{event.label}</p>
+        <p className="mt-1 text-xs text-ink-muted">{event.detail}</p>
+        <p className="mt-1 text-xs text-ink-soft">{formatSessionWhen(event.at)}</p></div>
+       {typeof event.amount==="number"?<span className="text-sm font-semibold text-emerald-700">
+        {formatMoney(event.amount,event.currency||"VND")}</span>:
+        <span className="badge bg-stone-100 text-ink-muted">{event.kind}</span>}
+      </li>)}
+     </ol>}
+   </section>;
 }
 
 function AttachLogin({

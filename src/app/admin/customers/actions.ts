@@ -16,6 +16,7 @@ import { z } from "zod";
 import { requireRole } from "@/lib/auth";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { queueCustomerBookingCalendarSync } from "@/lib/bookingPaymentStatus.server";
+import { pendingStarterVisit } from "@/lib/checkout/guards.server";
 
 export type CustomerActionState = {
   error?: string;
@@ -56,6 +57,7 @@ export type CustomerCreditHistoryItem = {
 };
 
 export type CustomerHistoryResult = {
+  checkouts: Array<{ id:string; bookingId:string; kind:string; amountCents:number; currency:string; paymentMethod:string; createdAt:string }>;
   bookings: CustomerBookingHistoryItem[];
   credits: CustomerCreditHistoryItem[];
   error?: string;
@@ -67,12 +69,12 @@ export async function getCustomerHistoryAction(
   await requireRole("admin", "/admin/customers");
 
   if (!z.string().uuid().safeParse(customerId).success) {
-    return { bookings: [], credits: [], error: "Invalid customer." };
+    return { bookings: [], credits: [], checkouts: [], error: "Invalid customer." };
   }
 
   const svc = createServiceClient();
 
-  const [bookingsRes, creditsRes] = await Promise.all([
+  const [bookingsRes, creditsRes, checkoutsRes] = await Promise.all([
     svc
       .from("bookings")
       .select(
@@ -89,15 +91,20 @@ export async function getCustomerHistoryAction(
       .eq("customer_id", customerId)
       .order("created_at", { ascending: false })
       .limit(100),
+    svc.from("class_checkouts")
+      .select("id,booking_id,kind,amount_cents,currency,payment_method,created_at")
+      .eq("customer_id",customerId).order("created_at",{ascending:false}).limit(100),
   ]);
 
-  if (bookingsRes.error || creditsRes.error) {
+  if (bookingsRes.error || creditsRes.error || checkoutsRes.error) {
     return {
       bookings: [],
       credits: [],
+      checkouts: [],
       error:
         bookingsRes.error?.message ??
         creditsRes.error?.message ??
+        checkoutsRes.error?.message ??
         "Could not load customer history.",
     };
   }
@@ -164,7 +171,11 @@ export async function getCustomerHistoryAction(
     packageName: item.package?.name ?? null,
   }));
 
-  return { bookings, credits };
+  const checkouts = ((checkoutsRes.data??[]) as Array<{id:string;booking_id:string;kind:string;amount_cents:number;currency:string;payment_method:string;created_at:string}>)
+    .map(row=>({ id:row.id,bookingId:row.booking_id,kind:row.kind,
+      amountCents:row.amount_cents,currency:row.currency,
+      paymentMethod:row.payment_method,createdAt:row.created_at }));
+  return { bookings, credits, checkouts };
 }
 
 const STATUSES = ["lead", "active", "inactive"] as const;
@@ -288,6 +299,9 @@ export async function grantPackageAction(
       error: `Discounted sale price cannot be higher than the package list price (${pkg.price_cents} ${pkg.currency}).`,
     };
   }
+
+  const unpaidDay=await pendingStarterVisit(customer_id,pkg.pool??"regular");
+  if(unpaidDay && salePrice>0) return { error: "First class payment is not yet linked. Open Today's desk for "+unpaidDay+" and use Collect payment, instead of issuing the full package twice." };
 
   // Clips expire validity_days after the grant. credit_balance() ignores
   // ledger rows whose expires_at has passed.

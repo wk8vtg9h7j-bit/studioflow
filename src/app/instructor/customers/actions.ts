@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireRole } from "@/lib/auth";
 import { createServiceClient } from "@/lib/supabase/server";
 import { queueCustomerBookingCalendarSync } from "@/lib/bookingPaymentStatus.server";
+import { pendingStarterVisit } from "@/lib/checkout/guards.server";
 
 export type InstructorPackageState = {
   ok?: boolean;
@@ -83,6 +84,9 @@ export async function issuePackageAction(
       error: "Sale price cannot be higher than the package list price.",
     };
   }
+
+  const unpaidDay = await pendingStarterVisit(customer_id, pkg.pool ?? "regular");
+  if (unpaidDay) return { error: "This customer has an unsettled first class. Open Today ("+unpaidDay+") and use 'Collect payment' to include that class in the package, so the customer receives the right number of remaining credits." };
 
   const expiresAt = new Date(
     Date.now() + pkg.validity_days * 24 * 60 * 60 * 1000,

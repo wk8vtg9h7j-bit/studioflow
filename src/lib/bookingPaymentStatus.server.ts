@@ -9,6 +9,8 @@ export type BookingPaymentInput = {
   customerId: string;
   creditsSpent: number;
   pool: string;
+  bookedAt?: string;
+  status?: string;
 };
 
 type LedgerRow = {
@@ -70,6 +72,19 @@ export async function getBookingPaymentStatuses(
     const page = (data ?? []) as unknown as LedgerRow[];
     ledgerRows.push(...page);
     if (page.length < PAGE_SIZE) break;
+  }
+
+  // Checkouts are explicit proof that a specific class was paid. A later
+  // unrelated package purchase must not be needed to establish this link.
+  const checkoutCoveredIds = new Set<string>();
+  for (let offset = 0; offset < bookings.length; offset += 200) {
+    const ids = bookings.slice(offset, offset + 200).map((row) => row.id);
+    const { data: receipts, error: receiptError } = await service
+      .from("class_checkouts")
+      .select("booking_id")
+      .in("booking_id", ids);
+    if (receiptError) throw receiptError;
+    for (const receipt of receipts ?? []) checkoutCoveredIds.add(receipt.booking_id);
   }
 
   const bucketsByCustomerPool = new Map<string, Bucket[]>();
@@ -151,7 +166,11 @@ export async function getBookingPaymentStatuses(
 
     result.set(
       booking.id,
-      bookingAlreadyPaid || activePaidCredits >= creditsNeeded
+      checkoutCoveredIds.has(booking.id) || bookingAlreadyPaid ||
+      // Legacy records have no linked receipts. Preserve their historical
+      // classifications, but new bookings require explicit payment evidence.
+      ((!booking.bookedAt || booking.bookedAt < "2026-10-11T17:00:00.000Z")
+        && activePaidCredits >= creditsNeeded)
         ? "package"
         : "payment_due",
     );

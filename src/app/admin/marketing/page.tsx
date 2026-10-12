@@ -178,20 +178,21 @@ export default async function MarketingPage() {
         ))}
       </section>
 
+      <a href="/admin/follow-ups" className="btn-primary inline-block">Open automated follow-up log →</a>
+
       <section className="card overflow-hidden">
         <div className="border-b border-stone-200 px-5 py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold text-ink">
-                Follow-up automations
+                Follow-up automation ideas
               </h2>
               <p className="mt-1 text-xs text-ink-muted">
-                Logic is visible for review, but sending is intentionally
-                disabled in Preview.
+                See active opted-in customer outreach and delivery logs on the Follow-ups page.
               </p>
             </div>
             <span className="badge bg-amber-50 text-amber-700">
-              Preview only · sending disabled
+              Campaign examples
             </span>
           </div>
         </div>

@@ -36,6 +36,7 @@ export type InstructorCustomer = {
   bookingCount: number;
   paymentDueBookings: PaymentDueBooking[];
   purchaseHistory: CustomerPurchase[];
+  checkoutHistory: Array<{id:string;kind:string;createdAt:string;amount:number;currency:string;method:string}>;
 };
 
 const MAX_RESULTS = 30;
@@ -98,13 +99,25 @@ export default async function InstructorCustomersPage({
   // One batched RPC uses the exact existing credit_balance() logic for both
   // pools, instead of up to 60 individual network round trips per page.
   const selectedIds = filtered.map((customer) => customer.id);
-  const [purchasesByCustomer, balanceResult] = await Promise.all([
+  const [purchasesByCustomer, balanceResult, checkoutResult] = await Promise.all([
     getInstructorCustomerPurchases(selectedIds),
     selectedIds.length > 0
       ? service.rpc("instructor_customer_balances", { p_customer_ids: selectedIds })
       : Promise.resolve({ data: [], error: null }),
+    selectedIds.length > 0 ? service.from("class_checkouts")
+      .select("id,customer_id,kind,created_at,amount_cents,currency,payment_method")
+      .in("customer_id",selectedIds).order("created_at",{ascending:false}).limit(500)
+      : Promise.resolve({data:[],error:null}),
   ]);
   if (balanceResult.error) throw balanceResult.error;
+  if(checkoutResult.error)throw checkoutResult.error;
+  type Receipt={id:string;customer_id:string;kind:string;created_at:string;amount_cents:number;currency:string;payment_method:string};
+  const checkoutByCustomer=new Map<string,InstructorCustomer["checkoutHistory"]>();
+  for(const receipt of (checkoutResult.data||[]) as Receipt[]){
+    const list=checkoutByCustomer.get(receipt.customer_id)||[];
+    list.push({id:receipt.id,kind:receipt.kind,createdAt:receipt.created_at,amount:receipt.amount_cents,currency:receipt.currency,method:receipt.payment_method});
+    checkoutByCustomer.set(receipt.customer_id,list);
+  }
   type BalanceRow = { customer_id: string; regular_balance: number; private_balance: number };
   const balanceById = new Map(
     ((balanceResult.data ?? []) as BalanceRow[]).map((balance) => [balance.customer_id, balance]),
@@ -127,6 +140,7 @@ export default async function InstructorCustomersPage({
       bookingCount: bookingCounts.get(customer.id) ?? 0,
       paymentDueBookings: dueByCustomer.get(customer.id) ?? [],
       purchaseHistory: purchasesByCustomer.get(customer.id) ?? [],
+      checkoutHistory: checkoutByCustomer.get(customer.id) ?? [],
     };
   });
 

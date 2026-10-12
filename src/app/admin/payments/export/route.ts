@@ -7,7 +7,7 @@
 // dropped straight into a spreadsheet and summed per currency.
 // ============================================================================
 import { NextResponse, type NextRequest } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth";
 import { formatMoney, FALLBACK_TZ } from "@/lib/format";
 import { formatInTimeZone } from "date-fns-tz";
@@ -76,6 +76,7 @@ export async function GET(request: NextRequest) {
   await requireRole("admin", "/admin/payments");
 
   const supabase = await createClient();
+  const svc = createServiceClient();
 
   // The day axis comes from the studio, exactly as it does on the page itself.
   const { data: studioData } = await supabase
@@ -103,7 +104,7 @@ export async function GET(request: NextRequest) {
   const lowerBound = `${shiftDay(fromKey, -1)}T00:00:00Z`;
   const upperBound = `${shiftDay(toKey, 2)}T00:00:00Z`;
 
-  const [{ data: purchaseData }, { data: saleData }] = await Promise.all([
+  const [{ data: purchaseData }, { data: saleData }, { data: singleData }] = await Promise.all([
     supabase
       .from("credit_ledger")
       .select(
@@ -125,6 +126,8 @@ export async function GET(request: NextRequest) {
       .gte("created_at", lowerBound)
       .lt("created_at", upperBound)
       .order("created_at", { ascending: true }),
+    svc.from("class_checkouts").select("id,created_at,amount_cents,currency,payment_method,customer:customers(name,email,profile:profiles(full_name,email))")
+      .eq("kind","single").gte("created_at",lowerBound).lt("created_at",upperBound),
   ]);
 
   const purchases = (purchaseData ?? []) as unknown as PurchaseRow[];
@@ -180,6 +183,13 @@ export async function GET(request: NextRequest) {
       currency: (row.currency || "VND").toUpperCase(),
       amount: row.total_cents,
     });
+  }
+
+  for(const row of (singleData||[]) as unknown as Array<{id:string;created_at:string;amount_cents:number;currency:string;payment_method:string;customer:CustomerRef|null}>){
+    if(!inRange(row.created_at))continue;
+    lines.push({at:row.created_at,date:dayOf(row.created_at),time:formatInTimeZone(new Date(row.created_at),TZ,"HH:mm"),
+      type:"single_class",customer:nameOf(row.customer),item:"Single-class payment",
+      method:methodOf(row.payment_method),currency:row.currency,amount:row.amount_cents});
   }
 
   lines.sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : 0));

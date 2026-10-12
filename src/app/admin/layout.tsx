@@ -19,6 +19,7 @@ const ADMIN_NAV: NavItem[] = [
   { href: "/admin/instructors", label: "Instructors" },
   { href: "/admin/customers", label: "Customers" },
   { href: "/admin/marketing", label: "Marketing" },
+  { href: "/admin/follow-ups", label: "Follow-ups" },
   { href: "/admin/packages", label: "Packages" },
   { href: "/admin/products", label: "Products" },
   { href: "/admin/payments", label: "Payments" },

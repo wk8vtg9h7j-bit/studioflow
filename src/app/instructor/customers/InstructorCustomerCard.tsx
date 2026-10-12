@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useFormState } from "react-dom";
+import Link from "next/link";
 import { SubmitButton } from "@/app/(auth)/SubmitButton";
 import { formatMoney } from "@/lib/format";
 import type { Package } from "@/lib/types";
@@ -63,6 +64,12 @@ export function InstructorCustomerCard({
               <span className="badge bg-amber-50 text-amber-800">
                 PAYMENT DUE · {customer.paymentDueBookings.length} class{customer.paymentDueBookings.length === 1 ? "" : "es"}
               </span>
+            ) : regularBalance===0 && privateBalance===0 ? (
+              <span className="badge bg-stone-100 text-ink-muted">NO CREDITS</span>
+            ) : regularBalance===1 ? (
+              <span className="badge bg-sky-50 text-sky-700">ONE CLASS LEFT</span>
+            ) : customer.purchaseHistory.some(p=>p.expiresAt && Date.parse(p.expiresAt)>Date.now() && Date.parse(p.expiresAt)<Date.now()+7*86400000) ? (
+              <span className="badge bg-amber-50 text-amber-700">PACKAGE EXPIRING SOON</span>
             ) : customer.bookingCount > 0 ? (
               <span className="badge bg-emerald-50 text-emerald-700">
                 Class bookings covered
@@ -85,6 +92,7 @@ export function InstructorCustomerCard({
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <Link href="/instructor/today" className="btn-secondary shrink-0">Check in / checkout</Link>
           <button
             type="button"
             className="btn-secondary shrink-0"
@@ -138,6 +146,17 @@ export function InstructorCustomerCard({
           </div>
 
           <div>
+            <h3 className="text-sm font-semibold text-ink">Recorded class payments ({customer.checkoutHistory.length})</h3>
+            {customer.checkoutHistory.length===0?
+              <p className="mt-1 text-xs text-ink-muted">No linked checkout receipts yet.</p>:
+              <ul className="mt-2 divide-y divide-stone-200 rounded-lg border border-stone-200 bg-white">
+               {customer.checkoutHistory.map(r=><li key={r.id} className="flex justify-between gap-3 px-3 py-2 text-xs">
+                <span>{r.kind==="package"?"Package included first class":"Single-class payment"} · {displayDate(r.createdAt)} · {paymentMethodLabel(r.method)}</span>
+                <strong>{formatMoney(r.amount,r.currency)}</strong>
+               </li>)}
+              </ul>}
+          </div>
+          <div>
             <h3 className="text-sm font-semibold text-ink">
               Recorded package purchases ({customer.purchaseHistory.length})
             </h3>
@@ -148,8 +167,11 @@ export function InstructorCustomerCard({
                     <div className="min-w-0">
                       <p className="font-medium text-ink">{purchase.packageName}</p>
                       <p className="mt-1 text-ink-soft">
-                        {purchase.credits} {purchase.pool === "private" ? "private" : "regular"} credits · {displayDate(purchase.createdAt)}
+                        {purchase.credits} {purchase.pool === "private" ? "private" : "regular"} credits added · {displayDate(purchase.createdAt)}
                       </p>
+                      {purchase.packageCredits>purchase.credits && <p className="mt-1 font-medium text-emerald-700">
+                         {purchase.packageCredits}-class package: {purchase.packageCredits-purchase.credits} already included · {purchase.credits} credited
+                       </p>}
                       <p className="mt-1 text-ink-soft">
                         Method: {paymentMethodLabel(purchase.paymentMethod)}
                         {purchase.expiresAt ? " · Expires " + displayDate(purchase.expiresAt) : ""}

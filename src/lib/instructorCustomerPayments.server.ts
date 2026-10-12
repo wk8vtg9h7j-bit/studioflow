@@ -15,6 +15,7 @@ export type CustomerPurchase = {
   createdAt: string;
   packageName: string;
   credits: number;
+  packageCredits: number;
   pool: string;
   amountCents: number;
   currency: string;
@@ -26,6 +27,7 @@ type BookingRow = {
   id: string;
   customer_id: string;
   status: string;
+  booked_at: string;
   credits_spent: number | null;
   spots_count: number | null;
   session: {
@@ -47,6 +49,7 @@ type PurchaseRow = {
   expires_at: string | null;
   package: {
     name: string | null;
+    credits: number | null;
     price_cents: number | null;
     currency: string | null;
   } | null;
@@ -66,7 +69,7 @@ export async function getInstructorPaymentOverview(): Promise<{
   for (let offset = 0; ; offset += PAGE_SIZE) {
     const { data, error } = await service
       .from("bookings")
-      .select("id,customer_id,status,credits_spent,spots_count,session:sessions(starts_at,title,class_type:class_types(name,pool))")
+      .select("id,customer_id,status,booked_at,credits_spent,spots_count,session:sessions(starts_at,title,class_type:class_types(name,pool))")
       .in("status", ["booked", "attended", "no_show"])
       .order("id", { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1);
@@ -82,6 +85,8 @@ export async function getInstructorPaymentOverview(): Promise<{
       customerId: row.customer_id,
       creditsSpent: row.credits_spent ?? row.spots_count ?? 1,
       pool: row.session?.class_type?.pool ?? "regular",
+      bookedAt: row.booked_at,
+      status: row.status,
     })),
   );
 
@@ -122,7 +127,7 @@ export async function getInstructorCustomerPurchases(
   for (let offset = 0; ; offset += PAGE_SIZE) {
     const { data, error } = await service
       .from("credit_ledger")
-      .select("id,customer_id,created_at,delta,pool,sale_amount_cents,sale_currency,payment_method,expires_at,package:packages(name,price_cents,currency)")
+      .select("id,customer_id,created_at,delta,pool,sale_amount_cents,sale_currency,payment_method,expires_at,package:packages(name,credits,price_cents,currency)")
       .in("customer_id", customerIds)
       .eq("reason", "purchase")
       .order("created_at", { ascending: false })
@@ -137,6 +142,7 @@ export async function getInstructorCustomerPurchases(
         createdAt: row.created_at,
         packageName: row.package?.name ?? "Package purchase",
         credits: row.delta,
+        packageCredits: row.package?.credits ?? row.delta,
         pool: row.pool ?? "regular",
         amountCents: row.sale_amount_cents ?? row.package?.price_cents ?? 0,
         currency: row.sale_currency ?? row.package?.currency ?? "VND",
