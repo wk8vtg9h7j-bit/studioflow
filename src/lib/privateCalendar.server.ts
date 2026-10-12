@@ -115,9 +115,13 @@ export async function loadPrivateCalendar(
     : { data: [] as {session_id:string}[] };
   const mine = new Set((ownBookingRes.data ?? []).map(b=>b.session_id));
 
-  const slots = slotRows.map(s=>({
+  const slots: PrivateSlot[] = slotRows.map(s=>({
     ...s,
-    // Do not surface another customer's private approval or booking details.
+    // An approved time reserved for another customer must read as unavailable,
+    // never as a public open slot or a requestable time.
+    status: role==="customer" && s.reserved_for_customer_id &&
+      s.reserved_for_customer_id!==customerId && s.status==="open"
+      ? "booked" as const : s.status,
     reserved_for_customer_id: role==="instructor" || s.reserved_for_customer_id===customerId
       ? s.reserved_for_customer_id : null,
     mine: !!s.booked_session_id && mine.has(s.booked_session_id),
