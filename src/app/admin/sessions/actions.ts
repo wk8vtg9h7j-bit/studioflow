@@ -54,6 +54,7 @@ export type SessionActionState = {
   error?: string;
   ok?: boolean;
   message?: string;
+  viewUrl?: string;
 };
 
 function parseForm(formData: FormData) {
@@ -194,10 +195,44 @@ export async function createSessionAction(
     return { error: error?.message ?? "Could not create this class." };
   }
 
-  revalidatePath("/admin/sessions");
+  // A newly scheduled class must show up across customer booking, reception,
+  // instructor availability and payroll views, not just the admin sessions page.
+  for (const path of [
+    "/admin/sessions",
+    "/admin/today",
+    "/admin/payroll",
+    "/instructor",
+    "/instructor/today",
+    "/instructor/private",
+    "/private",
+    "/book",
+  ]) {
+    revalidatePath(path);
+  }
+
+  if (instructor_id) {
+    const timeLabel = new Intl.DateTimeFormat("en-GB", {
+      weekday: "short", day: "numeric", month: "short",
+      hour: "2-digit", minute: "2-digit", timeZone: "Asia/Ho_Chi_Minh",
+    }).format(new Date(instants.starts_at));
+    try {
+      await notifyInstructor(
+        instructor_id,
+        "New class assigned",
+        (title?.trim() || "Pilates class") + " · " + timeLabel + " is now on your teaching schedule.",
+        "/instructor",
+      );
+    } catch {
+      // A push-delivery error must not undo a successfully created class.
+    }
+  }
+
   return {
     ok: true,
     message: "Class created. Google Calendar will update shortly.",
+    // The list defaults to this week; offer a direct link when the new class
+    // is outside that range so staff never mistake a successful save for loss.
+    viewUrl: `/admin/sessions?date=${starts_at.slice(0, 10)}`,
   };
 }
 
