@@ -190,6 +190,7 @@ export function RegisterPanel({
                       eligibleStarter={row.eligible_starter}
                       packages={data.packages}
                       onSuccess={afterPaymentSaved}
+                      instructorName={data.instructorName ?? undefined}
                     />
                   </div>
                 )}
