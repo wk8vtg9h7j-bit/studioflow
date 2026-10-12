@@ -167,8 +167,11 @@ export function InstructorCustomerCard({
                     <div className="min-w-0">
                       <p className="font-medium text-ink">{purchase.packageName}</p>
                       <p className="mt-1 text-ink-soft">
-                        {purchase.credits} {purchase.pool === "private" ? "private" : "regular"} credits · {displayDate(purchase.createdAt)}
+                        {purchase.credits} {purchase.pool === "private" ? "private" : "regular"} credits added · {displayDate(purchase.createdAt)}
                       </p>
+                      {purchase.packageCredits>purchase.credits && <p className="mt-1 font-medium text-emerald-700">
+                         {purchase.packageCredits}-class package: {purchase.packageCredits-purchase.credits} already included · {purchase.credits} credited
+                       </p>}
                       <p className="mt-1 text-ink-soft">
                         Method: {paymentMethodLabel(purchase.paymentMethod)}
                         {purchase.expiresAt ? " · Expires " + displayDate(purchase.expiresAt) : ""}

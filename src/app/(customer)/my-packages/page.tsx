@@ -49,6 +49,7 @@ type ActivePackage = {
   name: string;
   granted: number;
   remaining: number;
+  includedFirstVisit: number;
   pool: string;
   expiresAt: string | null;
   // Where the card came from, so the date line only says "Purchased" when the
@@ -187,6 +188,7 @@ export default async function MyPackagesPage() {
                 : (vi ? "Tín dụng được thêm" : "Credits added"),
           granted: left,
           remaining: left,
+          includedFirstVisit: source==="purchase" ? Math.max(0,(row.package?.credits||left)-row.delta) : 0,
           pool,
           expiresAt: row.expires_at,
           source,
@@ -225,6 +227,7 @@ export default async function MyPackagesPage() {
       b.source,
       b.pool,
       b.name,
+      b.includedFirstVisit,
       b.expiresAt ?? "none",
       dayKey(b.startedAt),
     ].join("|");
@@ -232,6 +235,7 @@ export default async function MyPackagesPage() {
     if (seen) {
       seen.granted += b.granted;
       seen.remaining += b.remaining;
+      seen.includedFirstVisit += b.includedFirstVisit;
     } else {
       mergedById.set(key, { ...b });
     }
@@ -360,6 +364,9 @@ export default async function MyPackagesPage() {
                         : `Expires ${safeDate(pkg.expiresAt)}`
                       : vi ? "Không hết hạn" : "No expiry"}
                   </p>
+                  {pkg.includedFirstVisit > 0 && <p className="mt-1 text-xs font-medium text-emerald-700">
+                    {vi ? `${pkg.includedFirstVisit} buổi đầu đã được bao gồm trong gói` : `${pkg.includedFirstVisit} first visit class(es) already included · ${pkg.granted} credits added`}
+                  </p>}
                   <p className="mt-0.5 text-xs text-ink-soft">
                     {pkg.source === "purchase"
                       ? vi ? "Đã mua" : "Purchased"

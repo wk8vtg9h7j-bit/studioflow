@@ -15,6 +15,7 @@ export type CustomerPurchase = {
   createdAt: string;
   packageName: string;
   credits: number;
+  packageCredits: number;
   pool: string;
   amountCents: number;
   currency: string;
@@ -48,6 +49,7 @@ type PurchaseRow = {
   expires_at: string | null;
   package: {
     name: string | null;
+    credits: number | null;
     price_cents: number | null;
     currency: string | null;
   } | null;
@@ -125,7 +127,7 @@ export async function getInstructorCustomerPurchases(
   for (let offset = 0; ; offset += PAGE_SIZE) {
     const { data, error } = await service
       .from("credit_ledger")
-      .select("id,customer_id,created_at,delta,pool,sale_amount_cents,sale_currency,payment_method,expires_at,package:packages(name,price_cents,currency)")
+      .select("id,customer_id,created_at,delta,pool,sale_amount_cents,sale_currency,payment_method,expires_at,package:packages(name,credits,price_cents,currency)")
       .in("customer_id", customerIds)
       .eq("reason", "purchase")
       .order("created_at", { ascending: false })
@@ -140,6 +142,7 @@ export async function getInstructorCustomerPurchases(
         createdAt: row.created_at,
         packageName: row.package?.name ?? "Package purchase",
         credits: row.delta,
+        packageCredits: row.package?.credits ?? row.delta,
         pool: row.pool ?? "regular",
         amountCents: row.sale_amount_cents ?? row.package?.price_cents ?? 0,
         currency: row.sale_currency ?? row.package?.currency ?? "VND",
