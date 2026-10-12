@@ -66,7 +66,7 @@ export function CheckoutControl({
           const next=e.target.value as "single"|"package";
           setKind(next); setPackageId(""); setPrice(next==="single"?(pool==="regular"?"400000":""):"");
         }}>
-          <option value="single">Just today's class (no credits added)</option>
+          <option value="single">Pay for today + 1 credit for next booking</option>
           {eligibleStarter && available.length>0 && <option value="package">Package including today's class</option>}
         </select>
       </label>
@@ -82,6 +82,7 @@ export function CheckoutControl({
           </option>)}
         </select>
       </label>}
+      {kind==="single" && <div className="sm:col-span-2 rounded-lg bg-white p-3 text-sm text-ink"><strong>1 new class credit</strong> will be added to the customer's balance for their next booking. Today's attended class is marked paid.</div>}
       {kind==="package" && selected && <div className="sm:col-span-2 rounded-lg bg-white p-3 text-sm">
         <p><strong>{selected.credits}</strong> package classes − <strong>{creditsSpent}</strong> already attended = <strong>{selected.credits-creditsSpent} new credits</strong></p>
         <p className="mt-1 text-xs text-ink-muted">Today's class is included in the amount charged. It will not be charged twice.</p>
@@ -107,6 +108,6 @@ export function CheckoutControl({
       {state.error && <p className="sm:col-span-2 text-sm text-rose-700">{state.error}</p>}
       <div className="sm:col-span-2"><SubmitButton>Confirm payment & settle class</SubmitButton></div>
     </form>}
-    {state.ok && <p className="text-xs text-emerald-700">Payment recorded. Remaining classes: {state.remainingCredits}.</p>}
+    {state.ok && <p className="text-xs text-emerald-700">Payment recorded · +{state.grantedCredits ?? 0} credits issued · Remaining classes: {state.remainingCredits}.</p>}
   </div>;
 }

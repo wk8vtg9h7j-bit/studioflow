@@ -31,7 +31,7 @@ export async function GET(request:Request){
    .select("id,customer_id,status,session:sessions(starts_at,class_type:class_types(pool))")
    .eq("status","attended").limit(1000),
   svc.from("credit_ledger").select("customer_id,created_at")
-   .eq("reason","purchase").gte("created_at",new Date(now.getTime()-180*86400000).toISOString()).limit(1000),
+   .in("reason",["purchase","single_class_credit"]).gte("created_at",new Date(now.getTime()-180*86400000).toISOString()).limit(1000),
  ]);
  if(customerError||bookingError||purchaseError){
   return NextResponse.json({error:customerError?.message||bookingError?.message||purchaseError?.message},{status:500});
