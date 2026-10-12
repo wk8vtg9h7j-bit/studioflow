@@ -359,11 +359,11 @@ export async function setSessionStatusAction(formData: FormData) {
   revalidatePath("/my-bookings");
 }
 
-// "Fill" a quiet class: reception holds the remaining seats so the class reads as
-// full to customers and book_session refuses new bookings outright (no waitlist —
-// there is no real seat to free up). Held seats are a counter on the session, never
-// rows in bookings, so attendance, payroll and revenue are untouched. Passing 0
-// releases the hold.
+// Admin Fill closes an EMPTY group class and releases its teacher for private
+// appointments. An atomic database function locks the session before checking
+// bookings; filling must never leave a booked class without an instructor.
+// Unfill removes only the held seats: the instructor stays unassigned because
+// they may have already accepted a private appointment.
 export async function setFillerSeatsAction(
   _prev: SessionActionState,
   formData: FormData,
@@ -378,39 +378,48 @@ export async function setFillerSeatsAction(
   }
 
   const supabase = await createClient();
+  const filling = seats > 0;
+  const { data, error } = await supabase.rpc(
+    "admin_fill_class_and_release_instructor",
+    { p_session_id: id, p_fill: filling },
+  );
 
-  // Never hold more seats than the class has: the customer-side tally counts
-  // held + booked as taken, so an oversized hold would only distort the numbers.
-  const { data: row, error: readError } = await supabase
-    .from("sessions")
-    .select("capacity,starts_at")
-    .eq("id", id)
-    .maybeSingle();
+  if (error) return { error: error.message };
 
-  if (readError) return { error: readError.message };
-  if (!row) return { error: "That session could not be found." };
-
-  const capacity = (row as { capacity: number }).capacity;
-  const nextHeldSeats = Math.min(seats, capacity);
-  const { error: updateError } = await supabase
-    .from("sessions")
-    .update({ filler_seats: nextHeldSeats })
-    .eq("id", id);
-
-  if (updateError) return { error: updateError.message };
+  const releasedInstructor =
+    data && typeof data === "object" && "released_instructor_id" in data
+      ? (data as { released_instructor_id?: string | null }).released_instructor_id
+      : null;
 
   revalidatePath("/admin/sessions");
   revalidatePath("/admin/today");
+  revalidatePath("/admin/payroll");
   revalidatePath("/instructor");
   revalidatePath("/instructor/today");
+  revalidatePath("/instructor/salary");
+  revalidatePath("/instructor/private");
+  revalidatePath("/private");
   revalidatePath("/book");
+
+  if (filling && releasedInstructor) {
+    // A failed push is not allowed to undo a valid class update.
+    try {
+      await notifyInstructor(
+        releasedInstructor,
+        "Group class unassigned",
+        "A group class was manually marked full. You are no longer assigned and can offer private sessions at that time.",
+        "/instructor/private",
+      );
+    } catch {
+      // Instructor availability is already updated in the database.
+    }
+  }
 
   return {
     ok: true,
-    message:
-      nextHeldSeats > 0
-        ? "Class filled. Google Calendar will update shortly."
-        : "Class reopened. Google Calendar will update shortly.",
+    message: filling
+      ? "Class filled. Instructor unassigned and available for private bookings."
+      : "Class reopened. The instructor remains unassigned; assign one before teaching.",
   };
 }
 
