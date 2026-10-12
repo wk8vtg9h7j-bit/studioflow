@@ -41,11 +41,11 @@ export async function recordCheckoutAction(
   const svc = createServiceClient();
   // Identify the session once. Admins may collect payment for any class;
   // instructors may only collect for their own assigned classes.
-  const { data: booking, error: bookingError } = await svc.from("bookings")
+  const { data: bookingWithSession, error: bookingError } = await svc.from("bookings")
     .select("customer_id,session:sessions(instructor_id)")
     .eq("id", input.booking_id).maybeSingle();
   if (bookingError) return { error: bookingError.message };
-  const session = (booking as unknown as {
+  const session = (bookingWithSession as unknown as {
     session?: { instructor_id: string | null } | null;
   } | null)?.session;
   if (!session) return { error: "Could not find the booking's class." };
