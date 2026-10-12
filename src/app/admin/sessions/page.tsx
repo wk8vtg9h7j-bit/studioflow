@@ -14,6 +14,7 @@
 // existing sessions still render their relations even if those have since been
 // deactivated (the joins below are independent of the active filters).
 // ============================================================================
+import Link from "next/link";
 import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { FALLBACK_TZ } from "@/lib/format";
@@ -158,16 +159,22 @@ export default async function SessionsPage({
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink">
-          Sessions
-        </h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          Scheduled classes customers can book. Use Add a class to create
-          group or private sessions at either studio. Times are shown in each
-          studio&apos;s own timezone. Cancelling keeps a session for history but
-          hides it from booking. Only this week is listed — use search to reach
-          any other date.
-        </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-semibold tracking-tight text-ink">
+              Sessions
+            </h1>
+            <p className="mt-1 max-w-2xl text-sm leading-relaxed text-ink-muted">
+              Manage classes, attendance and customer payments by studio. Open
+              <strong> Collect payment</strong> on any class to settle an attended
+              visit or convert an eligible starter credit into a package.
+            </p>
+          </div>
+          <Link href="/admin/today"
+            className="btn-secondary flex min-h-10 shrink-0 items-center justify-center gap-2 self-start sm:self-auto">
+            Today&apos;s payment desk <span aria-hidden="true">→</span>
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
