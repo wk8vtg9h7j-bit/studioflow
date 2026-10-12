@@ -600,6 +600,7 @@ export default async function AdminOverviewPage() {
 
   return (
     <div className="space-y-8">
+      <div className="flex flex-wrap gap-2"><Link href="/admin/today" className="btn-primary">Today's check-ins & payments →</Link><Link href="/admin/insights" className="btn-secondary">First-visit conversion →</Link></div>
       <header className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-ink">

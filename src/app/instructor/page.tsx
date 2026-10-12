@@ -114,6 +114,7 @@ export default async function InstructorHomePage({
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap gap-2"><Link href="/instructor/today" className="btn-primary">Today · Check-ins & payments →</Link><Link href="/instructor/customers" className="btn-secondary">Customer packages →</Link></div>
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-ink">My classes</h1>
