@@ -147,5 +147,5 @@ export async function bookPrivateSlotAction(form: FormData) {
   });
   if (!error) refreshPrivate();
   redirect(target(form, false, error ? "error" : "notice",
-    error?.message || "Private Pilates booked! One private credit has been used."));
+    error?.message || "Private Pilates booked! Your private package credits have been used."));
 }
