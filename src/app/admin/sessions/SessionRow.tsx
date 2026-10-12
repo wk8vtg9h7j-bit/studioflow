@@ -71,6 +71,15 @@ export function SessionRow({
   // Seats reception is holding to close a quiet class. Included in `booked`.
   const held = session.filler_seats ?? 0;
   const openSeats = Math.max(0, session.capacity - booked);
+  const realBooked = Math.max(0, booked - held);
+  // Keep any actually booked group class staffed; only an empty class can
+  // release its instructor when reception marks it full.
+  const canToggleFill = held > 0 || (openSeats > 0 && realBooked === 0);
+  const fillHelp = held > 0
+    ? "Reopen this class; the teacher stays unassigned until reassigned."
+    : realBooked > 0
+      ? "Cannot release an instructor from a class with customer bookings."
+      : "Mark class full and release instructor for private appointments.";
   const tz = session.studio?.timezone;
   const heading = session.title ?? session.class_type?.name ?? "Class";
   const color = session.class_type?.color ?? "#d6d3d1";
@@ -194,6 +203,9 @@ export function SessionRow({
             {held > 0 ? (
               <span className="text-ink-soft">{held} held</span>
             ) : null}
+            {held >= session.capacity && !session.instructor_id ? (
+              <span className="font-medium text-emerald-700">Teacher available for private</span>
+            ) : null}
           </div>
         </div>
 
@@ -203,12 +215,8 @@ export function SessionRow({
               type="button"
               onClick={toggleFill}
               className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm font-semibold text-ink shadow-sm"
-              disabled={fillPending || (held === 0 && openSeats === 0)}
-              title={
-                held > 0
-                  ? "Release the held seats so customers can book again"
-                  : "Hold the remaining seats so customers see this class as full"
-              }
+              disabled={fillPending || !canToggleFill}
+              title={fillHelp}
             >
               {fillPending ? "Saving…" : held > 0 ? "Unfill" : "Fill"}
             </button>
@@ -267,12 +275,8 @@ export function SessionRow({
                 type="button"
                 onClick={toggleFill}
                 className="btn-ghost w-full sm:w-auto"
-                disabled={fillPending || (held === 0 && openSeats === 0)}
-                title={
-                  held > 0
-                    ? "Release the held seats so customers can book again"
-                    : "Hold the remaining seats so customers see this class as full"
-                }
+                disabled={fillPending || !canToggleFill}
+                title={fillHelp}
               >
                 {fillPending ? "Saving…" : held > 0 ? "Unfill" : "Fill"}
               </button>
