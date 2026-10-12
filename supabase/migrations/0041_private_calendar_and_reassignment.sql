@@ -119,6 +119,10 @@ create or replace function public.private_submit_request(
 ) returns uuid language plpgsql security definer set search_path=public as $$
 declare v_customer uuid; v_id uuid; v_end timestamptz:=p_start+interval '50 minutes';
 begin
+ if not exists (select 1 from public.profiles
+    where id=auth.uid() and role='customer') then
+  raise exception 'Only customers may request private sessions';
+ end if;
  v_customer:=public.ensure_customer();
  if v_customer is null then raise exception 'Customer account required'; end if;
  perform public.validate_private_time(p_start);
@@ -191,6 +195,10 @@ declare
  v_type uuid;
  v_session uuid;
 begin
+ if not exists (select 1 from public.profiles
+    where id=auth.uid() and role='customer') then
+  raise exception 'Only customers may book private sessions';
+ end if;
  v_customer:=public.ensure_customer();
  select * into v_slot from public.private_slots where id=p_slot for update;
  if not found or v_slot.status<>'open' then raise exception 'Time is no longer available'; end if;
@@ -229,8 +237,6 @@ revoke all on function public.private_submit_request(uuid,uuid,timestamptz,text)
 revoke all on function public.private_respond_request(uuid,boolean) from public,anon;
 revoke all on function public.private_cancel_request(uuid) from public,anon;
 revoke all on function public.private_book_slot(uuid) from public,anon;
-grant execute on function public.validate_private_time(timestamptz) to authenticated;
-grant execute on function public.private_instructor_is_free(uuid,timestamptz,timestamptz,uuid) to authenticated;
 grant execute on function public.private_publish_slot(uuid,timestamptz) to authenticated;
 grant execute on function public.private_close_slot(uuid) to authenticated;
 grant execute on function public.private_submit_request(uuid,uuid,timestamptz,text) to authenticated;
