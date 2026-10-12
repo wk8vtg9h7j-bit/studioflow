@@ -28,7 +28,7 @@ export type PrivateCalendarData = {
   day: string; studioId: string; instructorId: string;
   studios: PrivateStudio[]; teachers: PrivateTeacher[];
   slots: PrivateSlot[]; requests: PrivateRequest[];
-  busy: BusySession[]; creditBalance: number;
+  busy: BusySession[]; creditBalance: number; creditCost: number;
 };
 
 function dayIsValid(value: string | undefined): value is string {
@@ -50,7 +50,7 @@ export async function loadPrivateCalendar(
   const from = fromZonedTime(day+"T00:00:00", PRIVATE_TZ).toISOString();
   const until = new Date(Date.parse(from) + 86400000).toISOString();
 
-  const [studiosRes, teachersRes, ownInstructorRes, customerRes] = await Promise.all([
+  const [studiosRes, teachersRes, ownInstructorRes, customerRes, costRes] = await Promise.all([
     svc.from("studios").select("id,name,slug").eq("active", true).order("name"),
     svc.from("instructors").select("id,display_name").eq("active", true).order("display_name"),
     role === "instructor"
@@ -59,8 +59,11 @@ export async function loadPrivateCalendar(
     role === "customer"
       ? svc.from("customers").select("id").eq("profile_id",profileId).maybeSingle()
       : Promise.resolve({data:null,error:null}),
+    svc.from("class_types").select("credits_cost").eq("pool","private").eq("active",true)
+      .order("created_at").limit(1).maybeSingle(),
   ]);
 
+  const creditCost = Number(costRes.data?.credits_cost ?? 1);
   const studios = (studiosRes.data ?? []) as PrivateStudio[];
   const teachers = (teachersRes.data ?? []) as PrivateTeacher[];
   const ownInstructor = ownInstructorRes.data?.id ?? "";
@@ -70,7 +73,7 @@ export async function loadPrivateCalendar(
   const studioId = studios.find(s => s.id === params.studio)?.id ?? studios[0]?.id ?? "";
 
   if (!instructorId || !studioId) {
-    return { day, studioId, instructorId, studios, teachers, slots: [], requests: [], busy: [], creditBalance: 0 };
+    return { day, studioId, instructorId, studios, teachers, slots: [], requests: [], busy: [], creditBalance: 0, creditCost };
   }
 
   // Scope every source to the selected teacher and only a single day.
@@ -148,5 +151,6 @@ export async function loadPrivateCalendar(
   return {
     day,studioId,instructorId,studios,teachers,slots,requests,busy,
     creditBalance:typeof balanceRes.data === "number" ? balanceRes.data : 0,
+    creditCost,
   };
 }
