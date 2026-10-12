@@ -39,26 +39,49 @@ export async function recordCheckoutAction(
     return { error: "Choose a package." };
   }
   const svc = createServiceClient();
-  // Instructor permission is checked again against the exact session:
-  // teachers can only collect for classes they are scheduled to teach.
+  // Identify the session once. Admins may collect payment for any class;
+  // instructors may only collect for their own assigned classes.
+  const { data: booking, error: bookingError } = await svc.from("bookings")
+    .select("customer_id,session:sessions(instructor_id)")
+    .eq("id", input.booking_id).maybeSingle();
+  if (bookingError) return { error: bookingError.message };
+  const session = (booking as unknown as {
+    session?: { instructor_id: string | null } | null;
+  } | null)?.session;
+  if (!session) return { error: "Could not find the booking's class." };
+
   if (profile.role === "instructor") {
-    const { data: instructor } = await svc
+    const { data: instructor, error: instructorError } = await svc
       .from("instructors").select("id").eq("profile_id", profile.id).maybeSingle();
-    if (!instructor) return { error: "Instructor account not found." };
-    const { data: booking } = await svc.from("bookings")
-      .select("session:sessions(instructor_id)").eq("id", input.booking_id).maybeSingle();
-    const session = (booking as unknown as { session?: { instructor_id: string | null } | null } | null)?.session;
-    if (!session || session.instructor_id !== instructor.id) {
+    if (instructorError || !instructor) return { error: "Instructor account not found." };
+    if (session.instructor_id !== instructor.id) {
       return { error: "Only the assigned instructor may collect payment from this class." };
     }
   }
+
+  // The ledger's sold_by field drives the immutable 2.5% commission snapshot
+  // and both salary/payroll dashboards. For an admin-confirmed package purchase,
+  // credit the instructor who taught the class, not the staff member who pressed
+  // Confirm. Never attribute an unassigned class to an arbitrary instructor.
+  let creditedSeller = profile.id;
+  if (profile.role === "admin" && input.kind === "package" && session.instructor_id) {
+    const { data: teacher, error: teacherError } = await svc
+      .from("instructors").select("profile_id")
+      .eq("id", session.instructor_id).maybeSingle();
+    if (teacherError) return { error: teacherError.message };
+    if (!teacher?.profile_id) {
+      return { error: "Assign a linked instructor account before recording this package payment so the 2.5% commission is credited correctly." };
+    }
+    creditedSeller = teacher.profile_id;
+  }
+
   const { data, error } = await svc.rpc("record_class_checkout", {
     p_booking: input.booking_id,
     p_kind: input.kind,
     p_package: input.kind === "package" ? input.package_id : null,
     p_payment_method: input.payment_method,
     p_amount_cents: input.amount_cents,
-    p_sold_by: profile.id,
+    p_sold_by: creditedSeller,
   });
   if (error) return { error: error.message };
   const receipt = data as { remaining_credits?: number; granted_credits?: number } | null;
