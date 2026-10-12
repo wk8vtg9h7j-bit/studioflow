@@ -22,6 +22,7 @@ import {
   type BookingPaymentStatus,
 } from "@/lib/bookingPaymentStatus.server";
 import type { BookingStatus } from "@/lib/types";
+import type { CheckoutPackage } from "@/components/CheckoutControl";
 
 const SessionSchema = z.object({
   studio_id: z.string().uuid("Pick a studio"),
@@ -1081,6 +1082,7 @@ export type RegisterRow = {
   credits_spent: number;
   spots_count: number;
   payment_status: BookingPaymentStatus;
+  eligible_starter: boolean;
 };
 
 export type RegisterData = {
@@ -1090,6 +1092,8 @@ export type RegisterData = {
   noShowCount: number;
   creditsUsed: number;
   canMarkAttendance: boolean;
+  pool: string;
+  packages: CheckoutPackage[];
   roster: RegisterRow[];
 };
 
@@ -1135,18 +1139,45 @@ export async function getRegisterDataAction(
     customer: unknown;
   }[];
 
-  const paymentStatuses = await getBookingPaymentStatuses(
-    rows.map((row) => ({
+  const pool =
+    ((session as unknown as { class_type?: { pool?: string | null } | null })
+      ?.class_type?.pool ?? "regular");
+
+  // The register loads only when an admin opens a class; avoid fetching
+  // packages, eligibility and credit history for every class on the list.
+  const svc = createServiceClient();
+  const [paymentStatuses, packagesResult] = await Promise.all([
+    getBookingPaymentStatuses(rows.map((row) => ({
       id: row.id,
       customerId: row.customer_id,
       creditsSpent: row.credits_spent ?? 0,
       bookedAt: row.booked_at,
       status: row.status,
-      pool:
-        ((session as unknown as { class_type?: { pool?: string | null } | null })
-          ?.class_type?.pool ?? "regular"),
-    })),
+      pool,
+    }))),
+    svc.from("packages")
+      .select("id,name,credits,price_cents,currency,pool")
+      .eq("active", true)
+      .gt("price_cents", 0)
+      .order("price_cents", { ascending: true }),
+  ]);
+  if (packagesResult.error) throw new Error(packagesResult.error.message);
+
+  // The existing checkout RPC only allows a first-visit package conversion
+  // when this booking consumed the eligible starter credit. Never infer that
+  // from the customer's apparent balance or offer it on an unpaid later visit.
+  const eligibleBookings = rows.filter((row) =>
+    row.status === "attended" &&
+    paymentStatuses.get(row.id) === "payment_due",
   );
+  const starterChecks = await Promise.all(eligibleBookings.map(async (row) => {
+    const { data, error } = await svc.rpc("eligible_starter_checkout", {
+      p_booking: row.id,
+    });
+    if (error) throw new Error(error.message);
+    return [row.id, data === true] as const;
+  }));
+  const starterByBooking = new Map<string, boolean>(starterChecks);
 
   const roster: RegisterRow[] = rows.map((r) => ({
     id: r.id,
@@ -1156,6 +1187,7 @@ export async function getRegisterDataAction(
     credits_spent: r.credits_spent ?? 0,
     spots_count: r.spots_count ?? 1,
     payment_status: paymentStatuses.get(r.id) ?? "payment_due",
+    eligible_starter: starterByBooking.get(r.id) ?? false,
   }));
 
   const sessionInfo = session as
@@ -1177,6 +1209,8 @@ export async function getRegisterDataAction(
     canMarkAttendance: sessionInfo
       ? Date.parse(sessionInfo.starts_at) <= Date.now()
       : false,
+    pool,
+    packages: (packagesResult.data ?? []) as CheckoutPackage[],
     roster,
   };
 }

@@ -1,30 +1,14 @@
-// ============================================================================
-// RegisterPanel — the attendance register for one class. Expands inside a
-// SessionRow and lists everyone holding a seat, so reception can mark who
-// turned up and who didn't.
-//
-// The roster is loaded on demand rather than with the sessions list: a page of
-// classes would otherwise pull every booking on screen, and the register is
-// only ever open for one class at a time.
-//
-// Marking is reversible. That isn't cosmetic — cancel_booking treats 'attended'
-// and 'no_show' as terminal, so a misclick would otherwise strand the seat.
-// ============================================================================
+// Admin class roster and checkout. Only mounts when a class is expanded:
+// checkout packages and payment classifications are not fetched for every row.
 "use client";
 
 import { useCallback, useEffect, useState, useTransition } from "react";
+import { CheckoutControl } from "@/components/CheckoutControl";
 import type { BookingStatus } from "@/lib/types";
 import { getRegisterDataAction, setBookingStatusAction } from "./actions";
 import type { RegisterData } from "./actions";
 
-const STATUS_BADGE: Record<BookingStatus, string> = {
-  booked: "bg-emerald-50 text-emerald-700",
-  waitlisted: "bg-amber-50 text-amber-700",
-  cancelled: "bg-rose-50 text-rose-700",
-  attended: "bg-sky-50 text-sky-700",
-  no_show: "bg-zinc-100 text-zinc-600",
-};
-
+type RegisterView = "payments" | "attendance";
 const STATUS_LABEL: Record<BookingStatus, string> = {
   booked: "Booked",
   waitlisted: "Waitlisted",
@@ -32,134 +16,222 @@ const STATUS_LABEL: Record<BookingStatus, string> = {
   attended: "Attended",
   no_show: "No show",
 };
+const STATUS_STYLE: Record<BookingStatus, string> = {
+  booked: "bg-emerald-50 text-emerald-700",
+  waitlisted: "bg-amber-50 text-amber-700",
+  cancelled: "bg-rose-50 text-rose-700",
+  attended: "bg-sky-50 text-sky-700",
+  no_show: "bg-stone-100 text-stone-600",
+};
 
-export function RegisterPanel({ sessionId }: { sessionId: string }) {
+export function RegisterPanel({
+  sessionId,
+  view = "payments",
+}: {
+  sessionId: string;
+  view?: RegisterView;
+}) {
   const [data, setData] = useState<RegisterData | null>(null);
+  const [activeView, setActiveView] = useState<RegisterView>(view);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  useEffect(() => setActiveView(view), [view]);
 
   const load = useCallback(async () => {
     try {
-      setData(await getRegisterDataAction(sessionId));
+      const fresh = await getRegisterDataAction(sessionId);
+      setData(fresh);
+      setError(null);
     } catch {
-      setError("Could not load the register.");
+      setError("Could not load the class roster. Please try again.");
     }
   }, [sessionId]);
 
-  useEffect(() => {
+  useEffect(() => { void load(); }, [load]);
+
+  const afterPaymentSaved = useCallback(() => {
+    setNotice("Payment recorded. The customer's payment status and credits have been updated.");
     void load();
   }, [load]);
 
-  // Write, then re-read: the counts are derived from the roster, so refetching
-  // keeps the summary line honest without duplicating the tally client-side.
   function mark(bookingId: string, status: BookingStatus) {
     setError(null);
+    setNotice(null);
     startTransition(async () => {
-      const form = new FormData();
-      form.set("booking_id", bookingId);
-      form.set("status", status);
-      const result = await setBookingStatusAction({}, form);
-      if (result.error) setError(result.error);
-      else await load();
+      try {
+        const form = new FormData();
+        form.set("booking_id", bookingId);
+        form.set("status", status);
+        const result = await setBookingStatusAction({}, form);
+        if (result.error) setError(result.error);
+        else await load();
+      } catch {
+        setError("Could not update attendance. Please try again.");
+      }
     });
   }
 
   if (!data) {
     return (
-      <p className="text-sm text-ink-muted">
-        {error ?? "Loading register…"}
-      </p>
+      <div className="space-y-3" aria-live="polite">
+        <div className="h-10 animate-pulse rounded-xl bg-stone-200" />
+        <div className="h-20 animate-pulse rounded-xl bg-stone-100" />
+        <p className="text-sm text-ink-muted">{error ?? "Loading payments and attendance…"}</p>
+        {error && (
+          <button type="button" className="btn-secondary" onClick={() => void load()}>
+            Retry
+          </button>
+        )}
+      </div>
     );
   }
 
+  const activeBookings = data.roster.filter(row =>
+    row.status === "booked" || row.status === "attended",
+  );
+  const due = activeBookings.filter(row => row.payment_status === "payment_due").length;
+  const paymentRows = [...activeBookings].sort((a, b) => {
+    if (a.payment_status !== b.payment_status) {
+      return a.payment_status === "payment_due" ? -1 : 1;
+    }
+    return a.name.localeCompare(b.name);
+  });
+  const rows = activeView === "payments" ? paymentRows : data.roster;
+
   return (
-    <div className="space-y-3">
-      <p className="text-xs text-ink-soft">
-        {data.attendedCount} attended · {data.noShowCount} no show ·{" "}
-        {data.bookedCount}/{data.capacity} seats · {data.creditsUsed} credits
-        spent
-      </p>
+    <div className="min-w-0 space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 className="text-base font-semibold text-ink">Class management</h3>
+          <p className="mt-1 text-xs text-ink-muted">
+            Collect outstanding payments and update attendance in one place.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-1 rounded-xl bg-stone-200/60 p-1 sm:w-auto"
+          aria-label="Class management view">
+          <button type="button" aria-pressed={activeView === "payments"}
+            onClick={() => setActiveView("payments")}
+            className={"min-h-10 rounded-lg px-4 py-2 text-sm font-semibold transition-colors " +
+              (activeView === "payments"
+                ? "bg-white text-ink shadow-sm" : "text-ink-muted hover:text-ink")}>
+            Payments
+          </button>
+          <button type="button" aria-pressed={activeView === "attendance"}
+            onClick={() => setActiveView("attendance")}
+            className={"min-h-10 rounded-lg px-4 py-2 text-sm font-semibold transition-colors " +
+              (activeView === "attendance"
+                ? "bg-white text-ink shadow-sm" : "text-ink-muted hover:text-ink")}>
+            Attendance
+          </button>
+        </div>
+      </div>
 
-      {error && <p className="text-sm text-rose-600">{error}</p>}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="rounded-xl border border-amber-100 bg-amber-50 p-3">
+          <p className="text-[11px] font-medium text-amber-800">Payment due</p>
+          <p className="mt-1 text-xl font-semibold tabular-nums text-amber-900">{due}</p>
+        </div>
+        <div className="rounded-xl border border-stone-200 bg-white p-3">
+          <p className="text-[11px] font-medium text-ink-muted">Checked in</p>
+          <p className="mt-1 text-xl font-semibold tabular-nums text-ink">{data.attendedCount}</p>
+        </div>
+        <div className="rounded-xl border border-stone-200 bg-white p-3">
+          <p className="text-[11px] font-medium text-ink-muted">Booked seats</p>
+          <p className="mt-1 text-xl font-semibold tabular-nums text-ink">
+            {data.bookedCount}/{data.capacity}
+          </p>
+        </div>
+      </div>
 
-      {data.roster.length === 0 ? (
-        <p className="text-sm text-ink-muted">
-          Nobody has booked this class yet.
-        </p>
+      {error && (
+        <div role="alert" className="flex flex-wrap items-center gap-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">
+          {error}
+          <button type="button" onClick={() => void load()} className="font-semibold underline">Retry</button>
+        </div>
+      )}
+      {notice && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
+
+      {rows.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-stone-200 bg-white p-6 text-center text-sm text-ink-muted">
+          {activeView === "payments" ? "No active bookings to collect payment from." : "Nobody has booked this class yet."}
+        </div>
       ) : (
-        <ul className="divide-y divide-stone-200 overflow-hidden rounded-lg border border-stone-200 bg-white">
-          {data.roster.map((row) => (
-            <li
-              key={row.id}
-              className="flex flex-col items-stretch gap-2 px-3 py-3 text-sm sm:flex-row sm:items-center sm:gap-3 sm:py-2"
-            >
-              <span className="min-w-0 flex-1 truncate font-medium text-ink">
-                {row.name}
-                {row.spots_count > 1 ? ` — ${row.spots_count} spots` : ""}
-              </span>
-              <span
-                className={`badge self-start ${
-                  row.payment_status === "package"
-                    ? "bg-emerald-50 text-emerald-700"
-                    : "bg-amber-50 text-amber-800"
-                }`}
-              >
-                {row.payment_status === "package" ? "PACKAGE" : "PAYMENT DUE"}
-              </span>
-              <span className={`badge self-start ${STATUS_BADGE[row.status]}`}>
-                {STATUS_LABEL[row.status]}
-              </span>
-
-              {/* A waitlisted member never had a seat, so there is nothing to
-                  mark until someone promotes them. */}
-              {row.status !== "waitlisted" && (
-                <div className="grid grid-cols-3 gap-1 sm:flex sm:shrink-0 sm:items-center">
-                  <button
-                    type="button"
-                    className="btn-ghost w-full px-2.5 sm:w-auto sm:px-4"
-                    disabled={
-                      pending || !data.canMarkAttendance || row.status === "attended"
-                    }
-                    onClick={() => mark(row.id, "attended")}
-                  >
-                    Attended
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-ghost w-full px-2.5 sm:w-auto sm:px-4"
-                    disabled={
-                      pending || !data.canMarkAttendance || row.status === "no_show"
-                    }
-                    onClick={() => mark(row.id, "no_show")}
-                  >
-                    No show
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-ghost w-full px-2.5 sm:w-auto sm:px-4"
-                    disabled={pending || row.status === "booked"}
-                    onClick={() => mark(row.id, "booked")}
-                    title="Clear the mark and put this booking back to Booked"
-                  >
-                    Undo
-                  </button>
+        <ul className="divide-y divide-stone-200 overflow-hidden rounded-xl border border-stone-200 bg-white">
+          {rows.map(row => {
+            const paymentDue = row.payment_status === "payment_due";
+            return (
+              <li key={row.id} className="min-w-0 space-y-3 p-3.5 sm:p-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="break-words text-sm font-semibold text-ink">{row.name}</p>
+                    <p className="mt-1 text-xs text-ink-muted">
+                      {row.spots_count} {row.spots_count === 1 ? "spot" : "spots"} · {row.credits_spent} credits used
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className={"rounded-full px-2.5 py-1 text-[11px] font-semibold " +
+                      (paymentDue ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-700")}>
+                      {paymentDue ? "PAYMENT DUE" : "PAID / PACKAGE"}
+                    </span>
+                    <span className={"rounded-full px-2.5 py-1 text-[11px] font-semibold " + STATUS_STYLE[row.status]}>
+                      {STATUS_LABEL[row.status]}
+                    </span>
+                  </div>
                 </div>
-              )}
-            </li>
-          ))}
+
+                {activeView === "payments" && paymentDue && row.status === "attended" && (
+                  <div className="min-w-0 rounded-xl border border-stone-200 bg-stone-50/70 p-3 sm:p-4">
+                    <CheckoutControl
+                      bookingId={row.id}
+                      pool={data.pool}
+                      creditsSpent={row.credits_spent}
+                      eligibleStarter={row.eligible_starter}
+                      packages={data.packages}
+                      onSuccess={afterPaymentSaved}
+                    />
+                  </div>
+                )}
+                {activeView === "payments" && paymentDue && row.status === "booked" && (
+                  <div className="flex flex-col gap-2 rounded-xl border border-amber-100 bg-amber-50/50 p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-xs text-amber-900">
+                      Check in this customer before recording payment for the attended class.
+                    </p>
+                    <button type="button" className="btn-secondary min-h-10 shrink-0 text-xs"
+                      disabled={pending || !data.canMarkAttendance}
+                      onClick={() => mark(row.id, "attended")}>
+                      {pending ? "Updating…" : "Check in"}
+                    </button>
+                    {!data.canMarkAttendance && (
+                      <p className="text-xs text-amber-800 sm:max-w-[140px]">Available when class starts</p>
+                    )}
+                  </div>
+                )}
+
+                {activeView === "attendance" && row.status !== "waitlisted" && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button type="button" className="btn-secondary min-h-10 text-xs"
+                      disabled={pending || !data.canMarkAttendance || row.status === "attended"}
+                      onClick={() => mark(row.id, "attended")}>Attended</button>
+                    <button type="button" className="btn-secondary min-h-10 text-xs"
+                      disabled={pending || !data.canMarkAttendance || row.status === "no_show"}
+                      onClick={() => mark(row.id, "no_show")}>No show</button>
+                    <button type="button" className="btn-ghost min-h-10 text-xs"
+                      disabled={pending || row.status === "booked"}
+                      onClick={() => mark(row.id, "booked")}>Undo</button>
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
 
-      {!data.canMarkAttendance && (
-        <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
-          Attendance can be marked once the class has started.
-        </p>
-      )}
-
-      <p className="text-xs text-ink-soft">
-        PACKAGE means the booking is covered by a paid package. PAYMENT DUE means
-        the customer only has starter/manual credits or no paid package coverage,
-        so payment should be collected. Credits are not returned for a no-show.
+      <p className="text-xs leading-relaxed text-ink-muted">
+        Paid packages cover the class. Starter/manual credits do not count as payment.
+        An attended customer can pay for the single class or, if eligible, buy a package that includes it.
+        This checkout records a payment once and updates the customer's credits.
       </p>
     </div>
   );
