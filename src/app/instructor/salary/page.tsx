@@ -1,26 +1,21 @@
-// ============================================================================
-// Instructor · Salary
-//
-// The instructor's own pay run. This mirrors the admin payroll page, but it is
-// read-mostly: the only write an instructor owns is confirming their own count
-// (pending → instructor_confirmed), which lives inline on each SalaryRow.
-//
-// The list is RLS-scoped: the "instructors read own payroll" policy means this
-// query only ever returns session_payroll rows where instructor_id =
-// my_instructor_id(). We still resolve the instructor id explicitly so an
-// unlinked profile degrades to an empty list rather than erroring.
-//
-// Pay amounts are numeric(10,2) DECIMALS (e.g. 25.00), so totals are summed as
-// plain numbers and formatted with Intl.NumberFormat — never the /100
-// formatMoney helper.
-// ============================================================================
+import Link from "next/link";
 import { requireRole } from "@/lib/auth";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, formatMajorMoney } from "@/lib/format";
+import {
+  instructorWeek,
+  instructorStudioKey,
+  instructorStudioName,
+  instructorStudioOrder,
+  instructorPortalHref,
+  studioParam,
+} from "@/lib/instructorWeek";
 import { SalaryRow, type SalaryListRow } from "./SalaryRow";
 
 export const dynamic = "force-dynamic";
 
+type Params = { week?: string | string[]; studio?: string | string[] };
+type Totals = Record<string, number>;
 type CommissionSaleRow = {
   id: string;
   customer_id: string;
@@ -33,329 +28,310 @@ type CommissionSaleRow = {
   customer?: {
     name: string | null;
     email: string | null;
-    profile?: {
-      full_name: string | null;
-      email: string | null;
-    } | null;
+    profile?: { full_name: string | null; email: string | null } | null;
   } | null;
 };
 
-type MinorTotals = Record<string, number>;
-
-export default async function InstructorSalaryPage() {
-  const profile = await requireRole("instructor", "/instructor/salary");
-  const supabase = await createClient();
-
-  // Resolve the signed-in instructor. An admin viewing the portal, or a profile
-  // not yet linked to an instructor row, simply has no salary here.
-  const { data: instructor } = await supabase
-    .from("instructors")
-    .select("id")
-    .eq("profile_id", profile.id)
-    .single();
-
-  const { data } = instructor
-    ? await supabase
-        .from("session_payroll")
-        .select(
-          `id, session_id, attendance_count, computed_amount, currency, status,
-           instructor_confirmed_at, admin_approved_at, paid_at,
-           session:sessions(
-             title, starts_at,
-             studio:studios(name, timezone),
-             class_type:class_types(name)
-           )`,
-        )
-        .eq("instructor_id", instructor.id)
-        .order("created_at", { ascending: false })
-    : { data: [] };
-
-  const rows = (data ?? []) as unknown as SalaryListRow[];
-
-  const service = createServiceClient();
-  const { data: commissionData } = await service
-    .from("credit_ledger")
-    .select(
-      `id, customer_id, created_at, sale_amount_cents, sale_currency,
-       commission_amount_cents, commission_rate_bps,
-       package:packages(name),
-       customer:customers(
-         name, email,
-         profile:profiles(full_name,email)
-       )`,
-    )
-    .eq("reason", "purchase")
-    .eq("sold_by", profile.id)
-    .gt("commission_amount_cents", 0)
-    .order("created_at", { ascending: false })
-    .limit(250);
-
-  const commissionRows =
-    (commissionData ?? []) as unknown as CommissionSaleRow[];
-  const currentMonth = monthKey(new Date(), "Asia/Ho_Chi_Minh");
-  const monthCommissionRows = commissionRows.filter(
-    (row) =>
-      monthKey(new Date(row.created_at), "Asia/Ho_Chi_Minh") === currentMonth,
-  );
-  const monthCommissionTotals = sumMinor(
-    monthCommissionRows,
-    "commission_amount_cents",
-  );
-  const monthSalesTotals = sumMinor(monthCommissionRows, "sale_amount_cents");
-  const allCommissionTotals = sumMinor(
-    commissionRows,
-    "commission_amount_cents",
-  );
-
-  // Totals from the instructor's point of view. "Owed" is everything not yet
-  // paid and not in dispute; "paid" is settled. "To confirm" nudges them toward
-  // the rows still waiting on their sign-off. Currency is read off the first row.
-  const currency = rows[0]?.currency ?? "GBP";
-  const totals = rows.reduce(
-    (acc, r) => {
-      const amount = r.computed_amount ?? 0;
-      if (r.status === "paid") acc.paid += amount;
-      else if (r.status !== "disputed") acc.owed += amount;
-
-      if (r.status === "pending") acc.toConfirm += 1;
-      return acc;
-    },
-    { owed: 0, paid: 0, toConfirm: 0 },
-  );
-
-  return (
-    <div className="space-y-8">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink">Salary</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          Your pay per session plus a separate 2.5% commission tracker for paid
-          packages you issue to customers.
-        </p>
-      </header>
-
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard
-          label="Commission this month"
-          value={formatMinorTotals(monthCommissionTotals)}
-          detail="2.5% of package sales you issued"
-        />
-        <MetricCard
-          label="Packages sold this month"
-          value={monthCommissionRows.length}
-          detail="Instructor-issued paid packages"
-        />
-        <MetricCard
-          label="Package sales this month"
-          value={formatMinorTotals(monthSalesTotals)}
-          detail="Actual amount charged after discounts"
-        />
-        <MetricCard
-          label="All-time commission"
-          value={formatMinorTotals(allCommissionTotals)}
-          detail={
-            commissionRows.length +
-            " tracked package sale" +
-            (commissionRows.length === 1 ? "" : "s")
-          }
-        />
-      </section>
-
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-        <section className="lg:col-span-2">
-          {rows.length > 0 ? (
-            <ul className="space-y-3">
-              {rows.map((row) => (
-                <SalaryRow key={row.id} row={row} />
-              ))}
-            </ul>
-          ) : (
-            <div className="card px-5 py-12 text-center text-sm text-ink-muted">
-              No salary records yet. Once a class you taught is recomputed, its
-              pay appears here for you to confirm.
-            </div>
-          )}
-        </section>
-
-        <aside className="lg:col-span-1">
-          <div className="card sticky top-24 p-5">
-            <h2 className="mb-4 text-sm font-semibold text-ink">At a glance</h2>
-            <dl className="space-y-3">
-              <SummaryStat label="Owed" value={formatTotal(totals.owed, currency)} />
-              <SummaryStat label="Paid" value={formatTotal(totals.paid, currency)} />
-              <SummaryStat label="To confirm" value={totals.toConfirm} />
-            </dl>
-
-            <p className="mt-5 text-xs text-ink-soft">
-              &ldquo;Owed&rdquo; counts every record not yet paid and not in
-              dispute. Confirming a row doesn&rsquo;t change the amount — it tells
-              the admin you stand behind the headcount.
-            </p>
-          </div>
-        </aside>
-      </div>
-
-      <section className="card overflow-hidden">
-        <div className="border-b border-stone-200 px-5 py-4">
-          <h2 className="text-sm font-semibold text-ink">
-            Package commission history
-          </h2>
-          <p className="mt-1 text-xs text-ink-muted">
-            Commission is 2.5% of the amount actually charged for each paid
-            package you issue.
-          </p>
-        </div>
-
-        {commissionRows.length > 0 ? (
-          <ul className="divide-y divide-stone-100">
-            {commissionRows.slice(0, 25).map((sale) => (
-              <li
-                key={sale.id}
-                className="flex flex-col gap-2 px-5 py-3 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-ink">
-                    {sale.customer?.profile?.full_name?.trim() ||
-                      sale.customer?.name?.trim() ||
-                      sale.customer?.profile?.email ||
-                      sale.customer?.email ||
-                      "Customer"}
-                  </p>
-                  <p className="truncate text-xs text-ink-muted">
-                    {sale.package?.name ?? "Package"} ·{" "}
-                    {formatCommissionDate(sale.created_at)}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-5 text-right">
-                  <div>
-                    <p className="text-xs text-ink-soft">Sale</p>
-                    <p className="text-sm font-medium tabular-nums text-ink">
-                      {formatMoney(
-                        sale.sale_amount_cents ?? 0,
-                        sale.sale_currency ?? "VND",
-                      )}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-ink-soft">
-                      {(sale.commission_rate_bps ?? 250) / 100}% commission
-                    </p>
-                    <p className="text-sm font-semibold tabular-nums text-emerald-700">
-                      {formatMoney(
-                        sale.commission_amount_cents ?? 0,
-                        sale.sale_currency ?? "VND",
-                      )}
-                    </p>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="px-5 py-10 text-center text-sm text-ink-muted">
-            No package commissions yet. A sale appears here when you issue a
-            paid package to a customer.
-          </div>
-        )}
-      </section>
-    </div>
-  );
+function addAmount(totals: Totals, currency: string | null, amount: number) {
+  const code = (currency || "VND").toUpperCase();
+  totals[code] = (totals[code] ?? 0) + Number(amount || 0);
 }
 
-function MetricCard({
-  label,
-  value,
-  detail,
-}: {
-  label: string;
-  value: number | string;
-  detail: string;
-}) {
-  return (
-    <div className="card p-4">
-      <p className="text-xs font-medium uppercase tracking-wide text-ink-soft">
-        {label}
-      </p>
-      <p className="mt-2 text-xl font-semibold tabular-nums text-ink">{value}</p>
-      <p className="mt-1 text-xs text-ink-muted">{detail}</p>
-    </div>
-  );
-}
-
-function SummaryStat({
-  label,
-  value,
-}: {
-  label: string;
-  value: number | string;
-}) {
-  return (
-    <div className="flex items-center justify-between">
-      <dt className="text-sm text-ink-muted">{label}</dt>
-      <dd className="text-sm font-semibold text-ink">{value}</dd>
-    </div>
-  );
-}
-
-function formatTotal(amount: number, currency: string): string {
-  try {
-    return new Intl.NumberFormat("en-GB", {
-      style: "currency",
-      currency: currency || "GBP",
-    }).format(amount ?? 0);
-  } catch {
-    return `${(amount ?? 0).toFixed(2)} ${currency || "GBP"}`;
-  }
-}
-
-
-function monthKey(date: Date, timeZone: string): string {
-  if (Number.isNaN(date.getTime())) return "";
-  try {
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      year: "numeric",
-      month: "2-digit",
-      timeZone,
-    }).formatToParts(date);
-    const year = parts.find((part) => part.type === "year")?.value ?? "";
-    const month = parts.find((part) => part.type === "month")?.value ?? "";
-    return year && month ? `${year}-${month}` : "";
-  } catch {
-    return "";
-  }
-}
-
-function sumMinor(
-  rows: CommissionSaleRow[],
-  field: "sale_amount_cents" | "commission_amount_cents",
-): MinorTotals {
-  const totals: MinorTotals = {};
-  for (const row of rows) {
-    const currency = (row.sale_currency ?? "VND").toUpperCase();
-    totals[currency] = (totals[currency] ?? 0) + Number(row[field] ?? 0);
-  }
+function sumPay(rows: SalaryListRow[]): Totals {
+  const totals: Totals = {};
+  for (const row of rows) addAmount(totals, row.currency, row.computed_amount);
   return totals;
 }
 
-function formatMinorTotals(totals: MinorTotals): string {
-  const entries = Object.entries(totals).filter(([, amount]) => amount !== 0);
-  if (entries.length === 0) return formatMoney(0, "VND");
+function sumCommissions(rows: CommissionSaleRow[], field: "commission_amount_cents" | "sale_amount_cents"): Totals {
+  const totals: Totals = {};
+  for (const row of rows) addAmount(totals, row.sale_currency, row[field] ?? 0);
+  return totals;
+}
+
+function payText(totals: Totals): string {
+  const entries = Object.entries(totals);
+  if (!entries.length) return formatMajorMoney(0, "VND");
+  return entries
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([currency, amount]) => formatMajorMoney(amount, currency))
+    .join(" · ");
+}
+
+function commissionText(totals: Totals): string {
+  const entries = Object.entries(totals);
+  if (!entries.length) return formatMoney(0, "VND");
   return entries
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([currency, amount]) => formatMoney(amount, currency))
     .join(" · ");
 }
 
-function formatCommissionDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  try {
-    return new Intl.DateTimeFormat("en-GB", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-      timeZone: "Asia/Ho_Chi_Minh",
-    }).format(date);
-  } catch {
-    return "";
+function monthKey(date: Date): string {
+  const format = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    timeZone: "Asia/Ho_Chi_Minh",
+  }).formatToParts(date);
+  return (format.find((p) => p.type === "year")?.value ?? "") + "-" +
+    (format.find((p) => p.type === "month")?.value ?? "");
+}
+
+function saleDate(value: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "Asia/Ho_Chi_Minh",
+  }).format(new Date(value));
+}
+
+export default async function InstructorSalaryPage({
+  searchParams,
+}: {
+  searchParams?: Params | Promise<Params>;
+}) {
+  const params = (await searchParams) ?? {};
+  const week = instructorWeek(params.week);
+  const selectedStudio = studioParam(params.studio);
+  const profile = await requireRole("instructor", "/instructor/salary");
+  const supabase = await createClient();
+  const { data: instructor } = await supabase
+    .from("instructors")
+    .select("id")
+    .eq("profile_id", profile.id)
+    .single();
+
+  // !inner ensures session date filters apply to the parent payroll rows;
+  // unlike a 1,000-row all-time list, each week shows its complete pay run.
+  const { data, error } = instructor
+    ? await supabase
+        .from("session_payroll")
+        .select(
+          "id, session_id, attendance_count, computed_amount, currency, status, instructor_confirmed_at, admin_approved_at, paid_at, session:sessions!inner(title, starts_at, studio:studios(name, timezone), class_type:class_types(name))",
+        )
+        .eq("instructor_id", instructor.id)
+        .gte("session.starts_at", week.from)
+        .lt("session.starts_at", week.until)
+        .order("created_at", { ascending: false })
+    : { data: [], error: null };
+
+  const allRows = (data ?? []) as unknown as SalaryListRow[];
+  const rows = allRows
+    .filter((row) => selectedStudio === "all" ||
+      instructorStudioKey(row.session?.studio?.name) === selectedStudio)
+    .sort((a, b) => (a.session?.starts_at ?? "").localeCompare(b.session?.starts_at ?? ""));
+  const pending = rows.filter((row) => row.status === "pending");
+  const unpaid = rows.filter((row) => row.status !== "paid" && row.status !== "disputed");
+  const paid = rows.filter((row) => row.status === "paid");
+  const disputed = rows.filter((row) => row.status === "disputed");
+
+  const groups = new Map<string, SalaryListRow[]>();
+  for (const row of rows) {
+    const key = instructorStudioKey(row.session?.studio?.name);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(row);
   }
+  const studioKeys = Array.from(new Set([
+    ...(selectedStudio === "all" ? ["downtown", "hideaway"] : [selectedStudio]),
+    ...groups.keys(),
+  ])).sort(instructorStudioOrder);
+
+  // Commissions remain distinct from class payroll. Never mix a sale's minor
+  // units with payroll's major-unit DECIMAL amounts.
+  const service = createServiceClient();
+  const { data: commissionData } = await service
+    .from("credit_ledger")
+    .select(
+      "id, customer_id, created_at, sale_amount_cents, sale_currency, commission_amount_cents, commission_rate_bps, package:packages(name), customer:customers(name, email, profile:profiles(full_name,email))",
+    )
+    .eq("reason", "purchase")
+    .eq("sold_by", profile.id)
+    .gt("commission_amount_cents", 0)
+    .order("created_at", { ascending: false })
+    .limit(1000);
+  const commissionRows = (commissionData ?? []) as unknown as CommissionSaleRow[];
+  const month = monthKey(new Date());
+  const monthSales = commissionRows.filter((row) => monthKey(new Date(row.created_at)) === month);
+  const weekSales = commissionRows.filter((row) =>
+    row.created_at >= new Date(week.from).toISOString() &&
+    row.created_at < new Date(week.until).toISOString(),
+  );
+
+  const salaryUrl = (weekStart: string, studio = selectedStudio) =>
+    instructorPortalHref("/instructor/salary", weekStart, studio);
+
+  return (
+    <div className="space-y-6">
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-ink">My salary</h1>
+          <p className="mt-1 text-sm text-ink-muted">
+            Weekly class pay, organised by studio. Confirm attendance directly beside each class.
+          </p>
+        </div>
+        <Link
+          href={instructorPortalHref("/instructor", week.start, selectedStudio)}
+          className="btn-secondary"
+        >
+          View this week&apos;s classes →
+        </Link>
+      </header>
+
+      <div className="card space-y-4 p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Link href={salaryUrl(week.previous)} className="btn-secondary" aria-label="Previous week">
+            ← Previous
+          </Link>
+          <div className="text-center">
+            <p className="text-base font-semibold text-ink">{week.label}</p>
+            <p className="text-xs text-ink-soft">{week.isCurrent ? "This week" : "Monday – Sunday"}</p>
+          </div>
+          <Link href={salaryUrl(week.next)} className="btn-secondary" aria-label="Next week">
+            Next →
+          </Link>
+        </div>
+        {!week.isCurrent && (
+          <div className="text-center">
+            <Link href={salaryUrl(instructorWeek().start)} className="text-sm font-medium text-brand-700 underline">
+              Jump to this week
+            </Link>
+          </div>
+        )}
+        <nav className="flex flex-wrap gap-2 border-t border-stone-100 pt-4" aria-label="Studio filter">
+          {[
+            { value: "all", label: "All studios" },
+            { value: "downtown", label: "Downtown" },
+            { value: "hideaway", label: "Hideaway" },
+          ].map((option) => (
+            <Link
+              key={option.value}
+              href={salaryUrl(week.start, option.value)}
+              aria-current={selectedStudio === option.value ? "page" : undefined}
+              className={
+                "rounded-full px-4 py-2 text-sm font-medium transition-colors " +
+                (selectedStudio === option.value
+                  ? "bg-ink text-white"
+                  : "border border-stone-200 bg-white text-ink-muted hover:border-stone-400")
+              }
+            >
+              {option.label}
+            </Link>
+          ))}
+        </nav>
+      </div>
+
+      <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <Metric label="Total class pay" value={payText(sumPay(rows))} detail={rows.length + " payroll records this week"} />
+        <Metric label="Unpaid" value={payText(sumPay(unpaid))} detail="Pending, confirmed or approved" />
+        <Metric label="Paid" value={payText(sumPay(paid))} detail="Marked paid for this week's classes" />
+        <Metric label="To confirm" value={pending.length} detail="Classes awaiting your headcount" emphasise={pending.length > 0} />
+      </section>
+
+      {disputed.length > 0 && (
+        <p className="text-sm text-rose-700">
+          {disputed.length} disputed payroll record{disputed.length === 1 ? "" : "s"} shown below; excluded from unpaid totals.
+        </p>
+      )}
+      {error && <div className="card border-rose-200 p-4 text-sm text-rose-700">Salary could not be loaded. Please refresh.</div>}
+
+      {!error && studioKeys.map((key) => {
+        const studioRows = groups.get(key) ?? [];
+        const payable = studioRows.filter((row) => row.status !== "disputed");
+        return (
+          <section key={key} className="card overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 bg-stone-50 px-4 py-4 sm:px-5">
+              <div>
+                <h2 className="text-lg font-semibold text-ink">
+                  {instructorStudioName(key, studioRows[0]?.session?.studio?.name)}
+                </h2>
+                <p className="text-xs text-ink-muted">
+                  {studioRows.length} class{studioRows.length === 1 ? "" : "es"} · {studioRows.filter((row) => row.status === "pending").length} to confirm
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm font-semibold tabular-nums text-ink">{payText(sumPay(payable))}</p>
+                <p className="text-xs text-ink-soft">Excludes disputed pay</p>
+              </div>
+            </div>
+            {studioRows.length === 0 ? (
+              <p className="px-5 py-7 text-sm text-ink-muted">No payroll entries at this studio for this week.</p>
+            ) : (
+              <ul className="space-y-3 p-3 sm:p-4">
+                {studioRows.map((row) => <SalaryRow key={row.id} row={row} />)}
+              </ul>
+            )}
+          </section>
+        );
+      })}
+
+      <section className="card overflow-hidden">
+        <div className="border-b border-stone-200 px-4 py-4 sm:px-5">
+          <h2 className="font-semibold text-ink">Package sales commission · 2.5%</h2>
+          <p className="mt-1 text-xs text-ink-muted">
+            Tracked separately from teaching pay. Calculated on actual paid package sales, not booked classes.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 sm:p-5">
+          <Metric label="This week" value={commissionText(sumCommissions(weekSales, "commission_amount_cents"))} detail="Commission earned on sales" />
+          <Metric label="This month" value={commissionText(sumCommissions(monthSales, "commission_amount_cents"))} detail={monthSales.length + " tracked package sales"} />
+          <Metric label="Monthly sales" value={commissionText(sumCommissions(monthSales, "sale_amount_cents"))} detail="Customer spend after discounts" />
+        </div>
+        <details className="border-t border-stone-100">
+          <summary className="cursor-pointer px-5 py-4 text-sm font-medium text-brand-700">
+            See recent package commission history
+          </summary>
+          {commissionRows.length === 0 ? (
+            <p className="px-5 pb-5 text-sm text-ink-muted">No instructor-issued paid packages recorded.</p>
+          ) : (
+            <ul className="divide-y divide-stone-100 border-t border-stone-100">
+              {commissionRows.slice(0, 25).map((sale) => (
+                <li key={sale.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-ink">
+                      {sale.customer?.profile?.full_name?.trim() ||
+                        sale.customer?.name?.trim() ||
+                        sale.customer?.profile?.email ||
+                        sale.customer?.email || "Customer"}
+                    </p>
+                    <p className="text-xs text-ink-muted">{sale.package?.name ?? "Package"} · {saleDate(sale.created_at)}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-ink-soft">
+                      Sale: {formatMoney(sale.sale_amount_cents ?? 0, sale.sale_currency ?? "VND")}
+                    </p>
+                    <p className="text-sm font-semibold tabular-nums text-emerald-700">
+                      +{formatMoney(sale.commission_amount_cents ?? 0, sale.sale_currency ?? "VND")}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </details>
+      </section>
+    </div>
+  );
+}
+
+function Metric({
+  label,
+  value,
+  detail,
+  emphasise = false,
+}: {
+  label: string;
+  value: string | number;
+  detail: string;
+  emphasise?: boolean;
+}) {
+  return (
+    <div className="card min-w-0 px-4 py-4">
+      <p className="text-xs font-medium text-ink-muted">{label}</p>
+      <p className={"mt-1 break-words text-xl font-semibold tabular-nums " + (emphasise ? "text-amber-700" : "text-ink")}>
+        {value}
+      </p>
+      <p className="mt-1 text-xs text-ink-soft">{detail}</p>
+    </div>
+  );
 }
