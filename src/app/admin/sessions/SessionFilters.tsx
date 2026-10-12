@@ -58,14 +58,14 @@ export function SessionFilters({
   }
 
   return (
-    <div className="card grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-end">
-      <div className="w-full lg:min-w-[10rem] lg:flex-1">
+    <div className="card grid min-w-0 grid-cols-1 gap-3 p-3 sm:grid-cols-2 sm:p-4 xl:grid-cols-4">
+      <div className="min-w-0">
         <label className="label" htmlFor="sf-studio">
           Studio
         </label>
         <select
           id="sf-studio"
-          className="input"
+          className="input min-w-0 max-w-full"
           value={studio ?? ""}
           onChange={(e) => apply("studio", e.target.value)}
         >
@@ -78,26 +78,26 @@ export function SessionFilters({
         </select>
       </div>
 
-      <div className="w-full lg:min-w-[9rem] lg:flex-1">
+      <div className="min-w-0">
         <label className="label" htmlFor="sf-date">
           Day
         </label>
         <input
           id="sf-date"
           type="date"
-          className="input"
+          className="input min-w-0 max-w-full"
           value={date ?? ""}
           onChange={(e) => apply("date", e.target.value)}
         />
       </div>
 
-      <div className="w-full lg:min-w-[10rem] lg:flex-1">
+      <div className="min-w-0">
         <label className="label" htmlFor="sf-type">
           Class
         </label>
         <select
           id="sf-type"
-          className="input"
+          className="input min-w-0 max-w-full"
           value={type ?? ""}
           onChange={(e) => apply("type", e.target.value)}
         >
@@ -110,7 +110,7 @@ export function SessionFilters({
         </select>
       </div>
 
-      <div className="w-full sm:col-span-2 lg:min-w-[12rem] lg:flex-1">
+      <div className="min-w-0 sm:col-span-2 xl:col-span-1">
         <label className="label" htmlFor="sf-q">
           Search
         </label>
@@ -120,8 +120,8 @@ export function SessionFilters({
           id="sf-q"
           key={q ?? ""}
           type="search"
-          className="input"
-          placeholder="Class name — searches all dates"
+          className="input min-w-0 max-w-full"
+          placeholder="Search classes…"
           defaultValue={q ?? ""}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
@@ -137,7 +137,7 @@ export function SessionFilters({
       </div>
 
       {hasFilters && (
-        <a href="/admin/sessions" className="btn-secondary w-full sm:w-auto">
+        <a href="/admin/sessions" className="btn-secondary w-full sm:col-span-2 xl:col-span-4 xl:w-auto xl:justify-self-start">
           Clear
         </a>
       )}
