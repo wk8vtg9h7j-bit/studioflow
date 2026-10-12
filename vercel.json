@@ -16,6 +16,10 @@
     {
       "path": "/api/cron/instructor-push",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/customer-followups",
+      "schedule": "0 3 * * *"
     }
   ]
 }
