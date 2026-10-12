@@ -1093,6 +1093,7 @@ export type RegisterData = {
   creditsUsed: number;
   canMarkAttendance: boolean;
   pool: string;
+  instructorName: string | null;
   packages: CheckoutPackage[];
   roster: RegisterRow[];
 };
@@ -1115,7 +1116,7 @@ export async function getRegisterDataAction(
 
   const { data: session } = await supabase
     .from("sessions")
-    .select("capacity,starts_at,class_type:class_types(pool)")
+    .select("capacity,starts_at,class_type:class_types(pool),instructor:instructors(display_name)")
     .eq("id", sessionId)
     .maybeSingle();
 
@@ -1210,6 +1211,9 @@ export async function getRegisterDataAction(
       ? Date.parse(sessionInfo.starts_at) <= Date.now()
       : false,
     pool,
+    instructorName:
+      ((session as unknown as { instructor?: { display_name?: string } | null } | null)
+        ?.instructor?.display_name ?? null),
     packages: (packagesResult.data ?? []) as CheckoutPackage[],
     roster,
   };

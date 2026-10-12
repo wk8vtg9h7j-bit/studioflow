@@ -205,8 +205,9 @@ export default async function PayrollPage({
                 Package commissions · 2.5%
               </h2>
               <p className="mt-1 text-xs text-ink-muted">
-                Current month. Only paid packages issued by instructor accounts
-                earn commission; admin-issued packages do not.
+                Current month. Instructors earn 2.5% on their own package sales
+                and on class packages collected by an admin for classes they teach.
+                Unassigned classes do not generate teaching commission.
               </p>
             </div>
             <p className="text-xs font-medium text-ink-soft">{currentMonth}</p>

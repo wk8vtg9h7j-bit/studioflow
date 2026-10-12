@@ -277,7 +277,7 @@ export default async function InstructorSalaryPage({
         <div className="border-b border-stone-200 px-4 py-4 sm:px-5">
           <h2 className="font-semibold text-ink">Package sales commission · 2.5%</h2>
           <p className="mt-1 text-xs text-ink-muted">
-            Tracked separately from teaching pay. Calculated on actual paid package sales, not booked classes.
+            Tracked separately from class pay. Includes paid packages from classes you teach, even when an admin records payment.
           </p>
         </div>
         <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 sm:p-5">
@@ -290,7 +290,7 @@ export default async function InstructorSalaryPage({
             See recent package commission history
           </summary>
           {commissionRows.length === 0 ? (
-            <p className="px-5 pb-5 text-sm text-ink-muted">No instructor-issued paid packages recorded.</p>
+            <p className="px-5 pb-5 text-sm text-ink-muted">No package commissions recorded yet.</p>
           ) : (
             <ul className="divide-y divide-stone-100 border-t border-stone-100">
               {commissionRows.slice(0, 25).map((sale) => (

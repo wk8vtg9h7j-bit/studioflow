@@ -102,25 +102,25 @@ export function RegisterPanel({
 
   return (
     <div className="min-w-0 space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h3 className="text-base font-semibold text-ink">Class management</h3>
+      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-ink sm:text-base">Class management</h3>
           <p className="mt-1 text-xs text-ink-muted">
             Collect outstanding payments and update attendance in one place.
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-1 rounded-xl bg-stone-200/60 p-1 sm:w-auto"
+        <div className="grid min-w-0 grid-cols-2 gap-1 rounded-xl bg-stone-200/60 p-1 sm:w-auto"
           aria-label="Class management view">
           <button type="button" aria-pressed={activeView === "payments"}
             onClick={() => setActiveView("payments")}
-            className={"min-h-10 rounded-lg px-4 py-2 text-sm font-semibold transition-colors " +
+            className={"min-h-10 min-w-0 rounded-lg px-2 py-2 text-xs font-semibold transition-colors sm:px-4 sm:text-sm " +
               (activeView === "payments"
                 ? "bg-white text-ink shadow-sm" : "text-ink-muted hover:text-ink")}>
             Payments
           </button>
           <button type="button" aria-pressed={activeView === "attendance"}
             onClick={() => setActiveView("attendance")}
-            className={"min-h-10 rounded-lg px-4 py-2 text-sm font-semibold transition-colors " +
+            className={"min-h-10 min-w-0 rounded-lg px-2 py-2 text-xs font-semibold transition-colors sm:px-4 sm:text-sm " +
               (activeView === "attendance"
                 ? "bg-white text-ink shadow-sm" : "text-ink-muted hover:text-ink")}>
             Attendance
@@ -128,18 +128,18 @@ export function RegisterPanel({
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
-        <div className="rounded-xl border border-amber-100 bg-amber-50 p-3">
-          <p className="text-[11px] font-medium text-amber-800">Payment due</p>
-          <p className="mt-1 text-xl font-semibold tabular-nums text-amber-900">{due}</p>
+      <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3">
+        <div className="min-w-0 rounded-xl border border-amber-100 bg-amber-50 p-2.5 sm:p-3">
+          <p className="break-words text-xs font-medium text-amber-800">Payment due</p>
+          <p className="mt-1 text-lg font-semibold tabular-nums sm:text-xl text-amber-900">{due}</p>
         </div>
-        <div className="rounded-xl border border-stone-200 bg-white p-3">
-          <p className="text-[11px] font-medium text-ink-muted">Checked in</p>
-          <p className="mt-1 text-xl font-semibold tabular-nums text-ink">{data.attendedCount}</p>
+        <div className="min-w-0 rounded-xl border border-stone-200 bg-white p-2.5 sm:p-3">
+          <p className="break-words text-xs font-medium text-ink-muted">Checked in</p>
+          <p className="mt-1 text-lg font-semibold tabular-nums sm:text-xl text-ink">{data.attendedCount}</p>
         </div>
-        <div className="rounded-xl border border-stone-200 bg-white p-3">
-          <p className="text-[11px] font-medium text-ink-muted">Booked seats</p>
-          <p className="mt-1 text-xl font-semibold tabular-nums text-ink">
+        <div className="col-span-2 min-w-0 rounded-xl border border-stone-200 bg-white p-2.5 sm:col-span-1 sm:p-3">
+          <p className="break-words text-xs font-medium text-ink-muted">Booked seats</p>
+          <p className="mt-1 text-lg font-semibold tabular-nums sm:text-xl text-ink">
             {data.bookedCount}/{data.capacity}
           </p>
         </div>
@@ -182,7 +182,7 @@ export function RegisterPanel({
                 </div>
 
                 {activeView === "payments" && paymentDue && row.status === "attended" && (
-                  <div className="min-w-0 rounded-xl border border-stone-200 bg-stone-50/70 p-3 sm:p-4">
+                  <div className="min-w-0 max-w-full rounded-xl border border-stone-200 bg-stone-50/70 p-2.5 sm:p-3">
                     <CheckoutControl
                       bookingId={row.id}
                       pool={data.pool}
@@ -190,6 +190,7 @@ export function RegisterPanel({
                       eligibleStarter={row.eligible_starter}
                       packages={data.packages}
                       onSuccess={afterPaymentSaved}
+                      instructorName={data.instructorName ?? undefined}
                     />
                   </div>
                 )}

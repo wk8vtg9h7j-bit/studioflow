@@ -63,7 +63,7 @@ export async function TodayDesk({role,profileId,date}:{role:"admin"|"instructor"
         <CheckInActions bookingId={b.id} status={b.status} canMark={Date.parse(session.at)<=Date.now()}/>
         {b.status==="attended"&&b.payment==="payment_due"&&<CheckoutControl
            bookingId={b.id} pool={b.pool} creditsSpent={b.creditsSpent}
-           eligibleStarter={b.eligibleStarter} packages={data.packages}/>}
+           eligibleStarter={b.eligibleStarter} packages={data.packages} instructorName={session.instructor}/>}
        </div>
       </li>)}
      </ul>}
