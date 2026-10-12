@@ -131,6 +131,10 @@ export default async function AdminOverviewPage() {
     recentPurchasesRes,
     recentSalesRes,
     payrollRes,
+    monthSinglesRes,
+    previousMonthSinglesRes,
+    weekSinglesRes,
+    previousWeekSinglesRes,
   ] = await Promise.all([
     loadCustomerAnalytics(),
     service
@@ -247,6 +251,14 @@ export default async function AdminOverviewPage() {
       .from("session_payroll")
       .select("id", { count: "exact", head: true })
       .eq("status", "pending"),
+    service.from("class_checkouts").select("amount_cents,currency,created_at").eq("kind","single")
+      .gte("created_at",monthStart.toISOString()).lt("created_at",todayEnd.toISOString()),
+    service.from("class_checkouts").select("amount_cents,currency,created_at").eq("kind","single")
+      .gte("created_at",previousMonthStart.toISOString()).lt("created_at",previousMonthComparableEnd.toISOString()),
+    service.from("class_checkouts").select("amount_cents,currency,created_at").eq("kind","single")
+      .gte("created_at",weekStart.toISOString()).lt("created_at",todayEnd.toISOString()),
+    service.from("class_checkouts").select("amount_cents,currency,created_at").eq("kind","single")
+      .gte("created_at",previousWeekStart.toISOString()).lt("created_at",previousWeekComparableEnd.toISOString()),
   ]);
 
   const studios = (studiosRes.data ?? []) as StudioRow[];
@@ -327,32 +339,23 @@ export default async function AdminOverviewPage() {
     total_cents: number;
   }>;
 
-  const monthRevenue =
-    amountOfPackages(monthPurchases) + amountOfSales(monthSales);
-  const previousMonthRevenue =
-    amountOfPackages(previousMonthPurchases) +
-    amountOfSales(previousMonthSales);
-  const weekRevenue = amountOfPackages(weekPurchases) + amountOfSales(weekSales);
-  const previousWeekRevenue =
-    amountOfPackages(previousWeekPurchases) + amountOfSales(previousWeekSales);
+  const sumSingles=(rows:Array<{amount_cents:number}>)=>rows.reduce((sum,row)=>sum+row.amount_cents,0);
+  const monthSingles=monthSinglesRes.data||[];
+  const previousMonthSingles=previousMonthSinglesRes.data||[];
+  const weekSingles=weekSinglesRes.data||[];
+  const previousWeekSingles=previousWeekSinglesRes.data||[];
+  const monthRevenue=amountOfPackages(monthPurchases)+amountOfSales(monthSales)+sumSingles(monthSingles);
+  const previousMonthRevenue=amountOfPackages(previousMonthPurchases)+amountOfSales(previousMonthSales)+sumSingles(previousMonthSingles);
+  const weekRevenue=amountOfPackages(weekPurchases)+amountOfSales(weekSales)+sumSingles(weekSingles);
+  const previousWeekRevenue=amountOfPackages(previousWeekPurchases)+amountOfSales(previousWeekSales)+sumSingles(previousWeekSingles);
 
   const todayRevenue =
-    amountOfPackages(
-      monthPurchases.filter(
-        (row) =>
-          Date.parse(row.created_at) >= todayStart.getTime() &&
-          Date.parse(row.created_at) < todayEnd.getTime(),
-      ),
-    ) +
-    amountOfSales(
-      monthSales.filter(
-        (row) =>
-          Date.parse(row.created_at) >= todayStart.getTime() &&
-          Date.parse(row.created_at) < todayEnd.getTime(),
-      ),
-    );
+    amountOfPackages(monthPurchases.filter(row=>Date.parse(row.created_at)>=todayStart.getTime()&&Date.parse(row.created_at)<todayEnd.getTime()))+
+    amountOfSales(monthSales.filter(row=>Date.parse(row.created_at)>=todayStart.getTime()&&Date.parse(row.created_at)<todayEnd.getTime()))+
+    sumSingles(monthSingles.filter(row=>Date.parse(row.created_at)>=todayStart.getTime()&&Date.parse(row.created_at)<todayEnd.getTime()));
 
   const revenueCurrency =
+    monthSingles.find((row)=>row.currency)?.currency ??
     monthPurchases.find((row) => row.sale_currency)?.sale_currency ??
     monthSales.find((row) => row.currency)?.currency ??
     "VND";
