@@ -49,6 +49,7 @@ export function SessionRow({
   // The roster is fetched by RegisterPanel only once it's opened, so this flag
   // is also what keeps the sessions list from loading every booking on screen.
   const [showRegister, setShowRegister] = useState(false);
+  const [registerView, setRegisterView] = useState<"payments" | "attendance">("payments");
   const [showMobileActions, setShowMobileActions] = useState(false);
   const router = useRouter();
   const [fillPending, startFillTransition] = useTransition();
@@ -103,6 +104,19 @@ export function SessionRow({
       window.clearTimeout(timer);
     };
   }, [showPrivateBooking, isPrivate, cancelled, privateCustomerQuery]);
+
+  function toggleRoster(view: "payments" | "attendance") {
+    if (showRegister && registerView === view) {
+      setShowRegister(false);
+    } else {
+      setRegisterView(view);
+      setShowRegister(true);
+      setEditing(false);
+      setShowPrivateBooking(false);
+      setShowGroupBooking(false);
+    }
+    setShowMobileActions(false);
+  }
 
   function toggleFill() {
     const releasing = held > 0;
@@ -164,7 +178,7 @@ export function SessionRow({
 
   return (
     <li className="card overflow-hidden">
-      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 px-4 py-4 sm:flex sm:items-center sm:gap-4 sm:px-5">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 px-4 py-4 sm:flex sm:flex-wrap sm:items-center sm:gap-4 sm:px-5">
         <span
           className="h-full min-h-20 w-1.5 shrink-0 rounded-full sm:h-12 sm:min-h-0"
           style={{ backgroundColor: color }}
@@ -210,22 +224,20 @@ export function SessionRow({
         </div>
 
         <div className="flex shrink-0 items-center gap-2 sm:hidden">
-          {!cancelled && !isPrivate && (
-            <button
-              type="button"
-              onClick={toggleFill}
-              className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm font-semibold text-ink shadow-sm"
-              disabled={fillPending || !canToggleFill}
-              title={fillHelp}
-            >
-              {fillPending ? "Saving…" : held > 0 ? "Unfill" : "Fill"}
-            </button>
-          )}
-
+          <button
+            type="button"
+            onClick={() => toggleRoster("payments")}
+            aria-expanded={showRegister && registerView === "payments"}
+            className={"min-h-10 rounded-lg px-3 py-2 text-xs font-semibold shadow-sm " +
+              (showRegister && registerView === "payments"
+                ? "bg-stone-900 text-white" : "bg-violet-600 text-white")}
+          >
+            Payments
+          </button>
           <button
             type="button"
             onClick={() => setShowMobileActions((value) => !value)}
-            className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm font-semibold text-ink shadow-sm"
+            className="min-h-10 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-ink shadow-sm"
             aria-expanded={showMobileActions}
             aria-controls={`session-actions-${session.id}`}
           >
@@ -233,14 +245,24 @@ export function SessionRow({
           </button>
         </div>
 
-        <div className="hidden sm:ml-auto sm:flex sm:shrink-0 sm:items-center sm:gap-2">
+        <div className="hidden sm:ml-auto sm:flex sm:min-w-0 sm:flex-wrap sm:items-center sm:justify-end sm:gap-2">
           <button
             type="button"
-            onClick={() => setShowRegister((v) => !v)}
-            className="btn-secondary w-full sm:w-auto"
+            onClick={() => toggleRoster("payments")}
+            aria-expanded={showRegister && registerView === "payments"}
+            className="btn-primary min-h-10 w-full sm:w-auto"
+            title="View customer payment status and collect outstanding payments"
+          >
+            {showRegister && registerView === "payments" ? "Close payments" : "Collect payment"}
+          </button>
+          <button
+            type="button"
+            onClick={() => toggleRoster("attendance")}
+            aria-expanded={showRegister && registerView === "attendance"}
+            className="btn-secondary min-h-10 w-full sm:w-auto"
             title="Mark who attended and who didn't"
           >
-            {showRegister ? "Hide register" : "Register"}
+            {showRegister && registerView === "attendance" ? "Close attendance" : "Attendance"}
           </button>
 
           <button
@@ -330,12 +352,11 @@ export function SessionRow({
             <button
               type="button"
               onClick={() => {
-                setShowRegister((value) => !value);
-                setShowMobileActions(false);
+                toggleRoster("attendance");
               }}
               className="btn-secondary w-full"
             >
-              {showRegister ? "Hide register" : "Register"}
+              {showRegister && registerView === "attendance" ? "Close attendance" : "Attendance"}
             </button>
 
             <button
@@ -348,6 +369,17 @@ export function SessionRow({
             >
               {editing ? "Close edit" : "Edit"}
             </button>
+            {!cancelled && !isPrivate && (
+              <button
+                type="button"
+                onClick={() => { toggleFill(); setShowMobileActions(false); }}
+                disabled={fillPending || !canToggleFill}
+                title={fillHelp}
+                className="btn-secondary col-span-2 min-h-10 w-full"
+              >
+                {fillPending ? "Saving…" : held > 0 ? "Unfill class" : "Fill class"}
+              </button>
+            )}
 
             <form
               action={setSessionStatusAction}
@@ -471,7 +503,7 @@ export function SessionRow({
 
       {showRegister && (
         <div className="border-t border-stone-200 bg-stone-50 px-5 py-4">
-          <RegisterPanel sessionId={session.id} />
+          <RegisterPanel sessionId={session.id} view={registerView} />
         </div>
       )}
 
