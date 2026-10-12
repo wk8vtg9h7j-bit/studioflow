@@ -22,6 +22,8 @@ type InstructorSessionRow = {
   starts_at: string;
   ends_at: string;
   status: string;
+  capacity: number;
+  filler_seats: number | null;
   studio?: { name: string | null; timezone: string | null } | null;
   class_type?: { name: string | null; color: string | null } | null;
   bookings?: { status: string; spots_count: number | null }[] | null;
@@ -73,9 +75,10 @@ export default async function InstructorHomePage({
     ? await supabase
         .from("sessions")
         .select(
-          "id, title, starts_at, ends_at, status, studio:studios(name, timezone), class_type:class_types(name, color), bookings(status, spots_count)",
+          "id, title, starts_at, ends_at, status, capacity, filler_seats, studio:studios(name, timezone), class_type:class_types(name, color), bookings(status, spots_count)",
         )
         .eq("instructor_id", instructor.id)
+        .neq("status", "cancelled")
         .gte("starts_at", week.from)
         .lt("starts_at", week.until)
         .order("starts_at", { ascending: true })
@@ -84,17 +87,16 @@ export default async function InstructorHomePage({
   const now = Date.now();
   const all = ((data ?? []) as unknown as InstructorSessionRow[]).filter((row) => {
     const timestamp = Date.parse(row.starts_at);
-    // Preserve past cancellations as history, but don't show cancelled future
-    // slots as classes the instructor is expected to teach.
-    return Number.isFinite(timestamp) && (timestamp < now || row.status !== "cancelled");
+    // A fully admin-filled class with no actual booked/attended customers is a
+    // blocked slot, not a class the instructor must teach.
+    const blocked = (row.filler_seats ?? 0) >= row.capacity && bookedHeads(row) === 0;
+    return Number.isFinite(timestamp) && !blocked;
   });
   const rows = all.filter(
     (row) => selectedStudio === "all" || instructorStudioKey(row.studio?.name) === selectedStudio,
   );
-  const active = rows.filter((row) => row.status !== "cancelled");
-  const upcomingCount = active.filter((row) => Date.parse(row.starts_at) >= now).length;
-  const totalHeads = active.reduce((sum, row) => sum + bookedHeads(row), 0);
-  const cancelledCount = rows.length - active.length;
+  const upcomingCount = rows.filter((row) => Date.parse(row.starts_at) >= now).length;
+  const totalHeads = rows.reduce((sum, row) => sum + bookedHeads(row), 0);
 
   const groups = new Map<string, InstructorSessionRow[]>();
   for (const row of rows) {
@@ -174,7 +176,7 @@ export default async function InstructorHomePage({
       </div>
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <SummaryCard label="Classes this week" value={active.length} />
+        <SummaryCard label="Classes this week" value={rows.length} />
         <SummaryCard label="Still to teach" value={upcomingCount} />
         <SummaryCard label="Booked spots" value={totalHeads} />
       </section>
@@ -201,7 +203,7 @@ export default async function InstructorHomePage({
                   {instructorStudioName(key, studioRows[0]?.studio?.name)}
                 </h2>
                 <p className="text-xs text-ink-muted">
-                  {studioRows.filter((row) => row.status !== "cancelled").length} scheduled classes
+                  {studioRows.length} scheduled classes
                 </p>
               </div>
               <Link href={classesUrl(week.start, key)} className="text-xs font-medium text-brand-700 underline">
@@ -228,12 +230,6 @@ export default async function InstructorHomePage({
         );
       })}
 
-      {cancelledCount > 0 && (
-        <p className="text-xs text-ink-soft">
-          {cancelledCount} past cancelled class{cancelledCount === 1 ? "" : "es"} shown for reference; excluded from the weekly class total.
-        </p>
-      )}
-
       <PushNotificationsCard vapidPublicKey={process.env.VAPID_PUBLIC_KEY ?? null} />
     </div>
   );
@@ -253,7 +249,6 @@ function SessionCard({ row, now }: { row: InstructorSessionRow; now: number }) {
   const zone = row.studio?.timezone ?? INSTRUCTOR_TIME_ZONE;
   const when = formatSessionTimeRange(row.starts_at, row.ends_at, zone);
   const count = bookedHeads(row);
-  const cancelled = row.status === "cancelled";
   const past = Date.parse(row.starts_at) < now;
   return (
     <li className="flex overflow-hidden rounded-lg border border-stone-200 bg-white">
@@ -263,9 +258,8 @@ function SessionCard({ row, now }: { row: InstructorSessionRow; now: number }) {
           <p className="text-xs font-semibold tabular-nums text-ink-muted">{when}</p>
           <p className="mt-1 break-words text-sm font-semibold text-ink">{heading}</p>
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            {cancelled && <span className="badge bg-rose-50 text-rose-700">Cancelled</span>}
-            {!cancelled && past && <span className="text-xs text-ink-soft">Completed time</span>}
-            {!cancelled && !past && count === 0 && <span className="text-xs text-ink-soft">No bookings yet</span>}
+            {past && <span className="text-xs text-ink-soft">Completed time</span>}
+            {!past && count === 0 && <span className="text-xs text-ink-soft">No bookings yet</span>}
           </div>
         </div>
         <div className="shrink-0 rounded-lg bg-stone-50 px-3 py-2 text-center">
