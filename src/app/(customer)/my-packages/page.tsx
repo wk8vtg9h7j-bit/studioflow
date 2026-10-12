@@ -266,7 +266,7 @@ export default async function MyPackagesPage() {
       const fallback = positive
         ? r.booking_id
           ? (vi ? "Tín dụng được hoàn" : "Credit returned")
-          : row.reason === "single_class_credit"
+          : r.reason === "single_class_credit"
             ? (vi ? "Đã mua 1 lượt tập tiếp theo" : "1 paid credit for next booking")
             : (vi ? "Tín dụng được thêm" : "Credits added")
         : (vi ? "Lớp" : "Class");
