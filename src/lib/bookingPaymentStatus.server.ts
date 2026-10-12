@@ -9,6 +9,8 @@ export type BookingPaymentInput = {
   customerId: string;
   creditsSpent: number;
   pool: string;
+  bookedAt?: string;
+  status?: string;
 };
 
 type LedgerRow = {
@@ -164,7 +166,11 @@ export async function getBookingPaymentStatuses(
 
     result.set(
       booking.id,
-      checkoutCoveredIds.has(booking.id) || bookingAlreadyPaid || activePaidCredits >= creditsNeeded
+      checkoutCoveredIds.has(booking.id) || bookingAlreadyPaid ||
+      // Legacy records have no linked receipts. Preserve their historical
+      // classifications, but new bookings require explicit payment evidence.
+      ((!booking.bookedAt || booking.bookedAt < "2026-10-11T17:00:00.000Z")
+        && activePaidCredits >= creditsNeeded)
         ? "package"
         : "payment_due",
     );

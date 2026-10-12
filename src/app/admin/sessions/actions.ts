@@ -1036,7 +1036,7 @@ export async function getRegisterDataAction(
   const { data: bookingRows } = await supabase
     .from("bookings")
     .select(
-      "id, customer_id, status, credits_spent, spots_count, customer:customers(name, profile:profiles(full_name))",
+      "id, customer_id, status, booked_at, credits_spent, spots_count, customer:customers(name, profile:profiles(full_name))",
     )
     .eq("session_id", sessionId)
     .neq("status", "cancelled")
@@ -1046,6 +1046,7 @@ export async function getRegisterDataAction(
     id: string;
     customer_id: string;
     status: BookingStatus;
+    booked_at: string;
     credits_spent: number | null;
     spots_count: number | null;
     customer: unknown;
@@ -1056,6 +1057,8 @@ export async function getRegisterDataAction(
       id: row.id,
       customerId: row.customer_id,
       creditsSpent: row.credits_spent ?? 0,
+      bookedAt: row.booked_at,
+      status: row.status,
       pool:
         ((session as unknown as { class_type?: { pool?: string | null } | null })
           ?.class_type?.pool ?? "regular"),

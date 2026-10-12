@@ -31,10 +31,13 @@ type Booking = {
  customer:{name:string|null;email:string|null;profile:{full_name:string|null;email:string|null}|null}|null;
 };
 
-export async function loadTodayDesk(role:"admin"|"instructor",profileId:string):Promise<DeskData>{
+export async function loadTodayDesk(role:"admin"|"instructor",profileId:string,requestedDay?:string):Promise<DeskData>{
  const svc=createServiceClient();
  const now=new Date();
- const day=formatInTimeZone(now,TZ,"yyyy-MM-dd");
+ const today=formatInTimeZone(now,TZ,"yyyy-MM-dd");
+ const valid=requestedDay&&/^\\d{4}-\\d{2}-\\d{2}$/.test(requestedDay)&&
+   !Number.isNaN(Date.parse(requestedDay+"T12:00:00Z"));
+ const day=valid?requestedDay!:today;
  const from=fromZonedTime(day+"T00:00:00",TZ).toISOString();
  const until=fromZonedTime(formatInTimeZone(new Date(Date.parse(from)+86400000),TZ,"yyyy-MM-dd")+"T00:00:00",TZ).toISOString();
  let instructorId:string|null=null;
@@ -63,7 +66,7 @@ export async function loadTodayDesk(role:"admin"|"instructor",profileId:string):
  const poolById=new Map(all.map(s=>[s.id,s.class_type?.pool||"regular"]));
  const paymentMap=await getBookingPaymentStatuses(bookings.map(b=>({
   id:b.id,customerId:b.customer_id,creditsSpent:b.credits_spent,
-  pool:poolById.get(b.session_id)||"regular"
+  pool:poolById.get(b.session_id)||"regular",bookedAt:b.booked_at,status:b.status
  })));
  const paymentDue=bookings.filter(b=>b.status==="attended"&&paymentMap.get(b.id)==="payment_due");
  // Eligibility reads only matching booked credit sources. Requests run in

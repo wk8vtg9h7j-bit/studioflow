@@ -16,6 +16,7 @@ import { z } from "zod";
 import { requireRole } from "@/lib/auth";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { queueCustomerBookingCalendarSync } from "@/lib/bookingPaymentStatus.server";
+import { pendingStarterVisit } from "@/lib/checkout/guards.server";
 
 export type CustomerActionState = {
   error?: string;
@@ -298,6 +299,9 @@ export async function grantPackageAction(
       error: `Discounted sale price cannot be higher than the package list price (${pkg.price_cents} ${pkg.currency}).`,
     };
   }
+
+  const unpaidDay=await pendingStarterVisit(customer_id,pkg.pool??"regular");
+  if(unpaidDay && salePrice>0) return { error: "First class payment is not yet linked. Open Today's desk for "+unpaidDay+" and use Collect payment, instead of issuing the full package twice." };
 
   // Clips expire validity_days after the grant. credit_balance() ignores
   // ledger rows whose expires_at has passed.

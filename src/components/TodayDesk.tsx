@@ -3,8 +3,13 @@ import { formatInTimeZone } from "date-fns-tz";
 import { loadTodayDesk, type DeskSession } from "@/lib/checkout/desk.server";
 import { CheckInActions, CheckoutControl } from "@/components/CheckoutControl";
 const TZ="Asia/Ho_Chi_Minh";
-export async function TodayDesk({role,profileId}:{role:"admin"|"instructor";profileId:string}){
- const data=await loadTodayDesk(role,profileId);
+export async function TodayDesk({role,profileId,date}:{role:"admin"|"instructor";profileId:string;date?:string}){
+ const data=await loadTodayDesk(role,profileId,date);
+ const route=role==="admin"?"/admin/today":"/instructor/today";
+ const at=Date.parse(data.day+"T12:00:00Z");
+ const previous=new Date(at-86400000).toISOString().slice(0,10);
+ const next=new Date(at+86400000).toISOString().slice(0,10);
+
  const groups=new Map<string,DeskSession[]>();
  for(const session of data.sessions){
   const key=session.slug||session.studio;
@@ -20,6 +25,14 @@ export async function TodayDesk({role,profileId}:{role:"admin"|"instructor";prof
     {role==="admin"?"Business insights →":"My salary →"}
    </Link>
   </header>
+  <nav className="card flex flex-wrap items-center justify-between gap-3 p-3">
+    <Link href={route+"?date="+previous} className="btn-secondary">← Previous day</Link>
+    <span className="text-sm font-semibold text-ink">{data.day}</span>
+    <div className="flex flex-wrap gap-2">
+      <Link href={route} className="btn-secondary">Today</Link>
+      <Link href={route+"?date="+next} className="btn-secondary">Next day →</Link>
+    </div>
+  </nav>
   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
    {[["Classes",data.sessions.length],["Booked spots",data.booked],["Checked in",data.attended],["Payments to review",data.due]]
     .map(([label,val])=><div key={label} className="card p-4"><p className="text-xs text-ink-muted">{label}</p>

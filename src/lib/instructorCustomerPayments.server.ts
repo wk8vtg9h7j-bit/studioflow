@@ -26,6 +26,7 @@ type BookingRow = {
   id: string;
   customer_id: string;
   status: string;
+  booked_at: string;
   credits_spent: number | null;
   spots_count: number | null;
   session: {
@@ -66,7 +67,7 @@ export async function getInstructorPaymentOverview(): Promise<{
   for (let offset = 0; ; offset += PAGE_SIZE) {
     const { data, error } = await service
       .from("bookings")
-      .select("id,customer_id,status,credits_spent,spots_count,session:sessions(starts_at,title,class_type:class_types(name,pool))")
+      .select("id,customer_id,status,booked_at,credits_spent,spots_count,session:sessions(starts_at,title,class_type:class_types(name,pool))")
       .in("status", ["booked", "attended", "no_show"])
       .order("id", { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1);
@@ -82,6 +83,8 @@ export async function getInstructorPaymentOverview(): Promise<{
       customerId: row.customer_id,
       creditsSpent: row.credits_spent ?? row.spots_count ?? 1,
       pool: row.session?.class_type?.pool ?? "regular",
+      bookedAt: row.booked_at,
+      status: row.status,
     })),
   );
 
