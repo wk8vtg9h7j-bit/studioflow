@@ -53,7 +53,7 @@ export async function TodayDesk({role,profileId,date}:{role:"admin"|"instructor"
       {session.bookings.map(b=><li key={b.id} className="space-y-3 px-4 py-4">
        <div className="flex flex-wrap items-center justify-between gap-2">
         <div><p className="text-sm font-medium text-ink">{b.name}{b.spots>1?" · "+b.spots+" spots":""}</p>
-         <p className="mt-1 text-xs text-ink-muted">{b.status.replaceAll("_"," ")} · {b.creditsSpent} booking credit(s) · {b.eligibleStarter?"First visit":b.pool==="private"?"Private":"Regular"}</p>
+         <p className="mt-1 text-xs text-ink-muted">{b.status.replaceAll("_"," ")} · {b.creditsSpent} booking credit(s) · {b.firstVisit?"First visit":b.pool==="private"?"Private":"Regular"}</p>
         </div>
         <span className={"badge "+(b.payment==="package"?"bg-emerald-50 text-emerald-700":"bg-amber-50 text-amber-800")}>
          {b.payment==="package"?"PAID / PACKAGE":"PAYMENT DUE"}

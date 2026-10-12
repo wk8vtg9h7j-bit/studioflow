@@ -8,7 +8,7 @@ const TZ = "Asia/Ho_Chi_Minh";
 export type DeskBooking = {
   id: string; customerId: string; name: string; status: string;
   spots: number; creditsSpent: number; payment: "package" | "payment_due";
-  eligibleStarter: boolean; pool: string;
+  eligibleStarter: boolean; firstVisit:boolean; pool: string;
 };
 export type DeskSession = {
   id:string; name:string; at:string; studio:string; slug:string;
@@ -64,6 +64,10 @@ export async function loadTodayDesk(role:"admin"|"instructor",profileId:string,r
  if(bookingError)throw bookingError;
  const bookings=(bookingData||[]) as unknown as Booking[];
  const poolById=new Map(all.map(s=>[s.id,s.class_type?.pool||"regular"]));
+ const {data:attendedHistory}=await svc.from("bookings").select("id,customer_id")
+  .eq("status","attended").limit(1000);
+ const visitedCount=new Map<string,number>();
+ for(const row of attendedHistory||[])visitedCount.set(row.customer_id,(visitedCount.get(row.customer_id)||0)+1);
  const paymentMap=await getBookingPaymentStatuses(bookings.map(b=>({
   id:b.id,customerId:b.customer_id,creditsSpent:b.credits_spent,
   pool:poolById.get(b.session_id)||"regular",bookedAt:b.booked_at,status:b.status
@@ -83,6 +87,7 @@ export async function loadTodayDesk(role:"admin"|"instructor",profileId:string,r
    name:b.customer?.profile?.full_name||b.customer?.name||b.customer?.profile?.email||b.customer?.email||"Customer",
    status:b.status,spots:b.spots_count||1,creditsSpent:b.credits_spent||1,
    payment:paymentMap.get(b.id)||"payment_due",eligibleStarter:starter.get(b.id)||false,
+   firstVisit:(visitedCount.get(b.customer_id)||0)<=(b.status==="attended"?1:0),
    pool:poolById.get(b.session_id)||"regular"});
   rowsBySession.set(b.session_id,list);
  }
