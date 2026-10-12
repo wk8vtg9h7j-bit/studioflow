@@ -59,11 +59,10 @@ export async function recordCheckoutAction(
     }
   }
 
-  // The ledger's sold_by field drives the immutable 2.5% commission snapshot
-  // and both salary/payroll dashboards. For an admin-confirmed package purchase,
-  // credit the instructor who taught the class, not the staff member who pressed
-  // Confirm. Never attribute an unassigned class to an arbitrary instructor.
-  let creditedSeller = profile.id;
+  // Preserve the real collector (admin) on the checkout receipt. A database
+  // trigger credits the class instructor on the linked purchase ledger, where
+  // the 2.5% commission snapshot is calculated for salary and admin payroll.
+  // Prevent collection if an assigned teacher has no account to receive it.
   if (profile.role === "admin" && input.kind === "package" && session.instructor_id) {
     const { data: teacher, error: teacherError } = await svc
       .from("instructors").select("profile_id")
@@ -72,7 +71,6 @@ export async function recordCheckoutAction(
     if (!teacher?.profile_id) {
       return { error: "Assign a linked instructor account before recording this package payment so the 2.5% commission is credited correctly." };
     }
-    creditedSeller = teacher.profile_id;
   }
 
   const { data, error } = await svc.rpc("record_class_checkout", {
@@ -81,7 +79,7 @@ export async function recordCheckoutAction(
     p_package: input.kind === "package" ? input.package_id : null,
     p_payment_method: input.payment_method,
     p_amount_cents: input.amount_cents,
-    p_sold_by: creditedSeller,
+    p_sold_by: profile.id,
   });
   if (error) return { error: error.message };
   const receipt = data as { remaining_credits?: number; granted_credits?: number } | null;
