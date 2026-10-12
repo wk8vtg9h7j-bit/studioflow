@@ -1,4 +1,5 @@
 import "server-only";
+import { formatInTimeZone } from "date-fns-tz";
 import { createServiceClient } from "@/lib/supabase/server";
 /** Prevent selling a full package on top of a recent unpaid starter class.
  * Staff should settle that class explicitly from its date in Today's desk.
@@ -16,7 +17,7 @@ export async function pendingStarterVisit(customerId:string,pool:string):Promise
   if((r.session?.class_type?.pool||"regular")!==pool)continue;
   const {data, error:eligibleError}=await svc.rpc("eligible_starter_checkout",{p_booking:r.id});
   if(eligibleError)throw eligibleError;
-  if(data===true)return r.session?.starts_at?.slice(0,10)||"today";
+  if(data===true)return (r.session?.starts_at?formatInTimeZone(new Date(r.session.starts_at),"Asia/Ho_Chi_Minh","yyyy-MM-dd"):"today");
  }
  return null;
 }

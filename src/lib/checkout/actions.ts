@@ -66,7 +66,10 @@ export async function recordCheckoutAction(
   // any external calendar directly in this checkout request.
   const { data: booking } = await svc.from("bookings")
     .select("customer_id").eq("id", input.booking_id).maybeSingle();
-  if (booking) await queueCustomerBookingCalendarSync(booking.customer_id);
+  if (booking) {
+    try { await queueCustomerBookingCalendarSync(booking.customer_id); }
+    catch (syncError) { console.warn("Checkout saved; calendar queue failed", syncError); }
+  }
   for (const path of ["/admin", "/admin/today", "/admin/insights", "/admin/customers",
     "/admin/payments", "/admin/marketing", "/instructor/today", "/instructor/customers", "/instructor/salary"]) {
     revalidatePath(path);
