@@ -218,7 +218,7 @@ export function PrivateAppointmentCalendar({data,role,notice,error}:{
     <div className="flex flex-wrap items-start justify-between gap-3">
      <div>
       <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#96794c]">Selected appointment</p>
-      <h3 className="mt-1 text-xl font-semibold text-[#1a2e37]">{localTime(selected)} – {localTime(selected)+""} <span className="text-sm font-normal text-stone-500">· 50 minutes</span></h3>
+      <h3 className="mt-1 text-xl font-semibold text-[#1a2e37]">{localTime(selected)} – {String(selected+Math.floor(50/60)).padStart(2,"0")+":"+String(50%60).padStart(2,"0")} <span className="text-sm font-normal text-stone-500">· 50 minutes</span></h3>
       <p className="mt-1 text-sm text-stone-500">{teacher} · {studio.split(" - ")[0]} · {monthDate.format(dayUTC(data.day))}</p>
      </div>
      <button type="button" className="text-sm text-stone-500 hover:text-stone-900" onClick={()=>setSelected(null)}>Close ✕</button>
