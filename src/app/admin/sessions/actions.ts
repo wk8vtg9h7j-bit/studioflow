@@ -320,6 +320,7 @@ export async function setSessionStatusAction(formData: FormData) {
   revalidatePath("/admin/sessions");
   revalidatePath("/admin/customers");
   revalidatePath("/instructor");
+  revalidatePath("/instructor/today");
   revalidatePath("/book");
   revalidatePath("/my-bookings");
 }
@@ -365,6 +366,10 @@ export async function setFillerSeatsAction(
   if (updateError) return { error: updateError.message };
 
   revalidatePath("/admin/sessions");
+  revalidatePath("/admin/today");
+  revalidatePath("/instructor");
+  revalidatePath("/instructor/today");
+  revalidatePath("/book");
 
   return {
     ok: true,
