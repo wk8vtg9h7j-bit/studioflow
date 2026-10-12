@@ -1,0 +1,112 @@
+"use client";
+import { useMemo, useState } from "react";
+import { useFormState } from "react-dom";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+import { SubmitButton } from "@/app/(auth)/SubmitButton";
+import { formatMoney } from "@/lib/format";
+import { markDeskAttendanceAction, recordCheckoutAction, type CheckoutState } from "@/lib/checkout/actions";
+
+export type CheckoutPackage = {
+  id: string;
+  name: string;
+  credits: number;
+  price_cents: number;
+  currency: string;
+  pool: string;
+};
+
+const initial: CheckoutState = {};
+export function CheckInActions({ bookingId, status, canMark }: {
+  bookingId: string; status: string; canMark: boolean;
+}) {
+  const [state, action] = useFormState(markDeskAttendanceAction, initial);
+  const router = useRouter();
+  useEffect(() => { if (state.ok) router.refresh(); }, [state.ok, router]);
+  if (!["booked","attended","no_show"].includes(status)) return null;
+  return (
+    <form action={action} className="flex flex-wrap items-center gap-2">
+      <input type="hidden" name="booking_id" value={bookingId} />
+      <input type="hidden" name="status" value={status === "booked" ? "attended" : "booked"} />
+      <button type="submit" className="btn-secondary text-xs" disabled={!canMark && status==="booked"}>
+        {status === "booked" ? "Check in" : "Undo check-in"}
+      </button>
+      {state.error && <span className="text-xs text-rose-700">{state.error}</span>}
+    </form>
+  );
+}
+export function CheckoutControl({
+  bookingId, pool, creditsSpent, packages, eligibleStarter,
+}: {
+  bookingId: string; pool: string; creditsSpent: number;
+  packages: CheckoutPackage[]; eligibleStarter: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [kind, setKind] = useState<"single" | "package">("single");
+  const [packageId, setPackageId] = useState("");
+  const [price, setPrice] = useState(pool === "regular" ? "400000" : "");
+  const [state, action] = useFormState(recordCheckoutAction, initial);
+  const router = useRouter();
+  useEffect(() => { if (state.ok) { setOpen(false); router.refresh(); } }, [state.ok, router]);
+  const available = useMemo(() => packages.filter(
+    p => p.pool === pool && p.credits >= creditsSpent && p.price_cents > 0
+  ), [packages, pool, creditsSpent]);
+  const selected = available.find(p=>p.id===packageId);
+  return <div className="space-y-2">
+    <button type="button" className="btn-primary text-xs" onClick={()=>setOpen(x=>!x)}>
+      {open ? "Close checkout" : "Collect payment"}
+    </button>
+    {open && <form action={action} className="grid gap-3 rounded-xl border border-stone-200 bg-stone-50 p-4 sm:grid-cols-2">
+      <input type="hidden" name="booking_id" value={bookingId} />
+      <input type="hidden" name="kind" value={kind} />
+      <input type="hidden" name="package_id" value={kind==="package"?packageId:""} />
+      <label className="sm:col-span-2 text-sm font-medium text-ink">
+        What is the customer paying for?
+        <select className="input mt-1" value={kind} onChange={e=>{
+          const next=e.target.value as "single"|"package";
+          setKind(next); setPackageId(""); setPrice(next==="single"?(pool==="regular"?"400000":""):"");
+        }}>
+          <option value="single">Just today's class (no credits added)</option>
+          {eligibleStarter && available.length>0 && <option value="package">Package including today's class</option>}
+        </select>
+      </label>
+      {kind==="package" && <label className="sm:col-span-2 text-sm font-medium">
+        Package
+        <select name="package_selector" className="input mt-1" value={packageId} required onChange={e=>{
+          const pkg=available.find(p=>p.id===e.target.value);
+          setPackageId(e.target.value); setPrice(pkg?String(pkg.price_cents):"");
+        }}>
+          <option value="">Choose package…</option>
+          {available.map(pkg=><option key={pkg.id} value={pkg.id}>
+            {pkg.name} · {pkg.credits} classes · {formatMoney(pkg.price_cents,pkg.currency)}
+          </option>)}
+        </select>
+      </label>}
+      {kind==="package" && selected && <div className="sm:col-span-2 rounded-lg bg-white p-3 text-sm">
+        <p><strong>{selected.credits}</strong> package classes − <strong>{creditsSpent}</strong> already attended = <strong>{selected.credits-creditsSpent} new credits</strong></p>
+        <p className="mt-1 text-xs text-ink-muted">Today's class is included in the amount charged. It will not be charged twice.</p>
+      </div>}
+      <label className="text-sm font-medium">
+        Amount paid ({kind==="package" ? selected?.currency ?? "VND" : "VND"})
+        <input name="amount_cents" className="input mt-1" type="number" min="1"
+          max={kind==="package" ? selected?.price_cents : 100000000} step="1" value={price}
+          onChange={e=>setPrice(e.target.value)} required />
+      </label>
+      <label className="text-sm font-medium">
+        Payment method
+        <select name="payment_method" className="input mt-1" required defaultValue="">
+          <option value="" disabled>Choose method…</option>
+          <option value="qr">QR transfer</option>
+          <option value="card">Card</option>
+          <option value="cash">Cash</option>
+        </select>
+      </label>
+      {kind==="package" && <p className="sm:col-span-2 text-xs text-ink-muted">
+        Instructor commission: {formatMoney(Math.round(Number(price||0)*0.025), selected?.currency || "VND")} when sold by an instructor.
+      </p>}
+      {state.error && <p className="sm:col-span-2 text-sm text-rose-700">{state.error}</p>}
+      <div className="sm:col-span-2"><SubmitButton>Confirm payment & settle class</SubmitButton></div>
+    </form>}
+    {state.ok && <p className="text-xs text-emerald-700">Payment recorded. Remaining classes: {state.remainingCredits}.</p>}
+  </div>;
+}

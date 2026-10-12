@@ -72,6 +72,19 @@ export async function getBookingPaymentStatuses(
     if (page.length < PAGE_SIZE) break;
   }
 
+  // Checkouts are explicit proof that a specific class was paid. A later
+  // unrelated package purchase must not be needed to establish this link.
+  const checkoutCoveredIds = new Set<string>();
+  for (let offset = 0; offset < bookings.length; offset += 200) {
+    const ids = bookings.slice(offset, offset + 200).map((row) => row.id);
+    const { data: receipts, error: receiptError } = await service
+      .from("class_checkouts")
+      .select("booking_id")
+      .in("booking_id", ids);
+    if (receiptError) throw receiptError;
+    for (const receipt of receipts ?? []) checkoutCoveredIds.add(receipt.booking_id);
+  }
+
   const bucketsByCustomerPool = new Map<string, Bucket[]>();
   const paidCoveredBookingIds = new Set<string>();
 
@@ -151,7 +164,7 @@ export async function getBookingPaymentStatuses(
 
     result.set(
       booking.id,
-      bookingAlreadyPaid || activePaidCredits >= creditsNeeded
+      checkoutCoveredIds.has(booking.id) || bookingAlreadyPaid || activePaidCredits >= creditsNeeded
         ? "package"
         : "payment_due",
     );
