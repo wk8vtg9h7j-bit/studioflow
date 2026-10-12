@@ -15,6 +15,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useFormState } from "react-dom";
 import { SubmitButton } from "@/app/(auth)/SubmitButton";
 import { toDateTimeLocal } from "@/lib/format";
@@ -247,8 +248,18 @@ export function SessionForm({
       </div>
 
       {state.error && (
-        <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
+        <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
           {state.error}
+        </p>
+      )}
+      {state.ok && state.message && (
+        <p role="status" className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          {state.message}{" "}
+          {state.viewUrl && (
+            <Link href={state.viewUrl} className="font-semibold underline">
+              View this class
+            </Link>
+          )}
         </p>
       )}
 

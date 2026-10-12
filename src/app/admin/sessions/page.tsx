@@ -19,7 +19,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { FALLBACK_TZ } from "@/lib/format";
 import type { SessionWithRelations } from "@/lib/types";
 import { SessionFilters } from "./SessionFilters";
-import { SessionForm } from "./SessionForm";
+import { SessionCreatePanel } from "./SessionCreatePanel";
 import type {
   StudioOption,
   ClassTypeOption,
@@ -162,7 +162,8 @@ export default async function SessionsPage({
           Sessions
         </h1>
         <p className="mt-1 text-sm text-ink-muted">
-          Scheduled classes customers can book. Times are shown in each
+          Scheduled classes customers can book. Use Add a class to create
+          group or private sessions at either studio. Times are shown in each
           studio&apos;s own timezone. Cancelling keeps a session for history but
           hides it from booking. Only this week is listed — use search to reach
           any other date.
@@ -209,17 +210,12 @@ export default async function SessionsPage({
           )}
         </section>
 
-        <aside className="lg:col-span-1">
-          <div className="card p-4 sm:p-5 lg:sticky lg:top-24">
-            <h2 className="mb-4 text-sm font-semibold text-ink">
-              Schedule a class
-            </h2>
-            <SessionForm
-              studios={studios}
-              classTypes={classTypes}
-              instructors={instructors}
-            />
-          </div>
+        <aside className="order-first lg:order-last lg:col-span-1">
+          <SessionCreatePanel
+            studios={studios}
+            classTypes={classTypes}
+            instructors={instructors}
+          />
         </aside>
       </div>
     </div>
