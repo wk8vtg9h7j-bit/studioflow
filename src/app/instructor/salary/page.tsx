@@ -118,7 +118,7 @@ export default async function InstructorSalaryPage({
   // !inner ensures session date filters apply to the parent payroll rows;
   // unlike a 1,000-row all-time list, each week shows its complete pay run.
   const payrollPromise = instructor
-    ? await supabase
+    ? supabase
         .from("session_payroll")
         .select(
           "id, session_id, attendance_count, computed_amount, currency, status, instructor_confirmed_at, admin_approved_at, paid_at, session:sessions!inner(title, starts_at, studio:studios(name, timezone), class_type:class_types(name))",
