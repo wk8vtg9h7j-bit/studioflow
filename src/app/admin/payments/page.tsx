@@ -12,7 +12,8 @@
 // payment_method is recorded by reception when the package is sold. A purchase is
 // "New" when it is that customer's first-ever purchase, otherwise "Returning".
 // ============================================================================
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { requireRole } from "@/lib/auth";
 import { formatMoney, FALLBACK_TZ } from "@/lib/format";
 import { formatInTimeZone } from "date-fns-tz";
 import type { Product } from "@/lib/types";
@@ -112,7 +113,7 @@ type AttendRow = {
 
 type Payment = {
   id: string;
-  kind: "package" | "retail" | "attendance";
+  kind: "package" | "retail" | "attendance" | "single";
   name: string;
   label: string;
   amount: number;
@@ -181,7 +182,9 @@ export default async function PaymentsPage({
   searchParams: Promise<{ from?: string; to?: string }>;
 }) {
   const { from: rawFrom, to: rawTo } = await searchParams;
+  await requireRole("admin", "/admin/payments");
   const supabase = await createClient();
+  const svc = createServiceClient();
 
   // The studios are fetched *before* the main batch because the page's day axis
   // depends on them: every grouping key, the SQL bounds, and the Today/This
@@ -236,6 +239,8 @@ export default async function PaymentsPage({
     { data: summaryPurchaseData },
     { data: summarySaleData },
     { data: summaryAttendanceData },
+    { data: singleData },
+    { data: summarySingleData },
   ] = await Promise.all([
     supabase
       .from("credit_ledger")
@@ -310,11 +315,19 @@ export default async function PaymentsPage({
       .eq("status", "attended")
       .gte("session.starts_at", summaryLowerBound)
       .lt("session.starts_at", summaryUpperBound),
+    svc.from("class_checkouts")
+      .select("id,created_at,amount_cents,currency,payment_method,customer:customers(name,email,profile:profiles(full_name,email))")
+      .eq("kind","single").gte("created_at",lowerBound).lt("created_at",upperBound),
+    svc.from("class_checkouts").select("created_at,amount_cents,currency")
+      .eq("kind","single").gte("created_at",summaryLowerBound).lt("created_at",summaryUpperBound),
   ]);
 
   const purchases = (purchaseData ?? []) as unknown as PurchaseRow[];
   const attendance = (attendData ?? []) as unknown as AttendRow[];
   const sales = (saleData ?? []) as unknown as SaleRow[];
+  type SingleCheckout={id:string;created_at:string;amount_cents:number;currency:string;payment_method:string;customer:CustomerRef|null};
+  const singles=(singleData||[]) as unknown as SingleCheckout[];
+  const summarySingles=(summarySingleData||[]) as Array<{created_at:string;amount_cents:number;currency:string}>;
   const summaryPurchases = (summaryPurchaseData ?? []) as unknown as SummaryPurchaseRow[];
   const summarySales = (summarySaleData ?? []) as SummarySaleRow[];
   const summaryAttendance = (summaryAttendanceData ?? []) as unknown as SummaryAttendanceRow[];
@@ -357,6 +370,7 @@ export default async function PaymentsPage({
   };
   const visiblePurchases = purchases.filter((p) => inRange(p.created_at));
   const visibleSales = sales.filter((s) => inRange(s.created_at));
+  const visibleSingles=singles.filter(s=>inRange(s.created_at));
 
   const ensureDay = (date: string, iso: string): DayGroup => {
     let g = groups.get(date);
@@ -420,6 +434,15 @@ export default async function PaymentsPage({
     });
   }
 
+  for(const row of visibleSingles){
+    const g=ensureDay(dayOf(row.created_at),row.created_at);
+    addTo(g.totals,row.currency,row.amount_cents);
+    g.paymentCount++;
+    g.payments.push({id:row.id,kind:"single",name:nameOf(row.customer),label:"Single-class payment",
+      amount:row.amount_cents,currency:row.currency,method:methodOf(row.payment_method),
+      isNew:null,time:formatInTimeZone(new Date(row.created_at),TZ,"h:mm a"),at:row.created_at});
+  }
+
   for (const row of attendance) {
     if (!row.session || row.status !== "attended") continue;
     if (!inRange(row.session.starts_at)) continue;
@@ -475,6 +498,7 @@ export default async function PaymentsPage({
     addTo(rangeTotals, r.currency, r.total_cents);
   }
 
+  for(const row of visibleSingles)addTo(rangeTotals,row.currency,row.amount_cents);
   const todayTotals: Totals = {};
   const weekTotals: Totals = {};
   const monthTotals: Totals = {};
@@ -518,6 +542,7 @@ export default async function PaymentsPage({
     addSummaryPayment(row.created_at, row.currency, row.total_cents);
   }
 
+  for(const row of summarySingles)addSummaryPayment(row.created_at,row.currency,row.amount_cents);
   for (const row of summaryAttendance) {
     if (!row.session) continue;
     const key = dayOf(row.session.starts_at);
@@ -565,6 +590,7 @@ export default async function PaymentsPage({
     else returningCount++;
   }
 
+  for(const row of visibleSingles)addTo(byMethod[methodOf(row.payment_method)],row.currency,row.amount_cents);
   // Retail has no new/returning notion — it only moves the method split.
   for (const r of visibleSales) {
     addTo(byMethod[methodOf(r.payment_method)], r.currency, r.total_cents);
@@ -737,6 +763,7 @@ export default async function PaymentsPage({
                                 {p.isNew ? "New" : "Returning"}
                               </span>
                             )}
+                            {p.kind === "single" && <span className="badge bg-sky-50 text-sky-700">Single class</span>}
                             {p.kind === "retail" && (
                               <span className="badge bg-amber-50 text-amber-700">
                                 Retail
@@ -760,7 +787,7 @@ export default async function PaymentsPage({
                           <span className="text-sm font-semibold tabular-nums text-ink">
                             {formatMoney(p.amount, p.currency)}
                           </span>
-                          {p.kind !== "attendance" && (
+                          {p.kind !== "attendance" && p.kind !== "single" && (
                             <DeletePaymentButton
                               id={p.id}
                               kind={p.kind}
