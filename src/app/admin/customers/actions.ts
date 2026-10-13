@@ -23,6 +23,7 @@ export type CustomerActionState = {
   ok?: boolean;
   regularBalance?: number;
   privateBalance?: number;
+  checkoutDate?: string;
 };
 export type AddCustomerState = { error?: string; ok?: boolean; message?: string };
 
@@ -301,7 +302,10 @@ export async function grantPackageAction(
   }
 
   const unpaidDay=await pendingStarterVisit(customer_id,pkg.pool??"regular");
-  if(unpaidDay && salePrice>0) return { error: "First class payment is not yet linked. Open Today's desk for "+unpaidDay+" and use Collect payment, instead of issuing the full package twice." };
+  if(unpaidDay && salePrice>0) return {
+    error: "This customer has an unpaid first visit. Use Collect payment on the attended class so that class is included in the package rather than granting the full package twice.",
+    checkoutDate: unpaidDay,
+  };
 
   // Clips expire validity_days after the grant. credit_balance() ignores
   // ledger rows whose expires_at has passed.
