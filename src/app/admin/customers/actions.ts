@@ -16,14 +16,12 @@ import { z } from "zod";
 import { requireRole } from "@/lib/auth";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { queueCustomerBookingCalendarSync } from "@/lib/bookingPaymentStatus.server";
-import { pendingStarterVisit } from "@/lib/checkout/guards.server";
 
 export type CustomerActionState = {
   error?: string;
   ok?: boolean;
   regularBalance?: number;
   privateBalance?: number;
-  checkoutDate?: string;
 };
 export type AddCustomerState = { error?: string; ok?: boolean; message?: string };
 
@@ -301,11 +299,10 @@ export async function grantPackageAction(
     };
   }
 
-  const unpaidDay=await pendingStarterVisit(customer_id,pkg.pool??"regular");
-  if(unpaidDay && salePrice>0) return {
-    error: "This customer has an unpaid first visit. Use Collect payment on the attended class so that class is included in the package rather than granting the full package twice.",
-    checkoutDate: unpaidDay,
-  };
+  // An admin may issue a full package regardless of existing credits or an
+  // unpaid first visit. The customer screen displays an advisory before
+  // submission; this server action must not silently block reception.
+  // Class-inclusive checkout is a separate workflow with its own accounting.
 
   // Clips expire validity_days after the grant. credit_balance() ignores
   // ledger rows whose expires_at has passed.
