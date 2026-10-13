@@ -7,6 +7,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFormState } from "react-dom";
 import { SubmitButton } from "@/app/(auth)/SubmitButton";
@@ -72,6 +73,7 @@ export function CustomerRow({
   segments: CustomerSegmentKey[];
 }) {
   const [editing, setEditing] = useState(false);
+  const [issuingPackage, setIssuingPackage] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -120,6 +122,7 @@ export function CustomerRow({
     }
 
     setEditing(false);
+    setIssuingPackage(false);
     setShowDelete(false);
     setShowHistory(true);
 
@@ -135,7 +138,7 @@ export function CustomerRow({
 
   return (
     <li className="card overflow-hidden">
-      <div className="flex items-center gap-4 px-5 py-4">
+      <div className="flex min-w-0 flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:gap-4 sm:px-5">
         <span
           className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-brand-50 text-sm font-semibold text-brand-700"
           aria-hidden
@@ -208,8 +211,8 @@ export function CustomerRow({
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-4">
-          <div className="flex items-center gap-3 text-right">
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 sm:shrink-0 sm:justify-end sm:gap-4">
+          <div className="flex shrink-0 items-center gap-3 text-right">
             <div>
               <p className="text-sm font-semibold text-ink">
                 {displayRegularBalance}
@@ -229,6 +232,18 @@ export function CustomerRow({
           </div>
           <button
             type="button"
+            onClick={() => {
+              setIssuingPackage((value) => !value);
+              setEditing(false);
+              setShowHistory(false);
+              setShowDelete(false);
+            }}
+            className="btn-primary min-h-10"
+          >
+            {issuingPackage ? "Close package" : "Issue package"}
+          </button>
+          <button
+            type="button"
             onClick={toggleHistory}
             className="btn-secondary"
           >
@@ -238,6 +253,7 @@ export function CustomerRow({
             type="button"
             onClick={() => {
               setEditing((v) => !v);
+              setIssuingPackage(false);
               setShowDelete(false);
               setShowHistory(false);
             }}
@@ -250,6 +266,7 @@ export function CustomerRow({
             onClick={() => {
               setShowDelete((v) => !v);
               setEditing(false);
+              setIssuingPackage(false);
               setShowHistory(false);
             }}
             className="btn-ghost text-rose-700 hover:bg-rose-50 hover:text-rose-800"
@@ -258,6 +275,16 @@ export function CustomerRow({
           </button>
         </div>
       </div>
+
+      {issuingPackage && (
+        <div className="border-t border-stone-200 bg-stone-50 px-4 py-4 sm:px-5">
+          <GrantPackage
+            customerId={customer.id}
+            packages={packages}
+            onCreditsChanged={handleCreditsChanged}
+          />
+        </div>
+      )}
 
       {showHistory && (
         <CustomerHistoryPanel
@@ -281,11 +308,6 @@ export function CustomerRow({
           {isWalkIn && (
             <AttachLogin customerId={customer.id} defaultName={name} />
           )}
-          <GrantPackage
-            customerId={customer.id}
-            packages={packages}
-            onCreditsChanged={handleCreditsChanged}
-          />
           <AdjustCredits
             customerId={customer.id}
             onCreditsChanged={handleCreditsChanged}
@@ -437,9 +459,14 @@ function GrantPackage({
 
   return (
     <div className="border-t border-stone-200 pt-4">
-      <h3 className="mb-3 text-sm font-semibold text-ink">
-        Grant a clip-card
+      <h3 className="mb-2 text-sm font-semibold text-ink">
+        Issue a paid package
       </h3>
+      <p className="mb-3 text-xs leading-relaxed text-ink-muted">
+        If the customer attended their first class, use that class&apos;s
+        Collect payment option to include the visit in the package
+        and issue only the remaining credits.
+      </p>
       <form action={formAction} className="space-y-3">
         <input type="hidden" name="customer_id" value={customerId} />
         <div>
@@ -529,9 +556,15 @@ function GrantPackage({
         </div>
 
         {state.error && (
-          <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
-            {state.error}
-          </p>
+          <div role="alert" className="space-y-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            <p>{state.error}</p>
+            {state.checkoutDate && (
+              <Link className="inline-block font-semibold underline underline-offset-2"
+                href={`/admin/today?date=${encodeURIComponent(state.checkoutDate)}`}>
+                Open class checkout →
+              </Link>
+            )}
+          </div>
         )}
         {state.ok && (
           <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
