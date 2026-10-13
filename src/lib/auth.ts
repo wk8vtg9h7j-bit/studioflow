@@ -73,6 +73,6 @@ export function homePathForRole(role: UserRole): string {
       return "/instructor";
     case "customer":
     default:
-      return "/book";
+      return "/home";
   }
 }
