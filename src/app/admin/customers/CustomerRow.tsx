@@ -7,7 +7,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFormState } from "react-dom";
 import { SubmitButton } from "@/app/(auth)/SubmitButton";
@@ -281,6 +280,8 @@ export function CustomerRow({
           <GrantPackage
             customerId={customer.id}
             packages={packages}
+            currentPrivateCredits={displayPrivateBalance}
+            pastVisits={visits}
             onCreditsChanged={handleCreditsChanged}
           />
         </div>
@@ -416,10 +417,14 @@ function AttachLogin({
 function GrantPackage({
   customerId,
   packages,
+  currentPrivateCredits,
+  pastVisits,
   onCreditsChanged,
 }: {
   customerId: string;
   packages: Package[];
+  currentPrivateCredits: number;
+  pastVisits: number;
   onCreditsChanged: (regular?: number, privateCredits?: number) => void;
 }) {
   const [state, formAction] = useFormState(
@@ -463,9 +468,8 @@ function GrantPackage({
         Issue a paid package
       </h3>
       <p className="mb-3 text-xs leading-relaxed text-ink-muted">
-        If the customer attended their first class, use that class&apos;s
-        Collect payment option to include the visit in the package
-        and issue only the remaining credits.
+        Admins can issue a package at any time. Existing balances do not
+        prevent this sale.
       </p>
       <form action={formAction} className="space-y-3">
         <input type="hidden" name="customer_id" value={customerId} />
@@ -500,6 +504,30 @@ function GrantPackage({
             ))}
           </select>
         </div>
+
+        {selectedPackage?.pool === "private" && currentPrivateCredits > 0 && (
+          <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-relaxed text-amber-950">
+            <p className="font-semibold">Check existing private credits</p>
+            <p className="mt-1">
+              This customer already has <strong>{currentPrivateCredits} private
+              credit{currentPrivateCredits === 1 ? "" : "s"}</strong>.
+              Issuing this package adds <strong>{selectedPackage.credits}</strong> more.
+              Their balance would be <strong>{currentPrivateCredits + selectedPackage.credits}</strong> if nothing else changes.
+            </p>
+            <p className="mt-1 text-xs text-amber-900">
+              Double-check their history before issuing. This is a reminder only — you can proceed.
+            </p>
+          </div>
+        )}
+
+        {selectedPackage && pastVisits > 0 && (
+          <p className="rounded-xl border border-stone-200 bg-white p-3 text-xs leading-relaxed text-ink-muted">
+            This action issues the full package. It will not automatically
+            settle an unpaid earlier class or deduct its credit. To include
+            an attended class in the package instead, use that class&apos;s
+            Collect payment option. You can still issue the full package here.
+          </p>
+        )}
 
         {selectedPackage && (
           <div>
@@ -556,15 +584,9 @@ function GrantPackage({
         </div>
 
         {state.error && (
-          <div role="alert" className="space-y-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
-            <p>{state.error}</p>
-            {state.checkoutDate && (
-              <Link className="inline-block font-semibold underline underline-offset-2"
-                href={`/admin/today?date=${encodeURIComponent(state.checkoutDate)}`}>
-                Open class checkout →
-              </Link>
-            )}
-          </div>
+          <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            {state.error}
+          </p>
         )}
         {state.ok && (
           <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
