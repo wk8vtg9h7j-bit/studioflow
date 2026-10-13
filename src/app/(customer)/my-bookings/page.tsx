@@ -43,14 +43,20 @@ export default async function MyBookingsPage({
   const nowMs = Date.now();
   const upcoming: BookingWithSession[] = [];
   const past: BookingWithSession[] = [];
+  const cancelled: BookingWithSession[] = [];
   for (const b of bookings) {
     const startsMs = b.session ? Date.parse(b.session.starts_at) : 0;
-    if (b.session && startsMs > nowMs) {
+    if (b.status === "cancelled") {
+      cancelled.push(b);
+    } else if (b.session && startsMs > nowMs) {
       upcoming.push(b);
     } else {
       past.push(b);
     }
   }
+
+  past.sort((a, b) => Date.parse(b.session?.starts_at ?? "1970-01-01") - Date.parse(a.session?.starts_at ?? "1970-01-01"));
+  cancelled.sort((a, b) => Date.parse(b.session?.starts_at ?? "1970-01-01") - Date.parse(a.session?.starts_at ?? "1970-01-01"));
 
   // Show soonest-first within Upcoming (the query came back newest-first).
   upcoming.sort((a, b) =>
@@ -77,6 +83,7 @@ export default async function MyBookingsPage({
   return (
     <div className="space-y-8">
       <div>
+        <p className="customer-eyebrow">{vi ? "HÀNH TRÌNH CỦA BẠN" : "YOUR JOURNEY"}</p>
         <h1 className="text-2xl font-semibold tracking-tight text-ink">
           {vi ? "Lịch đã đặt" : "My bookings"}
         </h1>
@@ -85,6 +92,11 @@ export default async function MyBookingsPage({
         </p>
       </div>
 
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
+        <div className="customer-tile !p-4"><p className="text-xs text-stone-500">{vi?"Sắp tới":"Upcoming"}</p><p className="mt-2 text-2xl font-semibold">{upcoming.length}</p></div>
+        <div className="customer-tile !p-4"><p className="text-xs text-stone-500">{vi?"Đã qua":"Past"}</p><p className="mt-2 text-2xl font-semibold">{past.length}</p></div>
+        <div className="customer-tile !p-4"><p className="text-xs text-stone-500">{vi?"Đã hủy":"Cancelled"}</p><p className="mt-2 text-2xl font-semibold">{cancelled.length}</p></div>
+      </div>
       <div className="card px-5 py-4">
         <h2 className="text-sm font-semibold text-ink">{vi ? "Chính sách hủy" : "Cancellation policy"}</h2>
         <p className="mt-1.5 text-sm leading-relaxed text-ink-muted">
@@ -148,6 +160,16 @@ export default async function MyBookingsPage({
           <h2 className="text-sm font-semibold text-ink">{vi ? "Đã qua" : "Past"}</h2>
           <ul className="space-y-3">
             {past.map((b) => (
+              <BookingRow key={b.id} booking={b} cancellable={false} locale={locale} />
+            ))}
+          </ul>
+        </section>
+      )}
+      {cancelled.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold text-ink">{vi ? "Đã hủy" : "Cancelled"}</h2>
+          <ul className="space-y-3">
+            {cancelled.map((b) => (
               <BookingRow key={b.id} booking={b} cancellable={false} locale={locale} />
             ))}
           </ul>
