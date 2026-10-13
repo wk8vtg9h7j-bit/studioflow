@@ -46,7 +46,13 @@ export function CheckoutControl({
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<"single" | "package">("single");
   const [packageId, setPackageId] = useState("");
-  const [price, setPrice] = useState(pool === "regular" ? "400000" : "");
+  // Default to the actual private single-class catalog price, rather than
+  // showing an empty required amount to reception at private checkout.
+  const singleClassPrice = pool === "regular" ? "400000" : String(
+    packages.filter(p => p.pool === "private" && p.credits === 1 && p.price_cents > 0)
+      .sort((a, b) => a.price_cents - b.price_cents)[0]?.price_cents ?? "",
+  );
+  const [price, setPrice] = useState(singleClassPrice);
   const [state, action] = useFormState(recordCheckoutAction, initial);
   const router = useRouter();
   useEffect(() => {
@@ -72,7 +78,7 @@ export function CheckoutControl({
         What is the customer paying for?
         <select className="input mt-1 min-w-0 max-w-full" value={kind} onChange={e=>{
           const next=e.target.value as "single"|"package";
-          setKind(next); setPackageId(""); setPrice(next==="single"?(pool==="regular"?"400000":""):"");
+          setKind(next); setPackageId(""); setPrice(next==="single"?singleClassPrice:"");
         }}>
           <option value="single">Single class + next booking credit</option>
           {eligibleStarter && available.length>0 && <option value="package">Package (today included)</option>}
