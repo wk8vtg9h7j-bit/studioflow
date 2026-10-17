@@ -21,6 +21,7 @@ export default async function CustomerLayout({children}:{children:React.ReactNod
         <nav aria-label="Customer navigation" className="customer-desktop-nav">
           {links.map(link=><Link key={link.href} href={link.href}>{link.label}</Link>)}
           <Link href="/private">{vi?"Lịch riêng":"Private"}</Link>
+          <Link href="/coaching">{vi?"Tiến độ":"My progress"}</Link>
           <Link href="/my-packages">{vi?"Gói tập":"Packages"}</Link>
         </nav>
         <div className="flex items-center gap-3"><span className="hidden text-sm text-stone-600 lg:block">{profile.full_name || profile.email}</span><LanguageSwitcher/><span className="hidden sm:inline"><SignOutButton label={vi?"Đăng xuất":"Sign out"}/></span></div>
