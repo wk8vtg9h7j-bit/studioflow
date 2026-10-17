@@ -43,3 +43,29 @@ on conflict (id) do nothing;
 insert into storage.buckets (id,name,public,file_size_limit,allowed_mime_types)
 values ('studio-gallery','studio-gallery',true,10485760,array['image/jpeg','image/png','image/webp'])
 on conflict (id) do nothing;
+
+-- Enforce private-only studios on scheduled class sessions at the database layer.
+create or replace function public.check_private_only_studio_session()
+returns trigger language plpgsql set search_path = '' as $$
+begin
+ if exists (select 1 from public.studios where id=new.studio_id and private_only)
+    and not exists (select 1 from public.class_types where id=new.class_type_id and pool='private') then
+  raise exception 'This studio only permits private sessions';
+ end if;
+ return new;
+end;
+$$;
+drop trigger if exists enforce_private_only_session on public.sessions;
+create trigger enforce_private_only_session
+before insert or update of studio_id,class_type_id on public.sessions
+for each row execute function public.check_private_only_studio_session();
+create table if not exists public.studio_photos (
+ id uuid primary key default gen_random_uuid(),
+ studio_id uuid not null references public.studios(id) on delete cascade,
+ object_path text not null,
+ caption text not null default '',
+ created_at timestamptz not null default now()
+);
+alter table public.studio_photos enable row level security;
+revoke all on public.studio_photos from anon,authenticated;
+create index if not exists studio_photos_studio_idx on public.studio_photos(studio_id,created_at desc);
