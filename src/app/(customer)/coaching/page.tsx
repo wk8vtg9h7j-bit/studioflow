@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { customerCoaching } from "@/lib/privateCoaching.server";
-import Link from "next/link";
 export default async function CoachingPage(){
  const data=await customerCoaching();
  return <div className="space-y-7">
