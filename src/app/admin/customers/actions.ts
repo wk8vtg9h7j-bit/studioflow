@@ -236,9 +236,10 @@ const PAYMENT_METHODS = ["qr", "card", "cash"] as const;
 const GrantSchema = z.object({
   customer_id: z.string().uuid("Could not identify which customer to credit."),
   package_id: z.string().uuid("Choose a package to grant."),
+  grant_type: z.enum(["paid","complimentary"]).default("paid"),
   payment_method: z.enum(PAYMENT_METHODS, {
     errorMap: () => ({ message: "Choose how it was paid (QR, card, or cash)." }),
-  }),
+  }).optional(),
   sale_price_cents: z
     .union([
       z.coerce
@@ -260,16 +261,22 @@ export async function grantPackageAction(
   const parsed = GrantSchema.safeParse({
     customer_id: formData.get("customer_id"),
     package_id: formData.get("package_id"),
-    payment_method: formData.get("payment_method"),
+    payment_method: formData.get("payment_method") || undefined,
+    grant_type: formData.get("grant_type") || "paid",
     sale_price_cents: formData.get("sale_price_cents") ?? "",
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Check the form." };
   }
 
-  const { customer_id, package_id, payment_method, sale_price_cents } =
+  const { customer_id, package_id, payment_method, grant_type, sale_price_cents } =
     parsed.data;
-  const supabase = await createClient();
+  const supabase = createServiceClient();
+  if (grant_type === "paid" && !payment_method) {
+    return { error: "Select a confirmed payment method, or choose Complimentary (no payment recorded)." };
+  }
+  const { data: member, error: memberError } = await supabase.from("customers").select("id").eq("id",customer_id).maybeSingle();
+  if (memberError || !member) return { error: "Customer not found." };
 
   // Look up the package so we know how many clips it grants and how long they
   // stay valid. Only active packages can be sold.
@@ -313,13 +320,13 @@ export async function grantPackageAction(
   const { error } = await supabase.from("credit_ledger").insert({
     customer_id,
     delta: pkg.credits,
-    reason: "purchase",
+    reason: grant_type === "paid" ? "purchase" : "adjustment",
     package_id,
     booking_id: null,
     expires_at: expiresAt,
-    payment_method,
+    payment_method: grant_type === "paid" ? payment_method : null,
     pool: pkg.pool ?? "regular",
-    sale_amount_cents: salePrice,
+    sale_amount_cents: grant_type === "paid" ? salePrice : null,
     sale_currency: pkg.currency ?? "VND",
   });
 
@@ -684,15 +691,15 @@ export async function updateCustomerAction(
   const { id, ...fields } = parsed.data;
   const tags = parseTags(formData.get("tags"));
 
-  const supabase = await createClient();
-  const { error } = await supabase
+  const supabase = createServiceClient();
+  const { data: updated, error } = await supabase
     .from("customers")
     .update({ ...fields, tags })
+    .select("id")
     .eq("id", id);
 
-  if (error) {
-    return { error: error.message };
-  }
+  if (error) return { error: error.message };
+  if (!updated?.length) return { error: "Customer was not found; status was not updated." };
 
   revalidatePath("/admin/customers");
   return { ok: true };
