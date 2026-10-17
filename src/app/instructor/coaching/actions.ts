@@ -51,7 +51,8 @@ export async function assignPrivateCoach(form:FormData){
  if(!uid.test(customerId)||!uid.test(instructorId))throw Error("Invalid selection.");
  const svc=createServiceClient();
  const {data:studio}=await svc.from("studios").select("id").eq("slug","an-thuong-pilates").single();
- const {data:instructor}=await svc.from("instructors").select("id").eq("id",instructorId).maybeSingle();
+ const {data:instructor}=await svc.from("instructors").select("id,display_name").eq("id",instructorId).maybeSingle();
+ if(instructor && !["Ruby","Violet"].includes(instructor.display_name)) throw Error("Only Ruby or Violet can coach at An Thuong.");
  const {data:customer}=await svc.from("customers").select("id").eq("id",customerId).maybeSingle();
  if(!studio||!instructor||!customer)throw Error("Studio, instructor or client not found.");
  const {error}=await svc.from("private_coaching").upsert({customer_id:customerId,studio_id:studio.id,instructor_id:instructorId},{onConflict:"customer_id,studio_id"});
