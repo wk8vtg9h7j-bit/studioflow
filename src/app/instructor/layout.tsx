@@ -12,6 +12,7 @@ const INSTRUCTOR_NAV: NavItem[] = [
   { href: "/instructor", label: "My classes" },
   { href: "/instructor/private", label: "Private calendar" },
   { href: "/instructor/customers", label: "Customers" },
+  { href: "/instructor/coaching", label: "Private coaching" },
   { href: "/instructor/salary", label: "Salary" },
 ];
 
