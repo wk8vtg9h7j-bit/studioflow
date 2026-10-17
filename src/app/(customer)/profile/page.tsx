@@ -10,6 +10,7 @@ export default async function CustomerProfile({searchParams}:{searchParams:Promi
  return <div className="mx-auto max-w-2xl space-y-7">
   <div><p className="customer-eyebrow">{vi?"TÀI KHOẢN CỦA TÔI":"MY ACCOUNT"}</p><h1 className="mt-2">{vi?"Hồ sơ cá nhân":"My profile"}</h1><p className="mt-2 text-sm text-stone-600">{vi?"Cập nhật thông tin để chúng tôi có thể liên hệ với bạn.":"Keep your details up to date for your classes and studio visits."}</p></div>
   <div className="customer-tile">
+   {status==="studio"&&<p role="status" className="mb-5 rounded-xl bg-green-50 p-3 text-sm text-green-800">{vi?"Đã lưu studio.":"Your preferred studio has been saved."}</p>}
    {status==="saved"&&<p role="status" className="mb-5 rounded-xl bg-green-50 p-3 text-sm text-green-800">{vi?"Đã lưu thông tin.":"Your profile has been saved."}</p>}
    {status==="error"&&<p role="alert" className="mb-5 rounded-xl bg-red-50 p-3 text-sm text-red-700">{vi?"Không thể lưu. Vui lòng liên hệ studio.":"Could not save your profile. Please contact the studio."}</p>}
    {status==="invalid"&&<p role="alert" className="mb-5 rounded-xl bg-red-50 p-3 text-sm text-red-700">{vi?"Vui lòng kiểm tra tên và số điện thoại.":"Please check the name and phone fields."}</p>}
