@@ -30,6 +30,7 @@ export default async function StudiosPage() {
         </p>
       </div>
 
+      <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5 sm:p-6"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">PRIVATE STUDIO · AN THUONG</p><h2 className="mt-2 text-xl font-semibold text-emerald-950">An Thuong · Private Pilates</h2><p className="mt-2 max-w-lg text-sm text-emerald-900">A separate studio for private customers only. Instructors: Ruby & Violet. Manage individual clients, goals, programs, weekly progress and photos from here.</p></div><div className="flex flex-col gap-2"><Link href="/admin/coaching" className="btn-primary text-center">Open An Thuong coaching →</Link><Link href="/signup?studio=an-thuong-pilates" className="btn-secondary text-center">An Thuong customer signup →</Link></div></div></section>
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
         <section className="lg:col-span-2">
           {studios.length === 0 ? (

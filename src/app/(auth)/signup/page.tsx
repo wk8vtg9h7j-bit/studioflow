@@ -5,6 +5,8 @@
 "use client";
 
 import Link from "next/link";
+import { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { useFormState } from "react-dom";
 import { signUpAction, type AuthState } from "../actions";
 import { SubmitButton } from "../SubmitButton";
@@ -43,7 +45,9 @@ function PreviewRolePicker() {
   );
 }
 
-export default function SignupPage() {
+function SignupForm() {
+  const params=useSearchParams();
+  const privateAnThuong=params.get("studio")==="an-thuong-pilates";
   const [state, formAction] = useFormState(signUpAction, initial);
   const { locale } = useLanguage();
   const vi = locale === "vi";
@@ -57,7 +61,7 @@ export default function SignupPage() {
         {vi ? "Đặt lớp và quản lý tín dụng của bạn tại một nơi." : "Book classes and manage your credits in one place."}
       </p>
 
-      <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+      {!privateAnThuong && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
         <p className="text-sm font-semibold text-amber-900">
           {vi ? "Tín dụng khởi đầu không phải lớp miễn phí" : "Your starter credit is not a free class"}
         </p>
@@ -66,8 +70,9 @@ export default function SignupPage() {
             ? "Sau khi đăng ký, tài khoản có 1 tín dụng đặt chỗ để bạn giữ chỗ cho lớp thường đầu tiên. Nếu chưa mua gói trả phí, bạn thanh toán phí lớp tại studio sau buổi tập."
             : "After signup, your account gets 1 booking credit so you can reserve your first regular class. If you have not purchased a paid package, the class fee is paid at the studio after class."}
         </p>
-      </div>
+      </div>}
 
+      {privateAnThuong && <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">Private Pilates at An Thuong · Ruby & Violet. Your personal coaching program becomes available once your instructor is assigned.</div>}
       <form action={formAction} className="mt-6 space-y-4">
         <div>
           <label htmlFor="fullName" className="label">
@@ -115,7 +120,7 @@ export default function SignupPage() {
           />
         </div>
 
-        <div><label htmlFor="studio" className="label">{vi?"Studio của bạn":"Your studio"}</label><select id="studio" name="studio" className="input" defaultValue="downtown-pilates"><option value="downtown-pilates">Downtown Pilates</option><option value="hideaway-pilates">Hideaway Pilates</option><option value="an-thuong-pilates">An Thuong · Private Pilates only</option></select><p className="mt-1 text-xs text-stone-500">{vi?"An Thuong chỉ dành cho các lớp cá nhân.":"An Thuong is available for private clients only."}</p></div>
+        <div><label htmlFor="studio" className="label">{vi?"Studio của bạn":"Your studio"}</label>{privateAnThuong?<><input type="hidden" name="studio" value="an-thuong-pilates"/><div className="input flex items-center bg-emerald-50 font-semibold text-emerald-900">An Thuong · Private Pilates</div><p className="mt-1 text-xs text-stone-500">{vi?"Đây là đăng ký riêng cho khách hàng cá nhân An Thuong.":"This registration is exclusively for An Thuong private coaching clients."}</p></>:<select id="studio" name="studio" className="input" defaultValue="downtown-pilates"><option value="downtown-pilates">Downtown Pilates</option><option value="hideaway-pilates">Hideaway Pilates</option><option value="an-thuong-pilates">An Thuong · Private Pilates only</option></select>}</div>
         <div>
           <label htmlFor="password" className="label">
             {vi ? "Mật khẩu" : "Password"}
@@ -152,3 +157,5 @@ export default function SignupPage() {
     </div>
   );
 }
+
+export default function SignupPage(){return <Suspense fallback={<div className="card p-6">Loading registration…</div>}><SignupForm/></Suspense>;}
