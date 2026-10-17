@@ -30,7 +30,7 @@ export default async function CustomerLayout({children}:{children:React.ReactNod
         <Link className="customer-brand" href="/home">Studio<span style={{color:"#8b9d8a"}}>Flow</span></Link>
         <nav aria-label="Customer navigation" className="customer-desktop-nav">
           {links.map(link=><Link key={link.href} href={link.href}>{link.label}</Link>)}
-          <Link href="/private">{vi?"Lịch riêng":"Private"}</Link>
+          <Link href="/studios">{vi?"Studio":"Studios"}</Link><Link href="/private">{vi?"Lịch riêng":"Private"}</Link>
           <Link href="/coaching">{vi?"Tiến độ":"My progress"}</Link>
           <Link href="/my-packages">{vi?"Gói tập":"Packages"}</Link>
         </nav>
