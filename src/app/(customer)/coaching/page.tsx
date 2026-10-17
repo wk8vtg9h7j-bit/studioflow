@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { customerCoaching } from "@/lib/privateCoaching.server";
+import Link from "next/link";
 export default async function CoachingPage(){
  const data=await customerCoaching();
  return <div className="space-y-7">
   <div><p className="customer-eyebrow">PRIVATE PILATES · AN THUONG</p><h1 className="mt-2">My Pilates journey</h1><p className="mt-2 text-stone-600">Your goals, personalized program and weekly progress in one beautiful space.</p></div>
+  <div className="customer-tile"><h2 className="font-serif text-xl">Private class packages</h2><p className="mt-2 text-sm text-stone-500">Your private credits are shared across studios until location-specific packages are enabled.</p><Link href="/my-packages" className="mt-3 inline-block text-sm underline underline-offset-4">View private packages & credits →</Link></div>
   {!data?.coaching?<div className="customer-tile"><h2 className="font-serif text-2xl">Your journey starts here</h2><p className="mt-2 text-sm text-stone-600">When your instructor creates your personal program, it will appear here. Ask reception to connect you with your private instructor.</p><Link href="/private" className="mt-5 inline-block underline underline-offset-4">Explore private sessions →</Link></div>:<>
    <section className="customer-hero"><p className="text-xs uppercase tracking-widest text-[#d8e3da]">YOUR FOCUS</p><h2 className="mt-3 font-serif text-2xl">Personal goals</h2><p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed">{data.coaching.goals||"Your instructor will add your goals here."}</p></section>
    <section className="customer-tile"><p className="customer-eyebrow">YOUR PROGRAM</p><h2 className="mt-2 font-serif text-2xl">Training plan</h2><p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-stone-700">{data.coaching.program||"Your plan is being prepared."}</p></section>
