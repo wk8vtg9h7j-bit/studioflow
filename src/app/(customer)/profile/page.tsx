@@ -20,6 +20,7 @@ export default async function CustomerProfile({searchParams}:{searchParams:Promi
     <button type="submit" className="btn-primary px-6 py-3">{vi?"Lưu thay đổi":"Save changes"}</button>
    </form>
   </div>
+  <Link href="/preferences" className="customer-tile block font-semibold">My studio · Change preferred location →</Link>
   <div className="grid gap-3 sm:grid-cols-2"><Link href="/my-packages" className="customer-tile"><p className="font-semibold">{vi?"Gói tập & tín dụng":"Packages & credits"} →</p><p className="mt-1 text-sm text-stone-500">{vi?"Số dư và lịch sử tín dụng":"Balances and credit history"}</p></Link><Link href="/my-bookings" className="customer-tile"><p className="font-semibold">{vi?"Lịch sử đặt lớp":"Class activity"} →</p><p className="mt-1 text-sm text-stone-500">{vi?"Các lớp đã đặt và đã tham gia":"Bookings and attendance"}</p></Link></div>
  </div>;
 }
