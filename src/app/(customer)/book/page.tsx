@@ -68,6 +68,10 @@ export default async function BookPage({
     .gte("starts_at", dayStart.toISOString())
     .lt("starts_at", dayEnd.toISOString());
 
+  // An Thuong is a private-only location, never part of the public group timetable.
+  const { data: privateOnlyStudios } = await service.from("studios").select("id").eq("private_only",true);
+  const privateOnlyIds = (privateOnlyStudios??[]).map((st)=>st.id);
+  if (privateOnlyIds.length) sessionsQuery = sessionsQuery.not("studio_id","in",`(${privateOnlyIds.join(",")})`);
   if (studio) sessionsQuery = sessionsQuery.eq("studio_id", studio);
   if (type) sessionsQuery = sessionsQuery.eq("class_type_id", type);
 

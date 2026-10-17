@@ -1,0 +1,11 @@
+import {requireRole} from "@/lib/auth";import {createServiceClient} from "@/lib/supabase/server";import {assignPrivateCoach} from "@/app/instructor/coaching/actions";
+export default async function AdminPrivateCoaching(){
+ await requireRole("admin","/admin/coaching");const svc=createServiceClient();
+ const [{data:customers},{data:instructors},{data:assignments}]=await Promise.all([
+ svc.from("customers").select("id,name,profile:profiles(full_name,email)").order("created_at",{ascending:false}).limit(300),
+ svc.from("instructors").select("id,display_name,active").order("display_name"),
+ svc.from("private_coaching").select("id,customer_id,instructor_id,customer:customers(name,profile:profiles(full_name))").limit(300)]);
+ return <div className="space-y-8"><div><h1 className="text-2xl font-semibold">An Thuong · Private coaching</h1><p className="mt-2 text-sm text-stone-500">Assign a private client to an instructor. Their plan and progress become visible in both accounts.</p></div>
+ <section className="card max-w-2xl p-6"><h2 className="mb-4 text-lg font-semibold">Assign private client</h2><form action={assignPrivateCoach} className="space-y-4"><div><label className="label">Customer</label><select required name="customer_id" className="input w-full" defaultValue=""><option value="" disabled>Select customer</option>{(customers??[]).map((c:any)=><option key={c.id} value={c.id}>{c.profile?.full_name||c.name||"Customer"} · {c.profile?.email||c.id}</option>)}</select></div><div><label className="label">Instructor</label><select required name="instructor_id" className="input w-full" defaultValue=""><option value="" disabled>Select instructor</option>{(instructors??[]).map((i:any)=><option key={i.id} value={i.id}>{i.display_name}{i.active?"":" · Inactive — activate before use"}</option>)}</select></div><button className="btn-primary">Assign coaching client</button></form></section>
+ <section><h2 className="mb-3 text-lg font-semibold">Active coaching clients</h2><div className="space-y-2">{(assignments??[]).map((a:any)=><div key={a.id} className="card p-4 text-sm">{a.customer?.profile?.full_name||a.customer?.name||a.customer_id} · {instructors?.find(i=>i.id===a.instructor_id)?.display_name||"Unassigned"}</div>)}</div></section></div>;
+}

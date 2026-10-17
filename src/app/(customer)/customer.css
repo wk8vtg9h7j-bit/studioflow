@@ -1,0 +1,31 @@
+/* Scoped customer-facing warm wellness identity. Admin and instructor views are unchanged. */
+.customer-experience {
+  --customer-ivory:#f7f5f0; --customer-forest:#354a40; --customer-sage:#9daa98;
+  background:var(--customer-ivory); color:#232724; min-height:100vh;
+}
+.customer-experience .customer-frame {max-width:1120px;margin:0 auto;padding:24px 20px 112px}
+.customer-experience .customer-header {position:sticky;top:0;z-index:30;background:rgba(247,245,240,.95);backdrop-filter:blur(14px);border-bottom:1px solid #e6ded1}
+.customer-experience .customer-header-inner {max-width:1120px;margin:auto;padding:18px 20px;display:flex;justify-content:space-between;align-items:center;gap:14px}
+.customer-experience .customer-brand {font-family:Georgia,serif;font-size:25px;letter-spacing:-.04em}
+.customer-experience .customer-header a {color:#354a40}
+.customer-experience .customer-desktop-nav {display:flex;align-items:center;gap:22px;font-size:14px;font-weight:500}
+.customer-experience .customer-desktop-nav a:hover {text-decoration:underline;text-underline-offset:6px}
+.customer-experience .customer-mobile-nav {display:none}
+.customer-experience .card {background:#fffefa;border:1px solid #e6ded1;border-radius:22px;box-shadow:0 8px 30px rgba(53,74,64,.035)}
+.customer-experience .btn-primary {background:#354a40;color:white;border-radius:12px;min-height:44px}
+.customer-experience .btn-primary:hover {background:#26382f}
+.customer-experience h1 {font-family:Georgia,serif;font-size:clamp(30px,4vw,42px);line-height:1.15;letter-spacing:-.04em;color:#283b31}
+.customer-experience h2 {color:#354a40}
+.customer-experience .input {border-radius:12px;min-height:44px}
+.customer-experience .customer-hero {background:#354a40;color:white;border-radius:26px;padding:clamp(24px,5vw,48px);overflow:hidden}
+.customer-experience .customer-hero h1,.customer-experience .customer-hero h2{color:white}
+.customer-experience .customer-hero a {background:#f7f5f0;color:#354a40;border-radius:12px;padding:12px 20px;display:inline-flex;font-weight:600}
+.customer-experience .customer-tile {background:#fffefa;border:1px solid #e6ded1;border-radius:22px;padding:24px}
+.customer-experience .customer-eyebrow {font-size:11px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;color:#9daa98}
+.customer-experience .customer-mobile-nav a {display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:0;min-height:56px;font-size:11px;color:#354a40}
+@media(max-width:639px) {
+.customer-experience .customer-frame {padding:20px 14px 100px}
+.customer-experience .customer-desktop-nav {display:none}
+.customer-experience .customer-mobile-nav {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));position:fixed;bottom:0;left:0;right:0;background:rgba(247,245,240,.97);backdrop-filter:blur(14px);border-top:1px solid #e6ded1;padding:5px 10px max(5px,env(safe-area-inset-bottom));z-index:40}
+.customer-experience .customer-hero {border-radius:20px}
+}
