@@ -34,6 +34,7 @@ export async function addProgressPhoto(form:FormData){
  const {svc}=await instructorCoachingAccess(customerId);
  const {data:coaching}=await svc.from("private_coaching").select("id").eq("customer_id",customerId).maybeSingle();
  if(!coaching)throw Error("No coaching record");
+ if(form.get("photo_consent")!=="yes")throw Error("Confirm the customer has agreed to this progress-photo upload.");
  const photo=form.get("photo");
  if(!(photo instanceof File)||!["image/jpeg","image/png","image/webp"].includes(photo.type)||photo.size>10*1024*1024||photo.size===0)throw Error("Choose a JPEG, PNG or WebP under 10 MB.");
  const extension=photo.type==="image/png"?"png":photo.type==="image/webp"?"webp":"jpg";
