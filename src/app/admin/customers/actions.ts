@@ -704,3 +704,28 @@ export async function updateCustomerAction(
   revalidatePath("/admin/customers");
   return { ok: true };
 }
+
+const BookingPaymentOverrideSchema = z.object({
+ customer_id:z.string().uuid(), booking_id:z.string().uuid(),
+ status:z.enum(["package","payment_due"]),
+ reason:z.string().trim().min(5,"Enter a reason of at least five characters.").max(500),
+});
+export async function overrideBookingPaymentStatusAction(
+ _previous:CustomerActionState, formData:FormData,
+):Promise<CustomerActionState> {
+ const admin=await requireRole("admin","/admin/customers");
+ const parsed=BookingPaymentOverrideSchema.safeParse({
+  customer_id:formData.get("customer_id"),booking_id:formData.get("booking_id"),
+  status:formData.get("status"),reason:formData.get("reason"),
+ });
+ if(!parsed.success)return {error:parsed.error.issues[0]?.message??"Invalid correction."};
+ const {customer_id,booking_id,status,reason}=parsed.data;
+ const svc=createServiceClient();
+ const {data:booking,error:lookupError}=await svc.from("bookings").select("id").eq("id",booking_id).eq("customer_id",customer_id).maybeSingle();
+ if(lookupError||!booking)return {error:"Booking not found for this customer."};
+ const {error}=await svc.from("booking_payment_overrides").upsert({booking_id,customer_id,status,reason,updated_by:admin.id,updated_at:new Date().toISOString()},{onConflict:"booking_id"});
+ if(error)return {error:error.message};
+ await queueCustomerBookingCalendarSync(customer_id);
+ revalidatePath("/admin/customers");revalidatePath("/admin/sessions");
+ return {ok:true};
+}
