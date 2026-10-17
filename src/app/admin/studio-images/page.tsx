@@ -1,7 +1,8 @@
+import Link from "next/link";
 import {requireRole} from "@/lib/auth";import {createServiceClient} from "@/lib/supabase/server";import {uploadStudioCover} from "./actions";
 export default async function StudioImages(){
  await requireRole("admin","/admin/studio-images");
  const svc=createServiceClient();const {data:studios}=await svc.from("studios").select("id,name,cover_image_url").order("name");
- return <div className="space-y-6"><div><h1 className="text-2xl font-semibold">Studio photography</h1><p className="mt-1 text-sm text-stone-500">Manage the cover photo for each customer-facing studio. JPEG, PNG and WebP, max 10MB.</p></div>
+ return <div className="space-y-6"><Link href="/admin/studio-images/gallery" className="btn-secondary">Manage studio galleries →</Link><div><h1 className="text-2xl font-semibold">Studio photography</h1><p className="mt-1 text-sm text-stone-500">Manage the cover photo for each customer-facing studio. JPEG, PNG and WebP, max 10MB.</p></div>
  <div className="grid gap-5 md:grid-cols-2">{(studios??[]).map(st=><div className="card overflow-hidden" key={st.id}>{st.cover_image_url?<img src={st.cover_image_url} alt={st.name} className="aspect-video w-full object-cover"/>:<div className="grid aspect-video place-items-center bg-stone-100 text-sm text-stone-500">No photo yet</div>}<div className="p-5"><h2 className="font-semibold">{st.name}</h2><form action={uploadStudioCover} className="mt-3 space-y-3"><input type="hidden" name="studio_id" value={st.id}/><input type="file" name="image" accept="image/jpeg,image/png,image/webp" required className="input w-full"/><button className="btn-primary">Upload cover photo</button></form></div></div>)}</div></div>
 }
