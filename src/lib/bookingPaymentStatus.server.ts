@@ -176,6 +176,26 @@ export async function getBookingPaymentStatuses(
     );
   }
 
+  // Explicit admin adjudications take precedence. These are NOT receipts and
+  // never alter credit balances or revenue. A missing pre-migration table
+  // leaves the existing automatic calculation intact.
+  for (let offset = 0; offset < bookings.length; offset += 200) {
+    const ids = bookings.slice(offset, offset + 200).map((b) => b.id);
+    const { data: overrides, error: overrideError } = await service
+      .from("booking_payment_overrides")
+      .select("booking_id,status")
+      .in("booking_id", ids);
+    if (overrideError) {
+      if (overrideError.code === "42P01" || overrideError.code === "PGRST205") break;
+      throw overrideError;
+    }
+    for (const override of overrides ?? []) {
+      if (override.status === "package" || override.status === "payment_due") {
+        result.set(override.booking_id, override.status);
+      }
+    }
+  }
+
   return result;
 }
 
