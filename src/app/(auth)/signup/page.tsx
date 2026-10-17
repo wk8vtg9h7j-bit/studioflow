@@ -115,6 +115,7 @@ export default function SignupPage() {
           />
         </div>
 
+        <div><label htmlFor="studio" className="label">{vi?"Studio của bạn":"Your studio"}</label><select id="studio" name="studio" className="input" defaultValue="downtown-pilates"><option value="downtown-pilates">Downtown Pilates</option><option value="hideaway-pilates">Hideaway Pilates</option><option value="an-thuong-pilates">An Thuong · Private Pilates only</option></select><p className="mt-1 text-xs text-stone-500">{vi?"An Thuong chỉ dành cho các lớp cá nhân.":"An Thuong is available for private clients only."}</p></div>
         <div>
           <label htmlFor="password" className="label">
             {vi ? "Mật khẩu" : "Password"}
