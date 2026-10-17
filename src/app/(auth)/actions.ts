@@ -30,6 +30,7 @@ const credentials = z.object({
 
 const signUpSchema = credentials.extend({
   fullName: z.string().trim().min(1, "Enter your name."),
+  studio: z.enum(["downtown-pilates","hideaway-pilates","an-thuong-pilates"]),
   phone: z
     .string()
     .trim()
@@ -75,6 +76,7 @@ export async function signUpAction(
     email: formData.get("email"),
     password: formData.get("password"),
     fullName: formData.get("fullName"),
+    studio: formData.get("studio"),
     phone: formData.get("phone"),
   });
   if (!parsed.success) {
@@ -92,6 +94,7 @@ export async function signUpAction(
         full_name: parsed.data.fullName,
         phone: parsed.data.phone,
         role: "customer",
+        preferred_studio_slug: parsed.data.studio,
       },
     },
   });
