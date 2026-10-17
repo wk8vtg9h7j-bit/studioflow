@@ -39,3 +39,7 @@ revoke all on public.private_coaching, public.private_coaching_reviews, public.p
 insert into storage.buckets (id,name,public,file_size_limit,allowed_mime_types)
 values ('coaching-progress','coaching-progress',false,10485760,array['image/jpeg','image/png','image/webp'])
 on conflict (id) do nothing;
+
+insert into storage.buckets (id,name,public,file_size_limit,allowed_mime_types)
+values ('studio-gallery','studio-gallery',true,10485760,array['image/jpeg','image/png','image/webp'])
+on conflict (id) do nothing;
