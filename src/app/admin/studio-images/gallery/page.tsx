@@ -1,3 +1,4 @@
+import {PhotoPicker} from "@/components/PhotoPicker";
 import Link from "next/link";
 import {requireRole} from "@/lib/auth";
 import {createServiceClient} from "@/lib/supabase/server";
@@ -16,7 +17,7 @@ export default async function StudioGalleryPage(){
    <h2 className="text-lg font-semibold">{st.name}</h2>
    <form action={uploadStudioGalleryPhoto} className="mt-3 flex flex-wrap items-end gap-3">
     <input type="hidden" name="studio_id" value={st.id}/>
-    <div><label className="label">New photo</label><input type="file" name="image" accept="image/jpeg,image/png,image/webp" className="input" required/></div>
+    <div><label className="label">New photo</label><PhotoPicker/></div>
     <div><label className="label">Caption</label><input className="input" name="caption" maxLength={300}/></div>
     <button className="btn-primary">Add photo</button>
    </form>
