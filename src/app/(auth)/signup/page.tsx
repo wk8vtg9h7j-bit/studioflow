@@ -5,6 +5,8 @@
 "use client";
 
 import Link from "next/link";
+import { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { useFormState } from "react-dom";
 import { signUpAction, type AuthState } from "../actions";
 import { SubmitButton } from "../SubmitButton";
@@ -43,7 +45,9 @@ function PreviewRolePicker() {
   );
 }
 
-export default function SignupPage() {
+function SignupForm() {
+  const params=useSearchParams();
+  const privateAnThuong=params.get("studio")==="an-thuong-pilates";
   const [state, formAction] = useFormState(signUpAction, initial);
   const { locale } = useLanguage();
   const vi = locale === "vi";
@@ -115,7 +119,7 @@ export default function SignupPage() {
           />
         </div>
 
-        <div><label htmlFor="studio" className="label">{vi?"Studio của bạn":"Your studio"}</label><select id="studio" name="studio" className="input" defaultValue="downtown-pilates"><option value="downtown-pilates">Downtown Pilates</option><option value="hideaway-pilates">Hideaway Pilates</option><option value="an-thuong-pilates">An Thuong · Private Pilates only</option></select><p className="mt-1 text-xs text-stone-500">{vi?"An Thuong chỉ dành cho các lớp cá nhân.":"An Thuong is available for private clients only."}</p></div>
+        <div><label htmlFor="studio" className="label">{vi?"Studio của bạn":"Your studio"}</label>{privateAnThuong?<><input type="hidden" name="studio" value="an-thuong-pilates"/><div className="input flex items-center bg-emerald-50 font-semibold text-emerald-900">An Thuong · Private Pilates</div><p className="mt-1 text-xs text-stone-500">{vi?"Đây là đăng ký riêng cho khách hàng cá nhân An Thuong.":"This registration is exclusively for An Thuong private coaching clients."}</p></>:<select id="studio" name="studio" className="input" defaultValue="downtown-pilates"><option value="downtown-pilates">Downtown Pilates</option><option value="hideaway-pilates">Hideaway Pilates</option><option value="an-thuong-pilates">An Thuong · Private Pilates only</option></select>}</div>
         <div>
           <label htmlFor="password" className="label">
             {vi ? "Mật khẩu" : "Password"}
@@ -152,3 +156,5 @@ export default function SignupPage() {
     </div>
   );
 }
+
+export default function SignupPage(){return <Suspense fallback={<div className="card p-6">Loading registration…</div>}><SignupForm/></Suspense>;}
