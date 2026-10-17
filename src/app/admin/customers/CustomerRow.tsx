@@ -433,6 +433,7 @@ function GrantPackage({
   );
   const [selectedPackageId, setSelectedPackageId] = useState("");
   const [salePrice, setSalePrice] = useState("");
+  const [grantType, setGrantType] = useState<"paid" | "complimentary">("paid");
 
   const selectedPackage =
     packages.find((pkg) => pkg.id === selectedPackageId) ?? null;
@@ -465,7 +466,7 @@ function GrantPackage({
   return (
     <div className="border-t border-stone-200 pt-4">
       <h3 className="mb-2 text-sm font-semibold text-ink">
-        Issue a paid package
+        Issue customer package
       </h3>
       <p className="mb-3 text-xs leading-relaxed text-ink-muted">
         Admins can issue a package at any time. Existing balances do not
@@ -473,6 +474,7 @@ function GrantPackage({
       </p>
       <form action={formAction} className="space-y-3">
         <input type="hidden" name="customer_id" value={customerId} />
+        <div><label className="label" htmlFor={`grant-type-${customerId}`}>Grant type</label><select className="input" id={`grant-type-${customerId}`} name="grant_type" value={grantType} onChange={e=>setGrantType(e.target.value as "paid"|"complimentary")}><option value="paid">Paid — payment received</option><option value="complimentary">Complimentary / correction — no payment received</option></select><p className="mt-1 text-xs text-ink-muted">Complimentary adds package credits without recording revenue or claiming an old booking was paid. Changing CRM status does not settle unpaid classes.</p></div>
         <div>
           <label className="label" htmlFor={`pkg-${customerId}`}>
             Package
@@ -529,7 +531,7 @@ function GrantPackage({
           </p>
         )}
 
-        {selectedPackage && (
+        {selectedPackage && grantType === "paid" && (
           <div>
             <label className="label" htmlFor={`sale-price-${customerId}`}>
               Sale price ({selectedPackage.currency})
@@ -563,7 +565,7 @@ function GrantPackage({
           </div>
         )}
 
-        <div>
+        {grantType === "paid" && <div>
           <label className="label" htmlFor={`pay-${customerId}`}>
             Payment method
           </label>
@@ -581,7 +583,7 @@ function GrantPackage({
             <option value="card">Card</option>
             <option value="cash">Cash</option>
           </select>
-        </div>
+        </div>}
 
         {state.error && (
           <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
@@ -590,7 +592,7 @@ function GrantPackage({
         )}
         {state.ok && (
           <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-            Package granted — credits added to this customer.
+            Credits issued. Review payment history separately for any previous unpaid classes.
           </p>
         )}
 
