@@ -19,7 +19,7 @@ export default async function StudiosPage() {
   const studios = (data ?? []) as Studio[];
 
   return (
-    <div className="space-y-8"><Link className="btn-secondary" href="/admin/coaching">An Thuong private coaching →</Link>
+    <div className="space-y-8"><div className="flex flex-wrap gap-3"><Link className="btn-secondary" href="/admin/coaching">An Thuong private coaching →</Link><Link className="btn-secondary" href="/admin/studio-images">Studio photos →</Link><Link className="btn-secondary" href="/admin/studio-images/gallery">Photo galleries →</Link></div>
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-ink">
           Studios
