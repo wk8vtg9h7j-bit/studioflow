@@ -24,6 +24,7 @@ import {
   attachLoginAction,
   deleteCustomerAction,
   getCustomerHistoryAction,
+  overrideBookingPaymentStatusAction,
   type CustomerActionState,
   type AddCustomerState,
   type CustomerHistoryResult,
@@ -289,6 +290,7 @@ export function CustomerRow({
 
       {showHistory && (
         <CustomerHistoryPanel
+          customerId={customer.id}
           history={history}
           loading={historyLoading}
         />
@@ -320,8 +322,8 @@ export function CustomerRow({
 }
 
 function CustomerHistoryPanel({
-  history, loading,
-}: { history: CustomerHistoryResult | null; loading: boolean }) {
+  customerId, history, loading,
+}: { customerId: string; history: CustomerHistoryResult | null; loading: boolean }) {
   if (loading) return <div className="border-t px-5 py-4 text-sm text-ink-muted">Loading customer timeline…</div>;
   if (!history) return null;
   if (history.error) return <div className="border-t px-5 py-4 text-sm text-rose-700">{history.error}</div>;
@@ -361,7 +363,29 @@ function CustomerHistoryPanel({
         <span className="badge bg-stone-100 text-ink-muted">{event.kind}</span>}
       </li>)}
      </ol>}
+     <div className="border-t border-stone-200 pt-4">
+      <h4 className="text-sm font-semibold text-ink">Correct a class payment label</h4>
+      <p className="mt-1 text-xs text-ink-muted">Admin-only review. This changes the Payment Due / Package label, not the receipt, credit balance or revenue. Only choose Covered when the booking has genuinely been settled. Give a reason for each change.</p>
+      <div className="mt-3 space-y-3">
+       {history.bookings.filter(b=>b.status!=="cancelled").slice(0,25).map(b=><PaymentStatusCorrection key={b.id} customerId={customerId} booking={b}/>)}
+      </div>
+     </div>
    </section>;
+}
+function PaymentStatusCorrection({customerId,booking}:{customerId:string;booking:CustomerHistoryResult["bookings"][number]}) {
+ const [state,submit]=useFormState(overrideBookingPaymentStatusAction,{});
+ return <form action={submit} className="rounded-xl border border-stone-200 bg-white p-3 space-y-2">
+  <input type="hidden" name="customer_id" value={customerId}/>
+  <input type="hidden" name="booking_id" value={booking.id}/>
+  <p className="text-sm font-semibold text-ink">{booking.session?.title??"Booking"} · {booking.session?formatSessionWhen(booking.session.startsAt):"Unknown date"}</p>
+  <div className="flex flex-col gap-2 sm:flex-row">
+   <select name="status" className="input flex-1" defaultValue="payment_due" aria-label="Correct payment status"><option value="payment_due">Payment Due</option><option value="package">Covered / settled — verified by admin</option></select>
+   <input name="reason" className="input flex-[2]" placeholder="Reason / payment evidence" minLength={5} maxLength={500} required aria-label="Reason for correction"/>
+   <SubmitButton>Save correction</SubmitButton>
+  </div>
+  {state.error&&<p role="alert" className="text-xs text-rose-700">{state.error}</p>}
+  {state.ok&&<p role="status" className="text-xs text-emerald-700">Saved. Calendar labels will refresh automatically.</p>}
+ </form>;
 }
 
 function AttachLogin({
@@ -433,6 +457,7 @@ function GrantPackage({
   );
   const [selectedPackageId, setSelectedPackageId] = useState("");
   const [salePrice, setSalePrice] = useState("");
+  const [grantType, setGrantType] = useState<"paid" | "complimentary">("paid");
 
   const selectedPackage =
     packages.find((pkg) => pkg.id === selectedPackageId) ?? null;
@@ -465,7 +490,7 @@ function GrantPackage({
   return (
     <div className="border-t border-stone-200 pt-4">
       <h3 className="mb-2 text-sm font-semibold text-ink">
-        Issue a paid package
+        Issue customer package
       </h3>
       <p className="mb-3 text-xs leading-relaxed text-ink-muted">
         Admins can issue a package at any time. Existing balances do not
@@ -473,6 +498,7 @@ function GrantPackage({
       </p>
       <form action={formAction} className="space-y-3">
         <input type="hidden" name="customer_id" value={customerId} />
+        <div><label className="label" htmlFor={`grant-type-${customerId}`}>Grant type</label><select className="input" id={`grant-type-${customerId}`} name="grant_type" value={grantType} onChange={e=>setGrantType(e.target.value as "paid"|"complimentary")}><option value="paid">Paid — payment received</option><option value="complimentary">Complimentary / correction — no payment received</option></select><p className="mt-1 text-xs text-ink-muted">Complimentary adds package credits without recording revenue or claiming an old booking was paid. Changing CRM status does not settle unpaid classes.</p></div>
         <div>
           <label className="label" htmlFor={`pkg-${customerId}`}>
             Package
@@ -529,7 +555,7 @@ function GrantPackage({
           </p>
         )}
 
-        {selectedPackage && (
+        {selectedPackage && grantType === "paid" && (
           <div>
             <label className="label" htmlFor={`sale-price-${customerId}`}>
               Sale price ({selectedPackage.currency})
@@ -563,7 +589,7 @@ function GrantPackage({
           </div>
         )}
 
-        <div>
+        {grantType === "paid" && <div>
           <label className="label" htmlFor={`pay-${customerId}`}>
             Payment method
           </label>
@@ -581,7 +607,7 @@ function GrantPackage({
             <option value="card">Card</option>
             <option value="cash">Cash</option>
           </select>
-        </div>
+        </div>}
 
         {state.error && (
           <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
@@ -590,7 +616,7 @@ function GrantPackage({
         )}
         {state.ok && (
           <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-            Package granted — credits added to this customer.
+            Credits issued. Review payment history separately for any previous unpaid classes.
           </p>
         )}
 
