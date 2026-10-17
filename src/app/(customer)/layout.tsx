@@ -4,10 +4,20 @@ import { getLocale } from "@/lib/locale-server";
 import { LanguageProvider, LanguageSwitcher } from "@/components/LanguageProvider";
 import { SignOutButton } from "@/components/SignOutButton";
 import "./customer.css";
+import {createClient,createServiceClient} from "@/lib/supabase/server";
 
 export default async function CustomerLayout({children}:{children:React.ReactNode}) {
   const [profile,locale]=await Promise.all([requireRole("customer","/book"),getLocale()]);
   const vi=locale==="vi";
+  // Signup metadata is a user preference, not an authorization claim.
+  const auth = await createClient();
+  const {data:{user}} = await auth.auth.getUser();
+  const slug = user?.user_metadata?.preferred_studio_slug;
+  if (typeof slug === "string" && ["downtown-pilates","hideaway-pilates","an-thuong-pilates"].includes(slug)) {
+    const svc = createServiceClient();
+    const {data:studio} = await svc.from("studios").select("id").eq("slug",slug).maybeSingle();
+    if (studio) await svc.from("customers").update({preferred_studio_id:studio.id}).eq("profile_id",profile.id).is("preferred_studio_id",null);
+  }
   const links=[
     {href:"/home",label:vi?"Trang chủ":"Home",symbol:"⌂"},
     {href:"/book",label:vi?"Đặt lớp":"Book",symbol:"▦"},
