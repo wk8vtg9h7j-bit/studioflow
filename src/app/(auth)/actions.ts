@@ -113,7 +113,7 @@ export async function signUpAction(
   }
 
   revalidatePath("/", "layout");
-  redirect("/book");
+  redirect(parsed.data.studio === "an-thuong-pilates" ? "/coaching" : "/book");
 }
 
 export async function signOutAction(): Promise<void> {
