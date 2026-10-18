@@ -36,8 +36,8 @@ export default async function CustomerLayout({children}:{children:React.ReactNod
         </nav>
         <div className="customer-account-actions"><div className="customer-account-info"><span className="customer-account-name">{profile.full_name || (vi?"Tài khoản":"My account")}</span><span className="customer-account-email" title={profile.email ?? ""}>{profile.email || ""}</span></div><LanguageSwitcher/><span className="customer-logout"><SignOutButton label={vi?"Đăng xuất":"Sign out"}/></span></div>
       </div></header>
-      <main className="customer-frame">{children}</main>
       <div className="customer-mobile-quicklinks"><Link href="/coaching">{vi?"Tiến độ tập luyện":"My progress"}</Link><Link href="/my-packages">{vi?"Gói tập":"Packages"}</Link><Link href="/studios">{vi?"Studio":"Studios"}</Link><Link href="/private">{vi?"Lịch riêng":"Private"}</Link></div>
+      <main className="customer-frame">{children}</main>
       <nav aria-label="Mobile customer navigation" className="customer-mobile-nav">
         {links.map(link=><Link key={link.href} href={link.href}><span aria-hidden="true" style={{fontSize:22,lineHeight:1.1}}>{link.symbol}</span><span>{link.label}</span></Link>)}
       </nav>
