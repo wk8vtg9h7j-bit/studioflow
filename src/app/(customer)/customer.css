@@ -75,3 +75,5 @@
  .customer-experience .customer-brand {font-size:21px}
  .customer-experience .customer-frame {padding-inline:11px}
 }
+
+.customer-experience .customer-email-display {width:100%;min-height:46px;padding:12px 14px;border:1px solid #d8dcd4;border-radius:12px;background:#f4f3ee;color:#26382f;font-size:15px;line-height:1.5;overflow-wrap:anywhere;user-select:text}
