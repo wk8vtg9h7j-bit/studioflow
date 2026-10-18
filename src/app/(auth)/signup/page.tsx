@@ -120,7 +120,7 @@ function SignupForm() {
           />
         </div>
 
-        <div><label htmlFor="studio" className="label">{vi?"Studio của bạn":"Your studio"}</label>{privateAnThuong?<><input type="hidden" name="studio" value="an-thuong-pilates"/><div className="input flex items-center bg-emerald-50 font-semibold text-emerald-900">An Thuong · Private Pilates</div><p className="mt-1 text-xs text-stone-500">{vi?"Đây là đăng ký riêng cho khách hàng cá nhân An Thuong.":"This registration is exclusively for An Thuong private coaching clients."}</p></>:<select id="studio" name="studio" className="input" defaultValue="downtown-pilates"><option value="downtown-pilates">Downtown Pilates</option><option value="hideaway-pilates">Hideaway Pilates</option><option value="an-thuong-pilates">An Thuong · Private Pilates only</option></select>}</div>
+        <input type="hidden" name="studio" value={privateAnThuong?"an-thuong-pilates":"downtown-pilates"}/>
         <div>
           <label htmlFor="password" className="label">
             {vi ? "Mật khẩu" : "Password"}
