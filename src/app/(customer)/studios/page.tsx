@@ -5,7 +5,7 @@ export default async function CustomerStudios(){
  const vi=(await getLocale())==="vi";
  const svc=createServiceClient();
  const [{data:studios},{data:photos}]=await Promise.all([
-  svc.from("studios").select("id,name,address,cover_image_url,private_only").eq("active",true).order("name"),
+  svc.from("studios").select("id,name,address,cover_image_url,private_only").eq("active",true).eq("private_only",false).order("name"),
   svc.from("studio_photos").select("id,studio_id,caption,object_path").order("created_at",{ascending:false}).limit(200)
  ]);
  return <div className="space-y-8">
