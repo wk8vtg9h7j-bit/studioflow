@@ -65,15 +65,23 @@ export async function loadPrivateCalendar(
 
   const creditCost = Number(costRes.data?.credits_cost ?? 1);
   const studios = (studiosRes.data ?? []) as PrivateStudio[];
-  const teachers = (teachersRes.data ?? []) as PrivateTeacher[];
+  const allTeachers = (teachersRes.data ?? []) as PrivateTeacher[];
   const ownInstructor = ownInstructorRes.data?.id ?? "";
   const customerId = customerRes.data?.id ?? "";
+  const ownName = ownInstructorRes.data?.display_name ?? "";
+  const allowedStudios = role === "instructor"
+    ? studios.filter(s => ownName === "Ruby" || (ownName === "Violet" && s.slug === "an-thuong-pilates"))
+    : studios;
+  const selectedStudio = allowedStudios.find(s => s.id === params.studio) ?? allowedStudios[0];
+  const studioId = selectedStudio?.id ?? "";
+  const teachers = role === "customer"
+    ? allTeachers.filter(t => t.display_name === "Ruby" || (selectedStudio?.slug === "an-thuong-pilates" && t.display_name === "Violet"))
+    : allTeachers.filter(t => t.id === ownInstructor);
   const instructorId = role === "instructor" ? ownInstructor
     : teachers.find(t => t.id === params.instructor)?.id ?? teachers[0]?.id ?? "";
-  const studioId = studios.find(s => s.id === params.studio)?.id ?? studios[0]?.id ?? "";
 
   if (!instructorId || !studioId) {
-    return { day, studioId, instructorId, studios, teachers, slots: [], requests: [], busy: [], creditBalance: 0, creditCost };
+    return { day, studioId, instructorId, studios: allowedStudios, teachers, slots: [], requests: [], busy: [], creditBalance: 0, creditCost };
   }
 
   // Scope every source to the selected teacher and only a single day.
@@ -149,7 +157,7 @@ export async function loadPrivateCalendar(
   )).map(s=>({starts_at:s.starts_at,ends_at:s.ends_at}));
 
   return {
-    day,studioId,instructorId,studios,teachers,slots,requests,busy,
+    day,studioId,instructorId,studios:allowedStudios,teachers,slots,requests,busy,
     creditBalance:typeof balanceRes.data === "number" ? balanceRes.data : 0,
     creditCost,
   };
