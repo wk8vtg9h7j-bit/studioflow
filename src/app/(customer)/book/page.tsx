@@ -84,7 +84,7 @@ export default async function BookPage({
   // Options for the filter dropdowns. RLS already limits these to active rows
   // for non-admins, so whatever comes back is safe to offer.
   const [studiosRes, classTypesRes] = await Promise.all([
-    supabase.from("studios").select("id,name").order("name"),
+    supabase.from("studios").select("id,name").eq("active",true).eq("private_only",false).order("name"),
     supabase.from("class_types").select("id,name").order("name"),
   ]);
   const studios = (studiosRes.data ?? []) as { id: string; name: string }[];
