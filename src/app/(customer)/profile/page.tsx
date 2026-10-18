@@ -17,7 +17,7 @@ export default async function CustomerProfile({searchParams}:{searchParams:Promi
    <form action={saveCustomerProfile} className="space-y-5">
     <div><label htmlFor="customer-name" className="label">{vi?"Họ và tên":"Full name"}</label><input id="customer-name" name="full_name" required minLength={2} maxLength={100} defaultValue={profile.full_name??""} className="input w-full"/></div>
     <div><label htmlFor="customer-phone" className="label">{vi?"Số điện thoại":"Phone number"}</label><input id="customer-phone" name="phone" type="tel" maxLength={30} defaultValue={profile.phone??""} className="input w-full"/></div>
-    <div><label htmlFor="customer-email" className="label">{vi?"Email":"Email"}</label><input id="customer-email" type="email" readOnly value={profile.email??""} className="input w-full bg-stone-100 text-stone-500"/><p className="mt-1 text-xs text-stone-500">{vi?"Liên hệ studio để thay đổi email đăng nhập.":"Contact the studio if you need to change your login email."}</p></div>
+    <div><label htmlFor="customer-email" className="label">{vi?"Email":"Email"}</label><div id="customer-email" className="customer-email-display" role="textbox" aria-readonly="true" aria-label="Account email">{profile.email || (vi?"Chưa có email":"No email set")}</div><p className="mt-1 text-xs text-stone-500">{vi?"Liên hệ studio để thay đổi email đăng nhập.":"Contact the studio if you need to change your login email."}</p></div>
     <button type="submit" className="btn-primary px-6 py-3">{vi?"Lưu thay đổi":"Save changes"}</button>
    </form>
   </div>
