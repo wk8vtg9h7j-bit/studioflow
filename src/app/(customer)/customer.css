@@ -95,3 +95,7 @@
 .customer-experience .customer-logout button:hover {background:#eaf0e8;border-color:#9daa98}
 .customer-experience .customer-logout button:focus-visible {outline:2px solid #354a40;outline-offset:2px}
 .customer-experience .customer-profile-signout button {min-height:44px}
+
+@media (max-width:639px) {
+ .customer-experience .customer-header .customer-logout button {min-height:40px;padding:8px 10px;font-size:12px}
+}
