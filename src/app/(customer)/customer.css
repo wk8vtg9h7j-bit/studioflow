@@ -60,7 +60,12 @@
  .customer-experience .customer-account-info {max-width:none;flex:1;align-items:flex-end}
  .customer-experience .customer-account-name {font-size:11px}
  .customer-experience .customer-account-email {font-size:11px;max-width:100%;line-height:1.4}
- .customer-experience .customer-logout {display:none}
+ .customer-experience .customer-logout {display:block;flex:0 0 auto;order:2}
+ .customer-experience .customer-logout button {min-height:40px;padding:8px 11px;font-size:12px}
+ .customer-experience .customer-header-inner {display:grid;grid-template-columns:auto minmax(0,1fr);align-items:start;column-gap:10px}
+ .customer-experience .customer-brand {align-self:center}
+ .customer-experience .customer-account-actions {display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:6px 8px}
+ .customer-experience .customer-account-info {order:3;flex:1 0 100%;max-width:100%;align-items:flex-end}
  .customer-experience .customer-frame {padding:19px 14px 115px}
  .customer-experience .customer-tile {padding:17px;border-radius:18px}
  .customer-experience .customer-hero {padding:23px 19px;border-radius:19px}
@@ -77,3 +82,16 @@
 }
 
 .customer-experience .customer-email-display {width:100%;min-height:46px;padding:12px 14px;border:1px solid #d8dcd4;border-radius:12px;background:#f4f3ee;color:#26382f;font-size:15px;line-height:1.5;overflow-wrap:anywhere;user-select:text}
+
+/* Sign out remains in the customer header at every viewport size. */
+.customer-experience .customer-logout form {margin:0}
+.customer-experience .customer-logout button {
+ display:inline-flex;align-items:center;justify-content:center;
+ min-height:42px;padding:9px 15px;border:1px solid #cdd7c9;
+ border-radius:12px;background:#fffefa;color:#354a40;
+ font-size:13px;font-weight:700;white-space:nowrap;
+ transition:background-color .15s ease,border-color .15s ease;
+}
+.customer-experience .customer-logout button:hover {background:#eaf0e8;border-color:#9daa98}
+.customer-experience .customer-logout button:focus-visible {outline:2px solid #354a40;outline-offset:2px}
+.customer-experience .customer-profile-signout button {min-height:44px}
