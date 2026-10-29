@@ -18,7 +18,8 @@ import { z } from "zod";
 import { requireRole } from "@/lib/auth";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import {
-  getBookingPaymentStatuses,
+  getBookingPaymentDetails,
+  queueCustomerBookingCalendarSyncSafely,
   type BookingPaymentStatus,
 } from "@/lib/bookingPaymentStatus.server";
 import type { BookingStatus } from "@/lib/types";
@@ -534,6 +535,7 @@ export async function adminBookGroupCustomerAction(
   });
 
   if (error) return { error: error.message };
+  await queueCustomerBookingCalendarSyncSafely(parsed.data.customer_id);
 
   const status =
     data && typeof data === "object" && "status" in data
@@ -1082,6 +1084,8 @@ export type RegisterRow = {
   credits_spent: number;
   spots_count: number;
   payment_status: BookingPaymentStatus;
+  renewal_due: boolean;
+  payment_review: boolean;
   eligible_starter: boolean;
 };
 
@@ -1147,8 +1151,8 @@ export async function getRegisterDataAction(
   // The register loads only when an admin opens a class; avoid fetching
   // packages, eligibility and credit history for every class on the list.
   const svc = createServiceClient();
-  const [paymentStatuses, packagesResult] = await Promise.all([
-    getBookingPaymentStatuses(rows.map((row) => ({
+  const [paymentDetails, packagesResult] = await Promise.all([
+    getBookingPaymentDetails(rows.map((row) => ({
       id: row.id,
       customerId: row.customer_id,
       creditsSpent: row.credits_spent ?? 0,
@@ -1163,6 +1167,8 @@ export async function getRegisterDataAction(
       .order("price_cents", { ascending: true }),
   ]);
   if (packagesResult.error) throw new Error(packagesResult.error.message);
+
+  const paymentStatuses = new Map([...paymentDetails].map(([id, detail]) => [id, detail.status]));
 
   // The existing checkout RPC only allows a first-visit package conversion
   // when this booking consumed the eligible starter credit. Never infer that
@@ -1188,6 +1194,8 @@ export async function getRegisterDataAction(
     credits_spent: r.credits_spent ?? 0,
     spots_count: r.spots_count ?? 1,
     payment_status: paymentStatuses.get(r.id) ?? "payment_due",
+    renewal_due: paymentDetails.get(r.id)?.renewalDue ?? false,
+    payment_review: paymentDetails.get(r.id)?.paymentReview ?? false,
     eligible_starter: starterByBooking.get(r.id) ?? false,
   }));
 

@@ -17,7 +17,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { createOAuthClient } from "./oauth";
 import { decryptToken } from "./crypto";
 import {
-  getBookingPaymentStatuses,
+  getBookingPaymentDetails,
   type BookingPaymentStatus,
 } from "@/lib/bookingPaymentStatus.server";
 import type { BookingStatus, SessionStatus, Studio } from "@/lib/types";
@@ -62,6 +62,8 @@ type BookingForSync = {
   email: string | null;
   phone: string | null;
   payment_status: BookingPaymentStatus;
+  renewal_due: boolean;
+  payment_review: boolean;
 };
 
 export class StudioNotConnectedError extends Error {
@@ -310,7 +312,7 @@ function bookingEventBody(
       : `${booking.name} guest ${spotIndex}`;
   const description: string[] = [];
   const paymentLabel =
-    booking.payment_status === "package" ? "PACKAGE" : "PAYMENT DUE";
+    booking.payment_review ? "PAYMENT HISTORY REVIEW" : booking.renewal_due ? "PAYMENT DUE · RENEWAL (CLASS COVERED)" : booking.payment_status === "package" ? "PACKAGE" : "PAYMENT DUE";
 
   description.push(`Payment: ${paymentLabel}`);
 
@@ -631,7 +633,7 @@ export async function syncSessionById(sessionId: string): Promise<SyncResult> {
       };
     });
 
-    const paymentStatuses = await getBookingPaymentStatuses(
+    const paymentDetails = await getBookingPaymentDetails(
       baseBookings.map((booking) => ({
         id: booking.id,
         customerId: booking.customer_id,
@@ -644,7 +646,9 @@ export async function syncSessionById(sessionId: string): Promise<SyncResult> {
 
     const bookings: BookingForSync[] = baseBookings.map((booking) => ({
       ...booking,
-      payment_status: paymentStatuses.get(booking.id) ?? "payment_due",
+      payment_status: paymentDetails.get(booking.id)?.status ?? "payment_due",
+      renewal_due: paymentDetails.get(booking.id)?.renewalDue ?? false,
+      payment_review: paymentDetails.get(booking.id)?.paymentReview ?? false,
     }));
 
     let created = 0;

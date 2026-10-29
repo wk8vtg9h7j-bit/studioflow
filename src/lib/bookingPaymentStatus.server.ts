@@ -1,202 +1,72 @@
 import "server-only";
-
 import { createServiceClient } from "@/lib/supabase/server";
-
-export type BookingPaymentStatus = "package" | "payment_due";
-
-export type BookingPaymentInput = {
-  id: string;
-  customerId: string;
-  creditsSpent: number;
-  pool: string;
-  bookedAt?: string;
-  status?: string;
-};
-
-type LedgerRow = {
-  id: string;
-  customer_id: string;
-  delta: number;
-  reason: string;
-  expires_at: string | null;
-  created_at: string;
-  booking_id: string | null;
-  pool: string | null;
-};
-
-type Bucket = {
-  remaining: number;
-  expiresAt: number | null;
-  paid: boolean;
-};
-
+import { calculateBookingPaymentDetails, type PaymentLedgerRow, type PaymentDetail } from "./bookingPaymentHistory";
+import type { BookingPaymentInput, BookingPaymentStatus } from "./bookingPaymentHistory";
+export type { BookingPaymentInput, BookingPaymentStatus } from "./bookingPaymentHistory";
 const PAGE_SIZE = 1000;
 
-/**
- * Returns whether each booking is covered by a genuinely paid package.
- *
- * Starter/manual credits are intentionally NOT treated as paid; purchased single-class credits ARE. We replay
- * the same FIFO ledger order as credit_balance(), while preserving the source
- * of each positive bucket. A refunded paid-package credit stays paid.
- */
-export async function getBookingPaymentStatuses(
-  bookings: BookingPaymentInput[],
-): Promise<Map<string, BookingPaymentStatus>> {
-  const result = new Map<string, BookingPaymentStatus>();
-  if (bookings.length === 0) return result;
-
-  const customerIds = Array.from(
-    new Set(bookings.map((booking) => booking.customerId).filter(Boolean)),
-  );
-  if (customerIds.length === 0) {
-    for (const booking of bookings) result.set(booking.id, "payment_due");
-    return result;
-  }
-
+/** Always evaluate the full history, independently of the day/class on screen. */
+export async function getBookingPaymentDetails(bookings: BookingPaymentInput[]): Promise<Map<string, PaymentDetail>> {
+  if (!bookings.length) return new Map();
   const service = createServiceClient();
-  const ledgerRows: LedgerRow[] = [];
-
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await service
-      .from("credit_ledger")
-      .select(
-        "id,customer_id,delta,reason,expires_at,created_at,booking_id,pool",
-      )
-      .in("customer_id", customerIds)
-      .order("created_at", { ascending: true })
-      .order("id", { ascending: true })
-      .range(from, from + PAGE_SIZE - 1);
-
-    if (error) throw error;
-
-    const page = (data ?? []) as unknown as LedgerRow[];
-    ledgerRows.push(...page);
-    if (page.length < PAGE_SIZE) break;
-  }
-
-  // Checkouts are explicit proof that a specific class was paid. A later
-  // unrelated package purchase must not be needed to establish this link.
-  const checkoutCoveredIds = new Set<string>();
-  for (let offset = 0; offset < bookings.length; offset += 200) {
-    const ids = bookings.slice(offset, offset + 200).map((row) => row.id);
-    const { data: receipts, error: receiptError } = await service
-      .from("class_checkouts")
-      .select("booking_id")
-      .in("booking_id", ids);
-    if (receiptError) throw receiptError;
-    for (const receipt of receipts ?? []) checkoutCoveredIds.add(receipt.booking_id);
-  }
-
-  const bucketsByCustomerPool = new Map<string, Bucket[]>();
-  const paidCoveredBookingIds = new Set<string>();
-
-  const bucketKey = (customerId: string, pool: string | null | undefined) =>
-    `${customerId}:${pool ?? "regular"}`;
-
-  for (const row of ledgerRows) {
-    const key = bucketKey(row.customer_id, row.pool);
-    const buckets = bucketsByCustomerPool.get(key) ?? [];
-
-    if (row.delta > 0) {
-      const refundedPaidBooking =
-        row.reason === "refund" &&
-        row.booking_id !== null &&
-        paidCoveredBookingIds.has(row.booking_id);
-
-      buckets.push({
-        remaining: row.delta,
-        expiresAt: row.expires_at ? Date.parse(row.expires_at) : null,
-        paid: row.reason === "purchase" || row.reason === "single_class_credit" || refundedPaidBooking,
+  const customerIds = [...new Set(bookings.map(b => b.customerId).filter(Boolean))];
+  const ledger: PaymentLedgerRow[] = [];
+  const history = new Map<string, BookingPaymentInput>();
+  for (let offset = 0; offset < customerIds.length; offset += 100) {
+    const ids = customerIds.slice(offset, offset + 100);
+    for (let from = 0; ; from += PAGE_SIZE) {
+      const { data, error } = await service.from("credit_ledger")
+        .select("id,customer_id,delta,reason,expires_at,created_at,booking_id,pool,package_id")
+        .in("customer_id", ids).order("created_at", { ascending: true })
+        .order("id", { ascending: true }).range(from, from + PAGE_SIZE - 1);
+      if (error) throw error;
+      ledger.push(...(data ?? []) as PaymentLedgerRow[]);
+      if ((data ?? []).length < PAGE_SIZE) break;
+    }
+    for (let from = 0; ; from += PAGE_SIZE) {
+      const { data, error } = await service.from("bookings")
+        .select("id,customer_id,credits_spent,spots_count,booked_at,status,session:sessions(starts_at,status,class_type:class_types(pool))")
+        .in("customer_id", ids).in("status", ["booked", "attended", "no_show"])
+        .order("id", { ascending: true }).range(from, from + PAGE_SIZE - 1);
+      if (error) throw error;
+      type Row = { id: string; customer_id: string; credits_spent: number | null; spots_count: number | null;
+        booked_at: string; status: string; session: { starts_at: string; status: string; class_type: { pool: string | null } | null } | null };
+      for (const row of (data ?? []) as unknown as Row[]) history.set(row.id, {
+        id: row.id, customerId: row.customer_id, creditsSpent: row.credits_spent ?? row.spots_count ?? 1,
+        bookedAt: row.booked_at, status: row.status, startsAt: row.session?.starts_at,
+        sessionStatus: row.session?.status, pool: row.session?.class_type?.pool ?? "regular",
       });
-      bucketsByCustomerPool.set(key, buckets);
-      continue;
-    }
-
-    if (row.delta >= 0) continue;
-
-    let owed = -row.delta;
-    let paidTaken = 0;
-    const spentAt = Date.parse(row.created_at);
-
-    for (const bucket of buckets) {
-      if (owed <= 0) break;
-      if (bucket.remaining <= 0) continue;
-      if (bucket.expiresAt !== null && bucket.expiresAt <= spentAt) continue;
-
-      const take = Math.min(owed, bucket.remaining);
-      bucket.remaining -= take;
-      owed -= take;
-      if (bucket.paid) paidTaken += take;
-    }
-
-    if (
-      row.reason === "booking" &&
-      row.booking_id &&
-      owed === 0 &&
-      paidTaken >= -row.delta
-    ) {
-      paidCoveredBookingIds.add(row.booking_id);
+      if ((data ?? []).length < PAGE_SIZE) break;
     }
   }
-
-  const nowMs = Date.now();
-  const activePaidByCustomerPool = new Map<string, number>();
-  for (const booking of bookings) {
-    const key = bucketKey(booking.customerId, booking.pool);
-    if (activePaidByCustomerPool.has(key)) continue;
-
-    const paidRemaining = (bucketsByCustomerPool.get(key) ?? []).reduce(
-      (sum, bucket) => {
-        if (!bucket.paid || bucket.remaining <= 0) return sum;
-        if (bucket.expiresAt !== null && bucket.expiresAt <= nowMs) return sum;
-        return sum + bucket.remaining;
-      },
-      0,
-    );
-    activePaidByCustomerPool.set(key, paidRemaining);
-  }
-
-  for (const booking of bookings) {
-    const bookingAlreadyPaid = paidCoveredBookingIds.has(booking.id);
-    const creditsNeeded = Math.max(booking.creditsSpent, 1);
-    const activePaidCredits =
-      activePaidByCustomerPool.get(
-        bucketKey(booking.customerId, booking.pool),
-      ) ?? 0;
-
-    result.set(
-      booking.id,
-      checkoutCoveredIds.has(booking.id) || bookingAlreadyPaid ||
-      // Legacy records have no linked receipts. Preserve their historical
-      // classifications, but new bookings require explicit payment evidence.
-      ((!booking.bookedAt || booking.bookedAt < "2026-10-11T17:00:00.000Z")
-        && activePaidCredits >= creditsNeeded)
-        ? "package"
-        : "payment_due",
-    );
-  }
-
-  // Explicit admin adjudications take precedence. These are NOT receipts and
-  // never alter credit balances or revenue. A missing pre-migration table
-  // leaves the existing automatic calculation intact.
-  for (let offset = 0; offset < bookings.length; offset += 200) {
-    const ids = bookings.slice(offset, offset + 200).map((b) => b.id);
-    const { data: overrides, error: overrideError } = await service
-      .from("booking_payment_overrides")
-      .select("booking_id,status")
-      .in("booking_id", ids);
+  // Keep authoritative history metadata even when callers only supply one class.
+  for (const booking of bookings) if (!history.has(booking.id)) history.set(booking.id, booking);
+  const checkoutIds = new Set<string>();
+  const overrides = new Map<string, BookingPaymentStatus>();
+  const allIds = [...history.keys()];
+  let overridesAvailable = true;
+  for (let offset = 0; offset < allIds.length; offset += 200) {
+    const ids = allIds.slice(offset, offset + 200);
+    const { data: receipts, error } = await service.from("class_checkouts").select("booking_id").in("booking_id", ids);
+    if (error) throw error;
+    for (const receipt of receipts ?? []) checkoutIds.add(receipt.booking_id);
+    if (!overridesAvailable) continue;
+    const { data, error: overrideError } = await service.from("booking_payment_overrides")
+      .select("booking_id,status").in("booking_id", ids);
     if (overrideError) {
-      if (overrideError.code === "42P01" || overrideError.code === "PGRST205") break;
+      if (overrideError.code === "42P01" || overrideError.code === "PGRST205") { overridesAvailable = false; continue; }
       throw overrideError;
     }
-    for (const override of overrides ?? []) {
-      if (override.status === "package" || override.status === "payment_due") {
-        result.set(override.booking_id, override.status);
-      }
-    }
+    for (const row of data ?? []) if (row.status === "package" || row.status === "payment_due") overrides.set(row.booking_id, row.status);
   }
+  const allDetails = calculateBookingPaymentDetails([...history.values()], ledger, checkoutIds, overrides);
+  return new Map(bookings.map(b => [b.id, allDetails.get(b.id)!]));
+}
 
-  return result;
+/** Financial status deliberately excludes renewal reminders. */
+export async function getBookingPaymentStatuses(bookings: BookingPaymentInput[]): Promise<Map<string, BookingPaymentStatus>> {
+  const details = await getBookingPaymentDetails(bookings);
+  return new Map([...details].map(([id, detail]) => [id, detail.status]));
 }
 
 /**
@@ -209,29 +79,30 @@ export async function queueCustomerBookingCalendarSync(
 ): Promise<void> {
   const service = createServiceClient();
 
-  const { data: bookings, error } = await service
-    .from("bookings")
-    .select("session_id")
-    .eq("customer_id", customerId)
-    .in("status", ["booked", "attended", "no_show"]);
-
-  if (error) throw error;
-
-  const sessionIds = Array.from(
-    new Set(
-      (bookings ?? [])
-        .map((row) => (row as { session_id: string | null }).session_id)
-        .filter((id): id is string => Boolean(id)),
-    ),
-  );
+  const sessionIds: string[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await service.from("bookings").select("id,session_id")
+      .eq("customer_id", customerId).in("status", ["booked", "attended", "no_show"])
+      .order("id", { ascending: true }).range(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    for (const row of data ?? []) if (row.session_id) sessionIds.push(row.session_id);
+    if ((data ?? []).length < PAGE_SIZE) break;
+  }
 
   if (sessionIds.length === 0) return;
 
-  const { error: updateError } = await service
-    .from("sessions")
-    .update({ google_sync_pending_at: new Date().toISOString() })
-    .in("id", sessionIds)
-    .gte("starts_at", new Date().toISOString());
+  const uniqueIds = [...new Set(sessionIds)];
+  for (let offset = 0; offset < uniqueIds.length; offset += 100) {
+    const { error } = await service.from("sessions")
+      .update({ google_sync_pending_at: new Date().toISOString() })
+      .in("id", uniqueIds.slice(offset, offset + 100))
+      .gte("starts_at", new Date().toISOString());
+    if (error) throw error;
+  }
+}
 
-  if (updateError) throw updateError;
+/** Booking is already committed: a queue failure must not suggest booking it again. */
+export async function queueCustomerBookingCalendarSyncSafely(customerId: string): Promise<void> {
+  try { await queueCustomerBookingCalendarSync(customerId); }
+  catch (error) { console.warn("Booking saved; payment calendar queue failed", error); }
 }

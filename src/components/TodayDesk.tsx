@@ -55,10 +55,12 @@ export async function TodayDesk({role,profileId,date}:{role:"admin"|"instructor"
         <div><p className="text-sm font-medium text-ink">{b.name}{b.spots>1?" · "+b.spots+" spots":""}</p>
          <p className="mt-1 text-xs text-ink-muted">{b.status.replaceAll("_"," ")} · {b.creditsSpent} booking credit(s) · {b.firstVisit?"First visit":b.pool==="private"?"Private":"Regular"}</p>
         </div>
-        <span className={"badge "+(b.payment==="package"?"bg-emerald-50 text-emerald-700":"bg-amber-50 text-amber-800")}>
-         {b.payment==="package"?"PAID / PACKAGE":"PAYMENT DUE"}
+        <span className={"badge "+(b.payment==="package"&&!b.renewalDue&&!b.paymentReview?"bg-emerald-50 text-emerald-700":"bg-amber-50 text-amber-800")}>
+         {b.paymentReview?"PAYMENT HISTORY REVIEW":b.renewalDue?"PAYMENT DUE · RENEWAL":b.payment==="package"?"PAID / PACKAGE":"PAYMENT DUE"}
         </span>
        </div>
+       {b.paymentReview&&<p className="text-xs text-amber-800">Historical payment evidence needs staff review before collecting payment.</p>}
+       {b.renewalDue&&<p className="text-xs text-amber-800">This class is covered. Renew the package for future classes.</p>}
        <div className="flex flex-wrap items-start gap-3">
         <CheckInActions bookingId={b.id} status={b.status} canMark={Date.parse(session.at)<=Date.now()}/>
         {b.status==="attended"&&b.payment==="payment_due"&&<CheckoutControl

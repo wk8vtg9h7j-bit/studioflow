@@ -1,13 +1,14 @@
 import "server-only";
+import { isDeskDay } from "@/lib/deskDate";
 import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import { createServiceClient } from "@/lib/supabase/server";
-import { getBookingPaymentStatuses } from "@/lib/bookingPaymentStatus.server";
+import { getBookingPaymentDetails } from "@/lib/bookingPaymentStatus.server";
 import { type CheckoutPackage } from "@/components/CheckoutControl";
 
 const TZ = "Asia/Ho_Chi_Minh";
 export type DeskBooking = {
   id: string; customerId: string; name: string; status: string;
-  spots: number; creditsSpent: number; payment: "package" | "payment_due";
+  spots: number; creditsSpent: number; payment: "package" | "payment_due"; renewalDue: boolean; paymentReview: boolean;
   eligibleStarter: boolean; firstVisit:boolean; pool: string;
 };
 export type DeskSession = {
@@ -35,9 +36,7 @@ export async function loadTodayDesk(role:"admin"|"instructor",profileId:string,r
  const svc=createServiceClient();
  const now=new Date();
  const today=formatInTimeZone(now,TZ,"yyyy-MM-dd");
- const valid=requestedDay&&/^\\d{4}-\\d{2}-\\d{2}$/.test(requestedDay)&&
-   !Number.isNaN(Date.parse(requestedDay+"T12:00:00Z"));
- const day=valid?requestedDay!:today;
+ const day=isDeskDay(requestedDay)?requestedDay:today;
  const from=fromZonedTime(day+"T00:00:00",TZ).toISOString();
  const until=fromZonedTime(formatInTimeZone(new Date(Date.parse(from)+86400000),TZ,"yyyy-MM-dd")+"T00:00:00",TZ).toISOString();
  let instructorId:string|null=null;
@@ -78,10 +77,11 @@ export async function loadTodayDesk(role:"admin"|"instructor",profileId:string,r
   .eq("status","attended").limit(1000);
  const visitedCount=new Map<string,number>();
  for(const row of attendedHistory||[])visitedCount.set(row.customer_id,(visitedCount.get(row.customer_id)||0)+1);
- const paymentMap=await getBookingPaymentStatuses(visibleBookings.map(b=>({
+ const paymentDetails=await getBookingPaymentDetails(visibleBookings.map(b=>({
   id:b.id,customerId:b.customer_id,creditsSpent:b.credits_spent,
   pool:poolById.get(b.session_id)||"regular",bookedAt:b.booked_at,status:b.status
  })));
+ const paymentMap=new Map([...paymentDetails].map(([id, detail])=>[id, detail.status]));
  const paymentDue=visibleBookings.filter(b=>b.status==="attended"&&paymentMap.get(b.id)==="payment_due");
  // Eligibility reads only matching booked credit sources. Requests run in
  // parallel rather than holding up the page one network trip per customer.
@@ -96,7 +96,7 @@ export async function loadTodayDesk(role:"admin"|"instructor",profileId:string,r
   list.push({id:b.id,customerId:b.customer_id,
    name:b.customer?.profile?.full_name||b.customer?.name||b.customer?.profile?.email||b.customer?.email||"Customer",
    status:b.status,spots:b.spots_count||1,creditsSpent:b.credits_spent||1,
-   payment:paymentMap.get(b.id)||"payment_due",eligibleStarter:starter.get(b.id)||false,
+   payment:paymentMap.get(b.id)||"payment_due",renewalDue:paymentDetails.get(b.id)?.renewalDue??false,paymentReview:paymentDetails.get(b.id)?.paymentReview??false,eligibleStarter:starter.get(b.id)||false,
    firstVisit:(visitedCount.get(b.customer_id)||0)<=(b.status==="attended"?1:0),
    pool:poolById.get(b.session_id)||"regular"});
   rowsBySession.set(b.session_id,list);

@@ -15,6 +15,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { queueCustomerBookingCalendarSyncSafely } from "@/lib/bookingPaymentStatus.server";
 import { getLocale } from "@/lib/locale-server";
 
 // Keep in step with CANCEL_WINDOW_MS on the my-bookings page.
@@ -35,12 +36,13 @@ export async function cancelBookingAction(formData: FormData) {
   // anyone else's. We only need the start time to check the window.
   const { data: bookingRow } = await supabase
     .from("bookings")
-    .select("id,session:sessions(id,starts_at)")
+    .select("id,customer_id,session:sessions(id,starts_at)")
     .eq("id", bookingId)
     .maybeSingle();
 
   const booking = bookingRow as unknown as {
     id: string;
+    customer_id: string;
     session: { id: string; starts_at: string } | null;
   } | null;
 
@@ -67,6 +69,10 @@ export async function cancelBookingAction(formData: FormData) {
     redirect(`/my-bookings?error=${encodeURIComponent(error.message)}`);
   }
 
+  await queueCustomerBookingCalendarSyncSafely(booking.customer_id);
+  revalidatePath("/admin/today");
+  revalidatePath("/admin/sessions");
+  revalidatePath("/instructor/today");
   revalidatePath("/my-bookings");
   revalidatePath("/book");
   redirect(

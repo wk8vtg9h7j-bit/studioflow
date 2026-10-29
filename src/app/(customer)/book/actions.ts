@@ -15,6 +15,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { queueCustomerBookingCalendarSyncSafely } from "@/lib/bookingPaymentStatus.server";
 import { getLocale } from "@/lib/locale-server";
 
 export async function bookSessionAction(formData: FormData) {
@@ -66,6 +67,8 @@ export async function bookSessionAction(formData: FormData) {
     redirect(`/book?error=${encodeURIComponent(error.message)}`);
   }
 
+  await queueCustomerBookingCalendarSyncSafely(customerId);
+
   if (needsPaymentNotice && acknowledged) {
     await service
       .from("customers")
@@ -80,6 +83,9 @@ export async function bookSessionAction(formData: FormData) {
       ? String((data as { status: unknown }).status)
       : "booked";
 
+  revalidatePath("/admin/today");
+  revalidatePath("/admin/sessions");
+  revalidatePath("/instructor/today");
   revalidatePath("/book");
   revalidatePath("/my-bookings");
 
