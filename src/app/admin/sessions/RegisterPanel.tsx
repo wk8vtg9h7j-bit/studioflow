@@ -172,14 +172,17 @@ export function RegisterPanel({
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className={"rounded-full px-2.5 py-1 text-[11px] font-semibold " +
-                      (paymentDue ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-700")}>
-                      {paymentDue ? "PAYMENT DUE" : "PAID / PACKAGE"}
+                      (paymentDue || row.renewal_due || row.payment_review ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-700")}>
+                      {row.payment_review ? "PAYMENT HISTORY REVIEW" : row.renewal_due ? "PAYMENT DUE · RENEWAL" : paymentDue ? "PAYMENT DUE" : "PAID / PACKAGE"}
                     </span>
                     <span className={"rounded-full px-2.5 py-1 text-[11px] font-semibold " + STATUS_STYLE[row.status]}>
                       {STATUS_LABEL[row.status]}
                     </span>
                   </div>
                 </div>
+
+                {row.payment_review && <p className="text-xs text-amber-800">Historical payment evidence needs staff review before collecting payment.</p>}
+                {row.renewal_due && <p className="text-xs text-amber-800">This class is covered. Renew the package for future classes.</p>}
 
                 {activeView === "payments" && paymentDue && row.status === "attended" && (
                   <div className="min-w-0 max-w-full rounded-xl border border-stone-200 bg-stone-50/70 p-2.5 sm:p-3">
