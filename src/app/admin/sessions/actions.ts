@@ -1087,6 +1087,7 @@ export type RegisterRow = {
   renewal_due: boolean;
   payment_review: boolean;
   eligible_starter: boolean;
+  no_show_due: { amount_cents: number; currency: string; status: "due" | "paid" } | null;
 };
 
 export type RegisterData = {
@@ -1151,7 +1152,7 @@ export async function getRegisterDataAction(
   // The register loads only when an admin opens a class; avoid fetching
   // packages, eligibility and credit history for every class on the list.
   const svc = createServiceClient();
-  const [paymentDetails, packagesResult] = await Promise.all([
+  const [paymentDetails, packagesResult, noShowDuesResult] = await Promise.all([
     getBookingPaymentDetails(rows.map((row) => ({
       id: row.id,
       customerId: row.customer_id,
@@ -1165,8 +1166,17 @@ export async function getRegisterDataAction(
       .eq("active", true)
       .gt("price_cents", 0)
       .order("price_cents", { ascending: true }),
+    svc.from("no_show_payment_dues")
+      .select("booking_id,amount_cents,currency,status")
+      .in("booking_id", rows.length ? rows.map(row => row.id) : ["00000000-0000-0000-0000-000000000000"]),
   ]);
   if (packagesResult.error) throw new Error(packagesResult.error.message);
+  if (noShowDuesResult.error) throw new Error(noShowDuesResult.error.message);
+  const noShowDues = new Map(
+    ((noShowDuesResult.data ?? []) as Array<{
+      booking_id: string; amount_cents: number; currency: string; status: "due" | "paid";
+    }>).map(due => [due.booking_id, due]),
+  );
 
   const paymentStatuses = new Map([...paymentDetails].map(([id, detail]) => [id, detail.status]));
 
@@ -1197,6 +1207,7 @@ export async function getRegisterDataAction(
     renewal_due: paymentDetails.get(r.id)?.renewalDue ?? false,
     payment_review: paymentDetails.get(r.id)?.paymentReview ?? false,
     eligible_starter: starterByBooking.get(r.id) ?? false,
+    no_show_due: noShowDues.get(r.id) ?? null,
   }));
 
   const sessionInfo = session as
@@ -1276,4 +1287,32 @@ export async function setBookingStatusAction(
 
   revalidatePath("/admin/sessions");
   return { ok: true };
+}
+
+/**
+ * Record actual payment for a no-show fee. The restored credit is retained;
+ * the due is not a package purchase and must not issue another credit.
+ */
+export async function settleNoShowDueAction(
+  _prev: SessionActionState,
+  formData: FormData,
+): Promise<SessionActionState> {
+  const profile = await requireRole("admin", "/admin/sessions");
+  const bookingId = String(formData.get("booking_id") ?? "");
+  const method = String(formData.get("payment_method") ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(bookingId)) return { error: "Invalid booking." };
+  if (!["qr", "card", "cash"].includes(method)) {
+    return { error: "Choose a valid payment method." };
+  }
+  const svc = createServiceClient();
+  const { error } = await svc.rpc("settle_no_show_payment_due", {
+    p_booking: bookingId,
+    p_method: method,
+    p_staff: profile.id,
+  });
+  if (error) return { error: error.message };
+  revalidatePath("/admin/sessions");
+  revalidatePath("/admin/payments");
+  revalidatePath("/admin/customers");
+  return { ok: true, message: "No-show payment recorded. Restored credit is retained." };
 }
