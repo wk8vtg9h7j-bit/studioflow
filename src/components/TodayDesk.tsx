@@ -63,7 +63,7 @@ export async function TodayDesk({role,profileId,date}:{role:"admin"|"instructor"
        {b.paymentReview&&<p className="text-xs text-amber-800">Historical payment evidence needs staff review before collecting payment.</p>}
        {b.renewalDue&&<p className="text-xs text-amber-800">This class is covered. Renew the package for future classes.</p>}
        <div className="flex flex-wrap items-start gap-3">
-        <CheckInActions bookingId={b.id} status={b.status} canMark={Date.parse(session.at)<=Date.now()}/>
+        {(role==="admin"||session.instructorProfileId===profileId)&&<CheckInActions bookingId={b.id} status={b.status} canMark={Date.parse(session.at)<=Date.now()}/> }
         {role==="admin"&&b.checkoutId&&<UndoCheckoutButton checkoutId={b.checkoutId}/>}
         {b.status==="attended"&&b.payment==="payment_due"&&!b.checkoutId&&<CheckoutControl
            bookingId={b.id} pool={b.pool} creditsSpent={b.creditsSpent}
