@@ -25,6 +25,7 @@ test('staff desk distinguishes renewal, real debt and historical review; collect
  vm.runInNewContext(compiled,{module,exports:module.exports,Date,Map,Set,require(name){
   if(name==='next/link')return {__esModule:true,default:({children,...props})=>React.createElement('a',props,children)};
   if(name==='@/lib/checkout/desk.server')return {loadTodayDesk:async()=>data};
+  if(name==='@/components/UndoCheckoutButton')return {UndoCheckoutButton:()=>null};
   if(name==='@/components/CheckoutControl')return {
    CheckInActions:()=>null,
    CheckoutControl:({bookingId})=>React.createElement('button',{'data-checkout':bookingId},'Collect'),
@@ -39,4 +40,14 @@ test('staff desk distinguishes renewal, real debt and historical review; collect
  assert.equal((markup.match(/data-checkout=/g)||[]).length,1);
  assert.ok(markup.includes('data-checkout="unpaid"'));
  for(const id of ['earlier','final','review'])assert.ok(!markup.includes(`data-checkout="${id}"`));
+});
+
+test('admin reversal is offered only when a recorded checkout exists', async()=>{
+ const source=fs.readFileSync(new URL('../src/components/TodayDesk.tsx',import.meta.url),'utf8');
+ assert.match(source,/role==="admin"&&b\.checkoutId&&<UndoCheckoutButton/);
+ assert.match(source,/!b\.checkoutId&&<CheckoutControl/);
+ const action=fs.readFileSync(new URL('../src/lib/checkout/actions.ts',import.meta.url),'utf8');
+ assert.match(action,/requireRole\("admin", "\/admin\/today"\)/);
+ assert.match(action,/undo_class_checkout/);
+ assert.doesNotMatch(action,/Only the assigned instructor may collect payment/);
 });
