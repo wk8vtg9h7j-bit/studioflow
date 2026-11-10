@@ -13,7 +13,7 @@ export type DeskBooking = {
 };
 export type DeskSession = {
   id:string; name:string; at:string; studio:string; slug:string;
-  capacity:number; filler:number; instructor:string; pool:string;
+  capacity:number; filler:number; instructor:string; instructorProfileId:string|null; pool:string;
   bookings:DeskBooking[];
 };
 export type DeskData = {
@@ -24,7 +24,7 @@ type Session = {
  id:string;title:string|null;starts_at:string;capacity:number;filler_seats:number|null;
  studio:{name:string;slug:string;timezone:string|null}|null;
  class_type:{name:string;pool:string|null}|null;
- instructor:{id:string;display_name:string}|null;
+ instructor:{id:string;display_name:string;profile_id:string|null}|null;
 };
 type Booking = {
  id:string; customer_id:string;session_id:string;status:string;spots_count:number|null;
@@ -39,16 +39,12 @@ export async function loadTodayDesk(role:"admin"|"instructor",profileId:string,r
  const day=isDeskDay(requestedDay)?requestedDay:today;
  const from=fromZonedTime(day+"T00:00:00",TZ).toISOString();
  const until=fromZonedTime(formatInTimeZone(new Date(Date.parse(from)+86400000),TZ,"yyyy-MM-dd")+"T00:00:00",TZ).toISOString();
- let instructorId:string|null=null;
- if(role==="instructor"){
-  const {data}=await svc.from("instructors").select("id").eq("profile_id",profileId).maybeSingle();
-  instructorId=data?.id||null;
- }
- let query=svc.from("sessions")
-  .select("id,title,starts_at,capacity,filler_seats,studio:studios(name,slug,timezone),class_type:class_types(name,pool),instructor:instructors(id,display_name)")
+ // Every staff desk can view sessions across branches and collect payments.
+ // The server still limits attendance edits to the assigned teacher.
+ const query=svc.from("sessions")
+  .select("id,title,starts_at,capacity,filler_seats,studio:studios(name,slug,timezone),class_type:class_types(name,pool),instructor:instructors(id,display_name,profile_id)")
   .gte("starts_at",from).lt("starts_at",until).neq("status","cancelled")
   .order("starts_at",{ascending:true});
- if(role==="instructor")query=query.eq("instructor_id",instructorId||"00000000-0000-0000-0000-000000000000");
  const [sessionRes,packageRes]=await Promise.all([
   query,svc.from("packages").select("id,name,credits,price_cents,currency,pool")
    .eq("active",true).gt("price_cents",0).order("price_cents",{ascending:true})
@@ -109,7 +105,7 @@ export async function loadTodayDesk(role:"admin"|"instructor",profileId:string,r
  const sessions=visibleSessions.map(s=>({
   id:s.id,name:s.title||s.class_type?.name||"Pilates class",at:s.starts_at,
   studio:s.studio?.name||"Studio",slug:s.studio?.slug||"",
-  capacity:s.capacity,filler:s.filler_seats||0,instructor:s.instructor?.display_name||"Unassigned",
+  capacity:s.capacity,filler:s.filler_seats||0,instructor:s.instructor?.display_name||"Unassigned",instructorProfileId:s.instructor?.profile_id||null,
   pool:s.class_type?.pool||"regular",bookings:rowsBySession.get(s.id)||[]
  }));
  return {day,sessions,packages:(packageRes.data||[]) as CheckoutPackage[],
