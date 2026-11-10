@@ -4,8 +4,9 @@
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { CheckoutControl } from "@/components/CheckoutControl";
+import { formatMoney } from "@/lib/format";
 import type { BookingStatus } from "@/lib/types";
-import { getRegisterDataAction, setBookingStatusAction } from "./actions";
+import { getRegisterDataAction, setBookingStatusAction, settleNoShowDueAction } from "./actions";
 import type { RegisterData } from "./actions";
 
 type RegisterView = "payments" | "attendance";
@@ -36,6 +37,7 @@ export function RegisterPanel({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [noShowMethods, setNoShowMethods] = useState<Record<string, "qr" | "card" | "cash">>({});
 
   useEffect(() => setActiveView(view), [view]);
 
@@ -73,6 +75,26 @@ export function RegisterPanel({
     });
   }
 
+  function collectNoShowPayment(bookingId: string) {
+    setError(null);
+    setNotice(null);
+    startTransition(async () => {
+      try {
+        const form = new FormData();
+        form.set("booking_id", bookingId);
+        form.set("payment_method", noShowMethods[bookingId] ?? "qr");
+        const result = await settleNoShowDueAction({}, form);
+        if (result.error) setError(result.error);
+        else {
+          setNotice(result.message ?? "No-show fee paid.");
+          await load();
+        }
+      } catch {
+        setError("Could not record the no-show payment. Please retry.");
+      }
+    });
+  }
+
   if (!data) {
     return (
       <div className="space-y-3" aria-live="polite">
@@ -91,8 +113,11 @@ export function RegisterPanel({
   const activeBookings = data.roster.filter(row =>
     row.status === "booked" || row.status === "attended",
   );
-  const due = activeBookings.filter(row => row.payment_status === "payment_due").length;
-  const paymentRows = [...activeBookings].sort((a, b) => {
+  const unpaidNoShows = data.roster.filter(row =>
+    row.status === "no_show" && row.no_show_due?.status === "due",
+  );
+  const due = activeBookings.filter(row => row.payment_status === "payment_due").length + unpaidNoShows.length;
+  const paymentRows = [...activeBookings, ...unpaidNoShows].sort((a, b) => {
     if (a.payment_status !== b.payment_status) {
       return a.payment_status === "payment_due" ? -1 : 1;
     }
@@ -160,7 +185,8 @@ export function RegisterPanel({
       ) : (
         <ul className="divide-y divide-stone-200 overflow-hidden rounded-xl border border-stone-200 bg-white">
           {rows.map(row => {
-            const paymentDue = row.payment_status === "payment_due";
+            const noShowPaymentDue = row.status === "no_show" && row.no_show_due?.status === "due";
+            const paymentDue = row.payment_status === "payment_due" || noShowPaymentDue;
             return (
               <li key={row.id} className="min-w-0 space-y-3 p-3.5 sm:p-4">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -173,7 +199,7 @@ export function RegisterPanel({
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className={"rounded-full px-2.5 py-1 text-[11px] font-semibold " +
                       (paymentDue || row.renewal_due || row.payment_review ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-700")}>
-                      {row.payment_review ? "PAYMENT HISTORY REVIEW" : row.renewal_due ? "PAYMENT DUE · RENEWAL" : paymentDue ? "PAYMENT DUE" : "PAID / PACKAGE"}
+                      {row.no_show_due?.status === "paid" ? "NO-SHOW FEE PAID" : row.payment_review ? "PAYMENT HISTORY REVIEW" : row.renewal_due ? "PAYMENT DUE · RENEWAL" : noShowPaymentDue ? "PAYMENT DUE · NO SHOW" : paymentDue ? "PAYMENT DUE" : "PAID / PACKAGE"}
                     </span>
                     <span className={"rounded-full px-2.5 py-1 text-[11px] font-semibold " + STATUS_STYLE[row.status]}>
                       {STATUS_LABEL[row.status]}
@@ -181,6 +207,40 @@ export function RegisterPanel({
                   </div>
                 </div>
 
+                {noShowPaymentDue && row.no_show_due && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3">
+                    <p className="text-sm font-semibold text-amber-950">
+                      No-show fee · PAYMENT DUE {formatMoney(row.no_show_due.amount_cents, row.no_show_due.currency)}
+                    </p>
+                    <p className="mt-1 text-xs text-amber-800">
+                      One class credit has been returned. This is a separate unpaid no-show charge, not a package purchase.
+                    </p>
+                    {activeView === "payments" && (
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <label className="text-xs font-medium text-amber-900" htmlFor={`no-show-method-${row.id}`}>
+                          Payment method
+                        </label>
+                        <select
+                          id={`no-show-method-${row.id}`}
+                          className="input w-32"
+                          value={noShowMethods[row.id] ?? "qr"}
+                          onChange={event => setNoShowMethods(methods => ({
+                            ...methods, [row.id]: event.target.value as "qr" | "card" | "cash",
+                          }))}
+                          disabled={pending}
+                        >
+                          <option value="qr">QR</option>
+                          <option value="card">Card</option>
+                          <option value="cash">Cash</option>
+                        </select>
+                        <button type="button" className="btn-primary" disabled={pending}
+                          onClick={() => collectNoShowPayment(row.id)}>
+                          {pending ? "Saving…" : "Mark fee paid"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {row.payment_review && <p className="text-xs text-amber-800">Historical payment evidence needs staff review before collecting payment.</p>}
                 {row.renewal_due && <p className="text-xs text-amber-800">This class is covered. Renew the package for future classes.</p>}
 

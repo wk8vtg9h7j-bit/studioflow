@@ -113,7 +113,7 @@ type AttendRow = {
 
 type Payment = {
   id: string;
-  kind: "package" | "retail" | "attendance" | "single";
+  kind: "package" | "retail" | "attendance" | "single" | "no_show_fee";
   name: string;
   label: string;
   amount: number;
@@ -322,6 +322,23 @@ export default async function PaymentsPage({
       .eq("kind","single").gte("created_at",summaryLowerBound).lt("created_at",summaryUpperBound),
   ]);
 
+  // Actual no-show fee receipts belong to their original booking. Unpaid dues
+  // never count as revenue and do not appear in the daily payment totals.
+  const { data: noShowFeeData, error: noShowFeeError } = await svc
+    .from("no_show_payment_dues")
+    .select("booking_id,amount_cents,currency,payment_method,settled_at,customer:customers(name,email,profile:profiles(full_name,email))")
+    .eq("status", "paid")
+    .gte("settled_at", lowerBound < summaryLowerBound ? lowerBound : summaryLowerBound)
+    .lt("settled_at", upperBound > summaryUpperBound ? upperBound : summaryUpperBound)
+    .order("settled_at", { ascending: true })
+    .limit(1000);
+  if (noShowFeeError) throw new Error(noShowFeeError.message);
+  type NoShowFeePayment = {
+    booking_id: string; amount_cents: number; currency: string;
+    payment_method: string | null; settled_at: string; customer: CustomerRef | null;
+  };
+  const noShowFees = (noShowFeeData ?? []) as unknown as NoShowFeePayment[];
+
   const purchases = (purchaseData ?? []) as unknown as PurchaseRow[];
   const attendance = (attendData ?? []) as unknown as AttendRow[];
   const sales = (saleData ?? []) as unknown as SaleRow[];
@@ -371,6 +388,7 @@ export default async function PaymentsPage({
   const visiblePurchases = purchases.filter((p) => inRange(p.created_at));
   const visibleSales = sales.filter((s) => inRange(s.created_at));
   const visibleSingles=singles.filter(s=>inRange(s.created_at));
+  const visibleNoShowFees = noShowFees.filter(fee => inRange(fee.settled_at));
 
   const ensureDay = (date: string, iso: string): DayGroup => {
     let g = groups.get(date);
@@ -443,6 +461,19 @@ export default async function PaymentsPage({
       isNew:null,time:formatInTimeZone(new Date(row.created_at),TZ,"h:mm a"),at:row.created_at});
   }
 
+  for (const fee of visibleNoShowFees) {
+    const group = ensureDay(dayOf(fee.settled_at), fee.settled_at);
+    addTo(group.totals, fee.currency, fee.amount_cents);
+    group.paymentCount++;
+    group.payments.push({
+      id: fee.booking_id, kind: "no_show_fee", name: nameOf(fee.customer),
+      label: "No-show fee", amount: fee.amount_cents, currency: fee.currency,
+      method: methodOf(fee.payment_method), isNew: null,
+      time: formatInTimeZone(new Date(fee.settled_at), TZ, "h:mm a"),
+      at: fee.settled_at,
+    });
+  }
+
   for (const row of attendance) {
     if (!row.session || row.status !== "attended") continue;
     if (!inRange(row.session.starts_at)) continue;
@@ -499,6 +530,7 @@ export default async function PaymentsPage({
   }
 
   for(const row of visibleSingles)addTo(rangeTotals,row.currency,row.amount_cents);
+  for (const fee of visibleNoShowFees) addTo(rangeTotals, fee.currency, fee.amount_cents);
   const todayTotals: Totals = {};
   const weekTotals: Totals = {};
   const monthTotals: Totals = {};
@@ -543,6 +575,7 @@ export default async function PaymentsPage({
   }
 
   for(const row of summarySingles)addSummaryPayment(row.created_at,row.currency,row.amount_cents);
+  for (const fee of noShowFees) addSummaryPayment(fee.settled_at, fee.currency, fee.amount_cents);
   for (const row of summaryAttendance) {
     if (!row.session) continue;
     const key = dayOf(row.session.starts_at);
@@ -591,6 +624,7 @@ export default async function PaymentsPage({
   }
 
   for(const row of visibleSingles)addTo(byMethod[methodOf(row.payment_method)],row.currency,row.amount_cents);
+  for (const fee of visibleNoShowFees) addTo(byMethod[methodOf(fee.payment_method)], fee.currency, fee.amount_cents);
   // Retail has no new/returning notion — it only moves the method split.
   for (const r of visibleSales) {
     addTo(byMethod[methodOf(r.payment_method)], r.currency, r.total_cents);
@@ -764,6 +798,7 @@ export default async function PaymentsPage({
                               </span>
                             )}
                             {p.kind === "single" && <span className="badge bg-sky-50 text-sky-700">Single class</span>}
+                            {p.kind === "no_show_fee" && <span className="badge bg-amber-50 text-amber-800">No-show fee</span>}
                             {p.kind === "retail" && (
                               <span className="badge bg-amber-50 text-amber-700">
                                 Retail
@@ -787,7 +822,7 @@ export default async function PaymentsPage({
                           <span className="text-sm font-semibold tabular-nums text-ink">
                             {formatMoney(p.amount, p.currency)}
                           </span>
-                          {p.kind !== "attendance" && p.kind !== "single" && (
+                          {p.kind !== "attendance" && p.kind !== "single" && p.kind !== "no_show_fee" && (
                             <DeletePaymentButton
                               id={p.id}
                               kind={p.kind}
@@ -823,7 +858,7 @@ export default async function PaymentsPage({
               />
               <SummaryStat
                 label="Payments"
-                value={visiblePurchases.length + visibleSales.length}
+                value={visiblePurchases.length + visibleSales.length + visibleSingles.length + visibleNoShowFees.length}
               />
               <SummaryStat
                 label="Attended visits"
