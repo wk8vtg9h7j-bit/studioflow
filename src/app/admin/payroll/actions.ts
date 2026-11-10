@@ -36,10 +36,16 @@ export async function recalcPayrollAction(formData: FormData) {
       : null;
 
   const supabase = await createClient();
-  await supabase.rpc("recalc_payroll", {
+  const { data: existing, error: existingError } = await supabase.from("session_payroll").select("status").eq("session_id", sessionId).maybeSingle();
+  if (existingError) throw existingError;
+  if (existing && (existing.status === "paid" || existing.status === "admin_approved")) {
+    throw new Error("Approved or paid payroll is locked. Resolve through an audited adjustment instead.");
+  }
+  const { error } = await supabase.rpc("recalc_payroll", {
     p_session_id: sessionId,
     p_attendance,
   });
+  if (error) throw error;
 
   revalidatePath("/admin/payroll");
 }
@@ -54,15 +60,29 @@ export async function approvePayrollAction(formData: FormData) {
   if (!id) return;
 
   const supabase = await createClient();
-  await supabase
+  const { data: payroll, error: readError } = await supabase
+    .from("session_payroll")
+    .select("id, session_id, status, attendance_count, computed_amount, session:sessions(ends_at,status)")
+    .eq("id", id)
+    .single();
+  if (readError) throw readError;
+  if (!payroll || !["pending", "instructor_confirmed"].includes(payroll.status)) {
+    throw new Error("Only pending or instructor-confirmed payroll can be approved. Resolve disputes separately.");
+  }
+  const session = payroll.session as unknown as { ends_at: string; status: string } | null;
+  if (!session || session.status === "cancelled" || new Date(session.ends_at).getTime() > Date.now()) {
+    throw new Error("A class must finish and must not be cancelled before payroll approval.");
+  }
+  const { error } = await supabase
     .from("session_payroll")
     .update({
       status: "admin_approved",
       admin_approved_at: new Date().toISOString(),
     })
     .eq("id", id)
-    .gt("computed_amount", 0)
-    .neq("status", "paid");
+    .in("status", ["pending", "instructor_confirmed"])
+    .gt("computed_amount", 0);
+  if (error) throw error;
 
   revalidatePath("/admin/payroll");
 }
@@ -76,7 +96,7 @@ export async function markPaidAction(formData: FormData) {
   if (!id) return;
 
   const supabase = await createClient();
-  await supabase
+  const { error } = await supabase
     .from("session_payroll")
     .update({
       status: "paid",
@@ -85,6 +105,7 @@ export async function markPaidAction(formData: FormData) {
     .eq("id", id)
     .eq("status", "admin_approved")
     .gt("computed_amount", 0);
+  if (error) throw error;
 
   revalidatePath("/admin/payroll");
 }
@@ -98,10 +119,12 @@ export async function disputePayrollAction(formData: FormData) {
   if (!id) return;
 
   const supabase = await createClient();
-  await supabase
+  const { error } = await supabase
     .from("session_payroll")
     .update({ status: "disputed" })
-    .eq("id", id);
+    .eq("id", id)
+    .neq("status", "paid");
+  if (error) throw error;
 
   revalidatePath("/admin/payroll");
 }

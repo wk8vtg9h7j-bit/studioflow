@@ -5,7 +5,7 @@ import { PayrollRow, type PayrollListRow } from "./PayrollRow";
 
 export const dynamic = "force-dynamic";
 
-type PayrollView = "to-pay" | "disputed" | "paid-current" | "paid-history";
+type PayrollView = "review" | "ready" | "disputed" | "paid-current" | "paid-history";
 
 type SearchParams = {
   view?: string | string[];
@@ -38,7 +38,8 @@ type InstructorCommissionGroup = {
 };
 
 const VALID_VIEWS = new Set<PayrollView>([
-  "to-pay",
+  "review",
+  "ready",
   "disputed",
   "paid-current",
   "paid-history",
@@ -53,7 +54,7 @@ export default async function PayrollPage({
   const rawView = Array.isArray(params.view) ? params.view[0] : params.view;
   const view: PayrollView = VALID_VIEWS.has(rawView as PayrollView)
     ? (rawView as PayrollView)
-    : "to-pay";
+    : "review";
 
   const supabase = await createClient();
 
@@ -126,9 +127,8 @@ export default async function PayrollPage({
   const monthSalesTotals = sumMinor(monthCommissionRows, "sale_amount_cents");
 
   const buckets = {
-    toPay: payableRows.filter(
-      (row) => row.status !== "paid" && row.status !== "disputed",
-    ),
+    review: payableRows.filter((row) => row.status === "pending" || row.status === "instructor_confirmed"),
+    ready: payableRows.filter((row) => row.status === "admin_approved"),
     disputed: payableRows.filter((row) => row.status === "disputed"),
     paidCurrent: payableRows.filter(
       (row) =>
@@ -143,17 +143,19 @@ export default async function PayrollPage({
   };
 
   const rows =
+    view === "ready" ? buckets.ready :
     view === "disputed"
       ? buckets.disputed
       : view === "paid-current"
         ? buckets.paidCurrent
         : view === "paid-history"
           ? buckets.paidHistory
-          : buckets.toPay;
+          : buckets.review;
 
   const currency = payableRows[0]?.currency ?? "VND";
   const totals = {
-    toPay: sumAmount(buckets.toPay),
+    review: sumAmount(buckets.review),
+    ready: sumAmount(buckets.ready),
     disputed: sumAmount(buckets.disputed),
     paidCurrent: sumAmount(buckets.paidCurrent),
   };
@@ -172,10 +174,16 @@ export default async function PayrollPage({
 
       <nav className="flex flex-wrap gap-2" aria-label="Payroll filters">
         <FilterLink
-          href="/admin/payroll?view=to-pay"
-          active={view === "to-pay"}
-          label="To pay"
-          count={buckets.toPay.length}
+          href="/admin/payroll?view=review"
+          active={view === "review"}
+          label="Needs review"
+          count={buckets.review.length}
+        />
+        <FilterLink
+          href="/admin/payroll?view=ready"
+          active={view === "ready"}
+          label="Approved · ready to pay"
+          count={buckets.ready.length}
         />
         <FilterLink
           href="/admin/payroll?view=disputed"
@@ -287,8 +295,12 @@ export default async function PayrollPage({
 
             <dl className="space-y-3">
               <SummaryStat
-                label="To pay"
-                value={formatTotal(totals.toPay, currency)}
+                label="Awaiting approval"
+                value={formatTotal(totals.review, currency)}
+              />
+              <SummaryStat
+                label="Ready to pay"
+                value={formatTotal(totals.ready, currency)}
               />
               <SummaryStat
                 label="Disputed"
@@ -303,7 +315,8 @@ export default async function PayrollPage({
             <div className="my-5 h-px bg-stone-200" />
 
             <dl className="space-y-3">
-              <SummaryStat label="To pay classes" value={buckets.toPay.length} />
+              <SummaryStat label="Needs review" value={buckets.review.length} />
+              <SummaryStat label="Ready to pay" value={buckets.ready.length} />
               <SummaryStat label="Disputed" value={buckets.disputed.length} />
               <SummaryStat
                 label="Paid this month"
@@ -409,7 +422,8 @@ function emptyMessage(view: PayrollView): string {
   if (view === "disputed") return "No disputed payroll records.";
   if (view === "paid-current") return "No payroll has been marked paid this month.";
   if (view === "paid-history") return "No older paid payroll records.";
-  return "Nothing is waiting to be paid.";
+  if (view === "ready") return "No approved payroll awaiting payment.";
+  return "No positive-value payroll awaiting review.";
 }
 
 function formatTotal(amount: number, currency: string): string {
