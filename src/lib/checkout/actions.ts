@@ -39,8 +39,9 @@ export async function recordCheckoutAction(
     return { error: "Choose a package." };
   }
   const svc = createServiceClient();
-  // Identify the session once. Admins may collect payment for any class;
-  // instructors may only collect for their own assigned classes.
+  // All authenticated staff may collect a payment for a valid attended booking.
+  // Database checkout rules still prevent duplicate or ineligible payments.
+  // Keep the collector's identity for the audit trail and instructor commission.
   const { data: bookingWithSession, error: bookingError } = await svc.from("bookings")
     .select("customer_id,session:sessions(instructor_id)")
     .eq("id", input.booking_id).maybeSingle();
@@ -50,29 +51,9 @@ export async function recordCheckoutAction(
   } | null)?.session;
   if (!session) return { error: "Could not find the booking's class." };
 
-  if (profile.role === "instructor") {
-    const { data: instructor, error: instructorError } = await svc
-      .from("instructors").select("id").eq("profile_id", profile.id).maybeSingle();
-    if (instructorError || !instructor) return { error: "Instructor account not found." };
-    if (session.instructor_id !== instructor.id) {
-      return { error: "Only the assigned instructor may collect payment from this class." };
-    }
-  }
-
-  // Preserve the real collector (admin) on the checkout receipt. A database
-  // trigger credits the class instructor on the linked purchase ledger, where
-  // the 2.5% commission snapshot is calculated for salary and admin payroll.
-  // Prevent collection if an assigned teacher has no account to receive it.
-  if (profile.role === "admin" && input.kind === "package" && session.instructor_id) {
-    const { data: teacher, error: teacherError } = await svc
-      .from("instructors").select("profile_id")
-      .eq("id", session.instructor_id).maybeSingle();
-    if (teacherError) return { error: teacherError.message };
-    if (!teacher?.profile_id) {
-      return { error: "Assign a linked instructor account before recording this package payment so the 2.5% commission is credited correctly." };
-    }
-  }
-
+  // An admin-recorded package sale attributes commission to its class
+  // instructor, but lack of a linked instructor must not block checkout.
+  // The DB trigger handles attribution when a linked instructor exists.
   const { data, error } = await svc.rpc("record_class_checkout", {
     p_booking: input.booking_id,
     p_kind: input.kind,
@@ -134,5 +115,36 @@ export async function markDeskAttendanceAction(
   revalidatePath("/admin/today");
   revalidatePath("/instructor/today");
   revalidatePath("/admin/sessions");
+  return { ok: true };
+}
+
+const undoSchema = z.object({ checkout_id: z.string().uuid(), reason: z.string().trim().min(3).max(500) });
+
+export async function undoCheckoutAction(
+  _previous: CheckoutState,
+  formData: FormData,
+): Promise<CheckoutState> {
+  const admin = await requireRole("admin", "/admin/today");
+  const parsed = undoSchema.safeParse({
+    checkout_id: formData.get("checkout_id"),
+    reason: formData.get("reason"),
+  });
+  if (!parsed.success) return { error: "Provide a reason (at least 3 characters) for reversing this payment." };
+  const svc = createServiceClient();
+  const { data, error } = await svc.rpc("undo_class_checkout", {
+    p_checkout: parsed.data.checkout_id,
+    p_admin: admin.id,
+    p_reason: parsed.data.reason,
+  });
+  if (error) return { error: error.message };
+  const customerId = (data as { customer_id?: string } | null)?.customer_id;
+  if (customerId) {
+    try { await queueCustomerBookingCalendarSync(customerId); }
+    catch (syncError) { console.warn("Payment reversed; calendar queue failed", syncError); }
+  }
+  for (const path of ["/admin", "/admin/today", "/admin/sessions", "/admin/insights",
+    "/admin/customers", "/admin/payments", "/instructor/today", "/instructor/customers", "/instructor/salary"]) {
+    revalidatePath(path);
+  }
   return { ok: true };
 }

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { formatInTimeZone } from "date-fns-tz";
 import { loadTodayDesk, type DeskSession } from "@/lib/checkout/desk.server";
 import { CheckInActions, CheckoutControl } from "@/components/CheckoutControl";
+import { UndoCheckoutButton } from "@/components/UndoCheckoutButton";
 const TZ="Asia/Ho_Chi_Minh";
 export async function TodayDesk({role,profileId,date}:{role:"admin"|"instructor";profileId:string;date?:string}){
  const data=await loadTodayDesk(role,profileId,date);
@@ -62,8 +63,9 @@ export async function TodayDesk({role,profileId,date}:{role:"admin"|"instructor"
        {b.paymentReview&&<p className="text-xs text-amber-800">Historical payment evidence needs staff review before collecting payment.</p>}
        {b.renewalDue&&<p className="text-xs text-amber-800">This class is covered. Renew the package for future classes.</p>}
        <div className="flex flex-wrap items-start gap-3">
-        <CheckInActions bookingId={b.id} status={b.status} canMark={Date.parse(session.at)<=Date.now()}/>
-        {b.status==="attended"&&b.payment==="payment_due"&&<CheckoutControl
+        {(role==="admin"||session.instructorProfileId===profileId)&&<CheckInActions bookingId={b.id} status={b.status} canMark={Date.parse(session.at)<=Date.now()}/> }
+        {role==="admin"&&b.checkoutId&&<UndoCheckoutButton checkoutId={b.checkoutId}/>}
+        {b.status==="attended"&&b.payment==="payment_due"&&!b.checkoutId&&<CheckoutControl
            bookingId={b.id} pool={b.pool} creditsSpent={b.creditsSpent}
            eligibleStarter={b.eligibleStarter} packages={data.packages} instructorName={session.instructor}/>}
        </div>
