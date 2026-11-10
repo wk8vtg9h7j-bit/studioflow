@@ -9,7 +9,7 @@ const TZ = "Asia/Ho_Chi_Minh";
 export type DeskBooking = {
   id: string; customerId: string; name: string; status: string;
   spots: number; creditsSpent: number; payment: "package" | "payment_due"; renewalDue: boolean; paymentReview: boolean;
-  eligibleStarter: boolean; firstVisit:boolean; pool: string;
+  eligibleStarter: boolean; firstVisit:boolean; pool: string; checkoutId:string|null;
 };
 export type DeskSession = {
   id:string; name:string; at:string; studio:string; slug:string;
@@ -73,6 +73,11 @@ export async function loadTodayDesk(role:"admin"|"instructor",profileId:string,r
  const visibleIds=new Set(visibleSessions.map(s=>s.id));
  const visibleBookings=bookings.filter(b=>visibleIds.has(b.session_id));
  const poolById=new Map(visibleSessions.map(s=>[s.id,s.class_type?.pool||"regular"]));
+ const { data: checkoutRows, error: checkoutError } = visibleBookings.length
+   ? await svc.from("class_checkouts").select("id,booking_id").in("booking_id",visibleBookings.map(b=>b.id))
+   : { data: [], error: null };
+ if (checkoutError) throw checkoutError;
+ const checkoutByBooking = new Map((checkoutRows ?? []).map(row=>[row.booking_id,row.id]));
  const {data:attendedHistory}=await svc.from("bookings").select("id,customer_id")
   .eq("status","attended").limit(1000);
  const visitedCount=new Map<string,number>();
@@ -98,7 +103,7 @@ export async function loadTodayDesk(role:"admin"|"instructor",profileId:string,r
    status:b.status,spots:b.spots_count||1,creditsSpent:b.credits_spent||1,
    payment:paymentMap.get(b.id)||"payment_due",renewalDue:paymentDetails.get(b.id)?.renewalDue??false,paymentReview:paymentDetails.get(b.id)?.paymentReview??false,eligibleStarter:starter.get(b.id)||false,
    firstVisit:(visitedCount.get(b.customer_id)||0)<=(b.status==="attended"?1:0),
-   pool:poolById.get(b.session_id)||"regular"});
+   pool:poolById.get(b.session_id)||"regular", checkoutId:checkoutByBooking.get(b.id)??null});
   rowsBySession.set(b.session_id,list);
  }
  const sessions=visibleSessions.map(s=>({
