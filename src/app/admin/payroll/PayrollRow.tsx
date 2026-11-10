@@ -96,18 +96,18 @@ export function PayrollRow({ row }: { row: PayrollListRow }) {
               {row.attendance_count === 1 ? "head" : "heads"}
             </p>
           </div>
-          <button
+          {row.status !== "admin_approved" && row.status !== "paid" && <button
             type="button"
             onClick={() => setRecalcOpen((v) => !v)}
             className="btn-secondary shrink-0"
           >
             {recalcOpen ? "Close" : "Recalc"}
-          </button>
+          </button>}
         </div>
       </div>
 
       <div className="flex flex-col items-stretch gap-2 border-t border-stone-200 bg-stone-50 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:px-5">
-        {payable && row.status !== "admin_approved" && row.status !== "paid" && (
+        {payable && (row.status === "pending" || row.status === "instructor_confirmed") && (
           <form action={approvePayrollAction}>
             <input type="hidden" name="id" value={row.id} />
             <button type="submit" className="btn-secondary">
@@ -145,7 +145,7 @@ export function PayrollRow({ row }: { row: PayrollListRow }) {
         </div>
       </div>
 
-      {recalcOpen && (
+      {recalcOpen && row.status !== "admin_approved" && row.status !== "paid" && (
         <div className="border-t border-stone-200 bg-stone-50 px-5 py-4">
           <form action={recalcPayrollAction} className="flex flex-wrap items-end gap-3">
             <input type="hidden" name="session_id" value={row.session_id} />
