@@ -80,6 +80,39 @@ export async function recordCheckoutAction(
     grantedCredits: receipt?.granted_credits };
 }
 
+const renewalSchema = z.object({
+ booking_id:z.string().uuid(), package_id:z.string().uuid(),
+ payment_method:z.enum(["qr","card","cash"]),
+ amount_cents:z.coerce.number().int().positive().max(100_000_000),
+});
+
+export async function recordDeskPackageAction(
+ _previous:CheckoutState, formData:FormData,
+):Promise<CheckoutState>{
+ const profile=await requireRole(["admin","instructor"]);
+ const parsed=renewalSchema.safeParse({
+  booking_id:formData.get("booking_id"),
+  package_id:formData.get("package_id"),
+  payment_method:formData.get("payment_method"),
+  amount_cents:formData.get("amount_cents"),
+ });
+ if(!parsed.success)return {error:parsed.error.issues[0]?.message ?? "Invalid package payment."};
+ const svc=createServiceClient();
+ const {data,error}=await svc.rpc("sell_desk_package",{
+  p_booking:parsed.data.booking_id,p_package:parsed.data.package_id,
+  p_payment_method:parsed.data.payment_method,p_amount_cents:parsed.data.amount_cents,
+  p_sold_by:profile.id
+ });
+ if(error)return {error:error.message};
+ const customerId=(data as {customer_id?:string}|null)?.customer_id;
+ if(customerId)try{await queueCustomerBookingCalendarSync(customerId);}
+ catch(e){console.warn("Package payment saved; calendar queue failed",e);}
+ for(const path of ["/admin","/admin/today","/admin/customers","/admin/payments",
+ "/instructor/today","/instructor/customers","/instructor/salary"])revalidatePath(path);
+ return {ok:true,grantedCredits:(data as {granted_credits?:number}|null)?.granted_credits,
+ remainingCredits:(data as {remaining_credits?:number}|null)?.remaining_credits};
+}
+
 export async function markDeskAttendanceAction(
   _previous: CheckoutState,
   formData: FormData,
