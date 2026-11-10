@@ -65,8 +65,9 @@ export function CheckoutControl({
     }
   }, [state.ok, renewalState.ok, router, onSuccess]);
   const available = useMemo(() => packages.filter(
-    p => p.pool === pool && p.credits >= creditsSpent && p.price_cents > 0
+    p => p.pool === pool && p.price_cents > 0
   ), [packages, pool, creditsSpent]);
+  const eligiblePackages = available.filter(p=>p.credits>=creditsSpent);
   const selected = available.find(p=>p.id===packageId);
   const renewal = kind === "renewal";
   const activeState = renewal ? renewalState : state;
@@ -85,7 +86,7 @@ export function CheckoutControl({
           setKind(next); setPackageId(""); setPrice(next==="single"?singleClassPrice:"");
         }}>
           {allowClassSettlement && <option value="single">Single class + next booking credit</option>}
-          {allowClassSettlement && eligibleStarter && available.length>0 && <option value="package">Package (today included)</option>}
+          {allowClassSettlement && eligibleStarter && eligiblePackages.length>0 && <option value="package">Package (today included)</option>}
           <option value="renewal">New package / renewal (future classes)</option>
         </select>
       </label>
@@ -96,7 +97,7 @@ export function CheckoutControl({
           setPackageId(e.target.value); setPrice(pkg?String(pkg.price_cents):"");
         }}>
           <option value="">Choose package…</option>
-          {available.map(pkg=><option key={pkg.id} value={pkg.id}>
+          {(renewal ? available : eligiblePackages).map(pkg=><option key={pkg.id} value={pkg.id}>
             {pkg.name} · {pkg.credits} classes · {formatMoney(pkg.price_cents,pkg.currency)}
           </option>)}
         </select>
