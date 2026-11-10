@@ -65,9 +65,10 @@ export async function TodayDesk({role,profileId,date}:{role:"admin"|"instructor"
        <div className="flex flex-wrap items-start gap-3">
         {(role==="admin"||session.instructorProfileId===profileId)&&<CheckInActions bookingId={b.id} status={b.status} canMark={Date.parse(session.at)<=Date.now()}/> }
         {role==="admin"&&b.checkoutId&&<UndoCheckoutButton checkoutId={b.checkoutId}/>}
-        {b.status==="attended"&&b.payment==="payment_due"&&!b.checkoutId&&<CheckoutControl
+        {["booked","attended","no_show"].includes(b.status)&&<CheckoutControl
            bookingId={b.id} pool={b.pool} creditsSpent={b.creditsSpent}
-           eligibleStarter={b.eligibleStarter} packages={data.packages} instructorName={session.instructor}/>}
+           eligibleStarter={b.eligibleStarter} packages={data.packages} instructorName={session.instructor}
+           allowClassSettlement={b.payment==="payment_due"&&!b.checkoutId&&["booked","attended"].includes(b.status)}/>}
        </div>
       </li>)}
      </ul>}

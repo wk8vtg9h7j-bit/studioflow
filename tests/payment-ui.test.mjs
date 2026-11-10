@@ -8,7 +8,7 @@ import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 const require=createRequire(import.meta.url);
 
-test('staff desk distinguishes renewal, real debt and historical review; collects only actual unpaid visit',async()=>{
+test('staff desk distinguishes renewal, real debt and historical review; offers collection for covered, renewal and unpaid visits',async()=>{
  const base={customerId:'test',status:'attended',spots:1,creditsSpent:1,eligibleStarter:false,firstVisit:false,pool:'regular'};
  const data={day:'2026-10-20',booked:4,attended:4,due:1,packages:[],sessions:[{
   id:'session',slug:'test',studio:'Test studio',name:'Test class',at:'2026-10-20T10:00:00Z',instructor:'Test teacher',capacity:4,filler:0,
@@ -37,15 +37,15 @@ test('staff desk distinguishes renewal, real debt and historical review; collect
  assert.ok(markup.includes('This class is covered. Renew the package for future classes.'));
  assert.ok(markup.includes('PAYMENT HISTORY REVIEW'));
  assert.ok(markup.includes('PAID / PACKAGE'));
- assert.equal((markup.match(/data-checkout=/g)||[]).length,1);
+ assert.equal((markup.match(/data-checkout=/g)||[]).length,4);
  assert.ok(markup.includes('data-checkout="unpaid"'));
- for(const id of ['earlier','final','review'])assert.ok(!markup.includes(`data-checkout="${id}"`));
+ for(const id of ['earlier','final','review'])assert.ok(markup.includes(`data-checkout="${id}"`));
 });
 
 test('admin reversal is offered only when a recorded checkout exists', async()=>{
  const source=fs.readFileSync(new URL('../src/components/TodayDesk.tsx',import.meta.url),'utf8');
  assert.match(source,/role==="admin"&&b\.checkoutId&&<UndoCheckoutButton/);
- assert.match(source,/!b\.checkoutId&&<CheckoutControl/);
+ assert.match(source,/\["booked","attended","no_show"\]\.includes\(b\.status\)&&<CheckoutControl/);
  const action=fs.readFileSync(new URL('../src/lib/checkout/actions.ts',import.meta.url),'utf8');
  assert.match(action,/requireRole\("admin", "\/admin\/today"\)/);
  assert.match(action,/undo_class_checkout/);
