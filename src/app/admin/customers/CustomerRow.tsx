@@ -493,8 +493,8 @@ function GrantPackage({
         Issue customer package
       </h3>
       <p className="mb-3 text-xs leading-relaxed text-ink-muted">
-        Admins can issue a package at any time. Existing balances do not
-        prevent this sale.
+        Issue full packages for future classes. For a first attended visit booked
+        using a starter credit, use Collect payment → Package (today included).
       </p>
       <form action={formAction} className="space-y-3">
         <input type="hidden" name="customer_id" value={customerId} />
@@ -548,10 +548,10 @@ function GrantPackage({
 
         {selectedPackage && pastVisits > 0 && (
           <p className="rounded-xl border border-stone-200 bg-white p-3 text-xs leading-relaxed text-ink-muted">
-            This action issues the full package. It will not automatically
-            settle an unpaid earlier class or deduct its credit. To include
-            an attended class in the package instead, use that class&apos;s
-            Collect payment option. You can still issue the full package here.
+            This issues credits for future classes only. To include a first
+            attended class paid using a starter credit, use that class&apos;s
+            Collect payment → Package (today included). An unsettled first
+            visit will block a full-package grant until it is resolved.
           </p>
         )}
 
