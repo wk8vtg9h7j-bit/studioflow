@@ -12,6 +12,7 @@ import { AppShell, type NavItem } from "@/components/AppShell";
 
 const ADMIN_NAV: NavItem[] = [
   { href: "/admin", label: "Overview" },
+  { href: "/admin/operations", label: "Operations" },
   { href: "/admin/notifications", label: "Notifications" },
   { href: "/admin/sessions", label: "Sessions" },
   { href: "/admin/studios", label: "Studios" },
