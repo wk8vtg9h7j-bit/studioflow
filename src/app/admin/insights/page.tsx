@@ -16,7 +16,7 @@ export default async function InsightsPage(){
  const [visitsRes,receiptsRes,studiosRes]=await Promise.all([
   svc.from("bookings").select("id,customer_id,session:sessions(starts_at,studio:studios(name))")
    .eq("status","attended").order("booked_at",{ascending:true}).limit(1000),
-  svc.from("class_checkouts").select("id,kind,booking_id,amount_cents,currency,created_at,booking:bookings(customer_id,session:sessions(starts_at,studio:studios(name))),seller:profiles(full_name,email),purchase:credit_ledger(package:packages(name))")
+  svc.from("class_checkouts").select("id,kind,booking_id,amount_cents,currency,created_at,booking:bookings(customer_id,session:sessions(starts_at,studio:studios(name))),seller:profiles(full_name,email),purchase:credit_ledger!class_checkouts_purchase_id_fkey(package:packages(name))")
    .gte("created_at",FROM).order("created_at",{ascending:false}).limit(1000),
   svc.from("studios").select("name").eq("active",true),
  ]);
