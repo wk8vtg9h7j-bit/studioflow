@@ -9,8 +9,14 @@ export type OperationClass = {
   activeReservations:number; status:string; privateOnly:boolean; autoBlocked:boolean;
 };
 export type BlockHistory = { sessionId:string; blockedAt:string; startsAt:string };
-type Section = "attention" | "schedule" | "blocks" | "quicklinks";
+export type PaymentAlert={id:string;customer:string;studio:string;className:string;startsAt:string;review:boolean;status:string};
+export type ForecastClass={id:string;studioId:string;studio:string;name:string;startsAt:string;booked:number;reserved:number;capacity:number;averageOccupancy:number|null;sampleCount:number;privateOnly:boolean;fillerSeats:number};
+export type PushHealth={processed:number;pending:number;errors:number;exhausted:number;windowCount:number;subscribers:{name:string;devices:number}[];adminDevices:number};
+type Section = "attention" | "schedule" | "blocks" | "quicklinks" | "payments" | "push" | "forecast";
 const OPTIONS: {key:Section; label:string; description:string}[] = [
+  {key:"payments",label:"Payments to collect",description:"Unpaid bookings and payment reviews"},
+  {key:"push",label:"Notification health",description:"Subscriptions, queued and failed alerts"},
+  {key:"forecast",label:"Seven-day outlook",description:"Future empty classes and historical booking demand"},
   {key:"attention",label:"Needs attention",description:"Empty and low-booking classes"},
   {key:"schedule",label:"Today's schedule",description:"Upcoming classes, occupancy and instructors"},
   {key:"blocks",label:"Auto-block history",description:"Classes closed by the 90-minute rule"},
@@ -26,13 +32,14 @@ function classify(row:OperationClass, now:number) {
   if(row.privateOnly || row.fillerSeats>0) return "excluded";
   return Date.parse(row.startsAt)-now<=90*60*1000 ? "due" : "watch";
 }
-export function OperationsDashboard({initialClasses,studios,blocks,dayKey,nowIso,errors}:{
+export function OperationsDashboard({initialClasses,studios,blocks,dayKey,nowIso,errors,forecast,payments,pushHealth}:{
   initialClasses:OperationClass[]; studios:{id:string;name:string}[];
   blocks:BlockHistory[]; dayKey:string; nowIso:string; errors:string[];
+  forecast:ForecastClass[];payments:PaymentAlert[];pushHealth:PushHealth;
 }){
   const [studio,setStudio] = useState("all");
   const [showSettings,setShowSettings] = useState(false);
-  const [sections,setSections] = useState<Section[]>(["attention","schedule","blocks","quicklinks"]);
+  const [sections,setSections] = useState<Section[]>(["payments","attention","forecast","schedule","push","blocks","quicklinks"]);
   const [onlyUpcoming,setOnlyUpcoming] = useState(true);
   const [hydrated,setHydrated] = useState(false);
   const now = Date.parse(nowIso);
@@ -52,6 +59,15 @@ export function OperationsDashboard({initialClasses,studios,blocks,dayKey,nowIso
     if(!hydrated)return;
     try{localStorage.setItem("studioflow-admin-operations-v1",JSON.stringify({sections,studio,onlyUpcoming}));}catch{}
   },[hydrated,sections,studio,onlyUpcoming]);
+  const studioName=studios.find(s=>s.id===studio)?.name;
+  const visiblePayments=payments.filter(p=>studio==="all"||p.studio===studioName);
+  const visibleForecast=forecast.filter(f=>studio==="all"||f.studioId===studio).filter(f=>Date.parse(f.startsAt)>now);
+  const atRisk=visibleForecast.filter(f=>f.reserved===0&&!f.privateOnly&&f.fillerSeats===0);
+  const forecastByDay=new Map<string,ForecastClass[]>();
+  for(const f of atRisk){
+    const day=new Intl.DateTimeFormat("en-GB",{timeZone:TZ,weekday:"short",day:"numeric",month:"short"}).format(new Date(f.startsAt));
+    forecastByDay.set(day,[...(forecastByDay.get(day)??[]),f]);
+  }
   const filtered = useMemo(()=>initialClasses.filter(row=>studio==="all" || row.studioId===studio),[initialClasses,studio]);
   const upcoming = filtered.filter(row=>row.status==="scheduled" && Date.parse(row.startsAt)>now);
   const watch = upcoming.filter(row=>["watch","due"].includes(classify(row,now)));
@@ -104,6 +120,51 @@ export function OperationsDashboard({initialClasses,studios,blocks,dayKey,nowIso
       ].map(([name,value])=><div className="card p-3 sm:p-4" key={name}><p className="text-2xl font-semibold tabular-nums">{value}</p>
         <p className="mt-1 text-xs text-ink-muted">{name}</p></div>)}
     </div>
+    {shown("payments")&&<section className="space-y-3">
+      <div className="flex items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">Payments to collect</h2>
+        <p className="text-xs text-ink-muted">Today's booked or attended classes · Confirm at the payment desk</p></div>
+        <span className="badge bg-amber-50 text-amber-800">{visiblePayments.length} to review</span></div>
+      <div className="card divide-y divide-stone-100">
+        {visiblePayments.length===0?<p className="p-4 text-sm text-ink-muted">No payments flagged for today's bookings.</p>:
+        visiblePayments.map(p=><div key={p.id} className="flex items-start justify-between gap-2 p-4">
+          <div className="min-w-0"><p className="font-semibold text-sm">{p.customer}</p>
+            <p className="mt-1 text-xs text-ink-muted">{time(p.startsAt)} · {p.className} · {p.studio}</p>
+            <span className="mt-2 inline-flex rounded-full bg-amber-50 px-2 py-1 text-xs text-amber-800">{p.review?"Payment history review":"Payment due"}</span>
+          </div>
+          <Link href="/admin/today" className="text-sm font-medium text-brand-600 min-h-11 shrink-0 flex items-center">Review →</Link>
+        </div>)}
+      </div>
+      <p className="text-xs text-ink-muted">Package-renewal reminders are not counted as unpaid classes. Resolve ambiguous historical payments before collecting again.</p>
+    </section>}
+    {shown("forecast")&&<section className="space-y-3">
+      <div className="flex items-center justify-between gap-3"><h2 className="text-lg font-semibold">Next 7 days</h2>
+        <span className="badge bg-amber-50 text-amber-800">{atRisk.length} empty upcoming</span></div>
+      <p className="text-xs text-ink-muted">Current empty sessions by date. Historical averages compare the same weekday, time and studio over the previous 4 weeks. Empty does not mean the class will be blocked now.</p>
+      {[...forecastByDay.entries()].length===0?<div className="card p-4 text-sm text-ink-muted">No empty eligible upcoming classes in the next seven days.</div>:
+      [...forecastByDay.entries()].map(([day,rows])=><div key={day} className="card overflow-hidden">
+        <div className="bg-stone-50 px-4 py-2 text-sm font-semibold">{day} · {rows.length} empty</div>
+        <div className="divide-y divide-stone-100">{rows.map(f=><div key={f.id} className="p-4">
+          <div className="flex items-start justify-between gap-2">
+            <div><p className="text-sm font-semibold">{time(f.startsAt)} · {f.name}</p><p className="mt-1 text-xs text-ink-muted">{f.studio} · 0/{f.capacity} booked</p></div>
+            <span className="badge bg-amber-50 text-amber-800">Watch</span>
+          </div>
+          <p className="mt-2 text-xs text-ink-muted">{f.sampleCount>0?"Historical average: "+f.averageOccupancy+"% occupancy ("+f.sampleCount+" comparable classes)":"No comparable history"} · Auto-blocks 90 minutes before start if still empty.</p>
+        </div>)}</div></div>)}
+      <p className="text-xs text-ink-soft">Historical occupancy is descriptive, not a guaranteed prediction. Classes with any active booking stay open.</p>
+    </section>}
+    {shown("push")&&<section className="space-y-3"><h2 className="text-lg font-semibold">Booking notification health</h2>
+      <div className="grid grid-cols-2 gap-3">
+        {[["Processed",pushHealth.processed],["Pending",pushHealth.pending],["Errors recorded",pushHealth.errors],["Retry limit reached",pushHealth.exhausted]].map(([label,count])=>
+          <div key={label} className="card p-3"><p className="text-xl font-semibold tabular-nums">{count}</p><p className="mt-1 text-xs text-ink-muted">{label}</p></div>)}
+      </div>
+      <div className="card divide-y divide-stone-100">
+        <p className="px-4 py-3 text-sm font-semibold">Enabled push devices</p>
+        {pushHealth.subscribers.map(s=><div key={s.name} className="flex items-center justify-between px-4 py-3 text-sm"><span>{s.name}</span><span className="font-semibold tabular-nums">{s.devices}</span></div>)}
+        <div className="flex items-center justify-between px-4 py-3 text-sm"><span>Admin devices</span><span className="font-semibold tabular-nums">{pushHealth.adminDevices}</span></div>
+      </div>
+      <p className="text-xs text-ink-muted">Push queue status for {pushHealth.windowCount} booking or cancellation events in the last 24 hours. “Processed” means the sender handled the event, not that every phone displayed it. Some devices may fail even when a queue event is processed.</p>
+      <Link href="/admin/notifications" className="inline-flex min-h-11 items-center text-sm font-medium text-brand-600">Booking activity →</Link>
+    </section>}
     {shown("attention")&&<section className="space-y-3">
       <div className="flex items-center justify-between"><h2 className="text-lg font-semibold">Needs attention</h2>
         <span className="badge bg-amber-50 text-amber-800">{watch.length} empty</span></div>
