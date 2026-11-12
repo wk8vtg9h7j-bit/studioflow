@@ -12,13 +12,6 @@ export const maxDuration = 60;
 const BATCH_SIZE = 50;
 const MAX_ATTEMPTS = 12;
 
-function globalBookingRecipientIds(): string[] {
-  return (process.env.BOOKING_PUSH_GLOBAL_INSTRUCTOR_IDS ?? "")
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-}
-
 type QueueRow = {
   id: string;
   booking_id: string;
@@ -159,15 +152,22 @@ export async function GET(request: Request) {
     ((bookingData ?? []) as unknown as BookingRow[]).map((row) => [row.id, row]),
   );
 
-  const globalRecipientIds = globalBookingRecipientIds();
-  const instructorIds = Array.from(
-    new Set([
-      ...Array.from(bookings.values())
-        .map((booking) => booking.session?.instructor_id)
-        .filter((value): value is string => Boolean(value)),
-      ...globalRecipientIds,
-    ]),
-  );
+  // Broadcast every new booking/cancellation to every active instructor who
+  // has explicitly enabled push notifications, including Jenny and Ruby.
+  // Admin subscriptions are handled independently below.
+  const { data: activeInstructorData, error: activeInstructorError } = await service
+    .from("instructors")
+    .select("id")
+    .eq("active", true);
+
+  if (activeInstructorError) {
+    return NextResponse.json(
+      { error: activeInstructorError.message },
+      { status: 500 },
+    );
+  }
+
+  const instructorIds = (activeInstructorData ?? []).map((row) => row.id);
 
   const sessionIds = Array.from(
     new Set(
@@ -291,15 +291,7 @@ export async function GET(request: Request) {
       continue;
     }
 
-    const recipientIds = Array.from(
-      new Set(
-        [session.instructor_id, ...globalRecipientIds].filter(
-          (value): value is string => Boolean(value),
-        ),
-      ),
-    );
-
-    const instructorSubscriptions = recipientIds.flatMap(
+    const instructorSubscriptions = instructorIds.flatMap(
       (instructorId) => subscriptionsByInstructor.get(instructorId) ?? [],
     );
 
@@ -342,7 +334,7 @@ export async function GET(request: Request) {
         item.id,
         now,
         nextAttempts,
-        "No instructor, Ruby, or admin has a push-enabled device.",
+        "No active instructor or admin has a push-enabled device.",
       );
       continue;
     }
