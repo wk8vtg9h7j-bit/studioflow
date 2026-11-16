@@ -167,9 +167,26 @@ export async function requestPasswordResetAction(
   // Delivered by Supabase's own mailer. Errors here are almost always "unknown
   // address" or rate limiting; we swallow them and report success either way so
   // the form never reveals whether an email is registered.
-  await supabase.auth.resetPasswordForEmail(parsed.data.email, {
+  const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email, {
     redirectTo: `${siteOrigin()}/auth/callback?next=/reset-password`,
   });
+
+  if (error) {
+    // Give actionable feedback for delivery/rate-limit failures rather than
+    // incorrectly claiming an email is on its way. Keep unknown-user
+    // responses indistinguishable to avoid account enumeration.
+    if (error.status === 429) {
+      return { error: "Too many reset attempts. Please wait before requesting another email." };
+    }
+    if (/user not found|email not confirmed|invalid login credentials/i.test(error.message)) {
+      return { ok: true };
+    }
+    console.error("Password reset request failed", {
+      status: error.status,
+      code: error.code,
+    });
+    return { error: "We couldn't send a reset email right now. Please try again later or contact the studio." };
+  }
 
   return { ok: true };
 }
