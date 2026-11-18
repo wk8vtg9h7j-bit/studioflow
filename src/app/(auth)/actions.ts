@@ -8,7 +8,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getProfile, homePathForRole } from "@/lib/auth";
 import { PREVIEW_MODE, PREVIEW_COOKIE } from "@/lib/preview";
 import { getLocale } from "@/lib/locale-server";
@@ -83,32 +83,41 @@ export async function signUpAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid details." };
   }
 
-  const supabase = await createClient();
-  // New public sign-ups are always customers; the `handle_new_user` trigger
-  // reads this metadata to stamp the profile role.
-  const { data, error } = await supabase.auth.signUp({
+  // Create confirmed customers on the server so signup never depends on mail
+  // delivery. Keep the role fixed here before the profile/customer trigger runs.
+  const service = createServiceClient();
+  const { error } = await service.auth.admin.createUser({
     email: parsed.data.email,
     password: parsed.data.password,
-    options: {
-      data: {
-        full_name: parsed.data.fullName,
-        phone: parsed.data.phone,
-        role: "customer",
-        preferred_studio_slug: parsed.data.studio,
-      },
+    email_confirm: true,
+    user_metadata: {
+      full_name: parsed.data.fullName,
+      phone: parsed.data.phone,
+      role: "customer",
+      preferred_studio_slug: parsed.data.studio,
     },
   });
   if (error) {
+    if (error.code === "email_exists" || error.code === "user_already_exists") {
+      return {
+        error: vi
+          ? "Email này đã có tài khoản. Vui lòng đăng nhập hoặc chọn Quên mật khẩu."
+          : "An account already exists for this email. Log in or choose Forgot password.",
+      };
+    }
     return { error: error.message };
   }
 
-  // If email confirmation is on, there's no session yet — tell the user.
-  if (!data.session) {
+  const supabase = await createClient();
+  const { data, error: signInError } = await supabase.auth.signInWithPassword({
+    email: parsed.data.email,
+    password: parsed.data.password,
+  });
+  if (signInError || !data.session) {
     return {
-      error:
-        vi
-          ? "Hãy kiểm tra hộp thư để xác nhận email, sau đó đăng nhập để bắt đầu đặt lớp."
-          : "Check your inbox to confirm your email, then log in to start booking.",
+      error: vi
+        ? "Tài khoản đã được tạo. Vui lòng đăng nhập bằng email và mật khẩu bạn vừa chọn."
+        : "Your account is ready. Please log in with the email and password you just chose.",
     };
   }
 
