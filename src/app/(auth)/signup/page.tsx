@@ -5,6 +5,7 @@
 "use client";
 
 import Link from "next/link";
+import { STUDIO_PHOTOS } from "../studio-photos";
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useFormState } from "react-dom";
@@ -53,27 +54,42 @@ function SignupForm() {
   const vi = locale === "vi";
 
   return (
-    <div className="card p-6">
-      <h1 className="text-xl font-semibold tracking-tight text-ink">
+    <div className={privateAnThuong ? "studio-login studio-auth-grid studio-auth-private" : "studio-login studio-auth-grid studio-auth-signup"}>
+      {!privateAnThuong && <aside className="studio-auth-photos studio-auth-signup-photos" aria-label={vi ? "Các studio Pilates của chúng tôi" : "Our Pilates studios"}>
+        {STUDIO_PHOTOS.map((studio) => (
+          <figure key={studio.slug} className="studio-auth-photo">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={studio.image} alt={studio.name} className="studio-auth-photo-image" decoding="async" onError={(event) => { event.currentTarget.style.visibility = "hidden"; }} />
+            <div aria-hidden="true" className="studio-auth-photo-shade" />
+            <figcaption className="studio-auth-photo-caption">
+              <span className="studio-auth-photo-name">{studio.name}</span>
+              <span className="studio-auth-photo-address">{studio.address}</span>
+            </figcaption>
+          </figure>
+        ))}
+      </aside>}
+      <div className="studio-auth-form">
+      <p className="studio-auth-kicker">{vi ? "PILATES BY RECHARGED · ĐĂNG KÝ" : "PILATES BY RECHARGED · MEMBERSHIP"}</p>
+      <h1 className="studio-auth-heading">
         {vi ? "Tạo tài khoản" : "Create your account"}
       </h1>
-      <p className="mt-1 text-sm text-ink-muted">
+      <p className="studio-auth-description">
         {vi ? "Đặt lớp và quản lý tín dụng của bạn tại một nơi." : "Book classes and manage your credits in one place."}
       </p>
 
-      {!privateAnThuong && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-        <p className="text-sm font-semibold text-amber-900">
+      {!privateAnThuong && <div className="studio-auth-notice">
+        <p className="studio-auth-notice-title">
           {vi ? "Tín dụng khởi đầu không phải lớp miễn phí" : "Your starter credit is not a free class"}
         </p>
-        <p className="mt-1 text-xs leading-relaxed text-amber-800">
+        <p className="studio-auth-notice-copy">
           {vi
             ? "Sau khi đăng ký, tài khoản có 1 tín dụng đặt chỗ để bạn giữ chỗ cho lớp thường đầu tiên. Nếu chưa mua gói trả phí, bạn thanh toán phí lớp tại studio sau buổi tập."
             : "After signup, your account gets 1 booking credit so you can reserve your first regular class. If you have not purchased a paid package, the class fee is paid at the studio after class."}
         </p>
       </div>}
 
-      {privateAnThuong && <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">Private Pilates at An Thuong · Ruby & Violet. Your personal coaching program becomes available once your instructor is assigned.</div>}
-      <form action={formAction} className="mt-6 space-y-4">
+      {privateAnThuong && <div className="studio-auth-notice text-sm">Private Pilates at An Thuong · Ruby & Violet. Your personal coaching program becomes available once your instructor is assigned.</div>}
+      <form action={formAction} className="studio-auth-fields">
         <div>
           <label htmlFor="fullName" className="label">
             {vi ? "Họ và tên" : "Full name"}
@@ -85,7 +101,7 @@ function SignupForm() {
             autoComplete="name"
             required
             className="input"
-            placeholder="Cleo Rivera"
+            placeholder={vi ? "Họ và tên của bạn" : "Your full name"}
           />
         </div>
 
@@ -148,12 +164,13 @@ function SignupForm() {
 
       <PreviewRolePicker />
 
-      <p className="mt-6 text-center text-sm text-ink-muted">
+      <p className="studio-auth-switch studio-auth-switch-bottom">
         {vi ? "Đã có tài khoản?" : "Already have an account?"}{" "}
-        <Link href="/login" className="font-medium text-brand-600 hover:text-brand-700">
+        <Link href="/login" className="font-medium underline underline-offset-4 text-[#34402c]">
           {vi ? "Đăng nhập" : "Log in"}
         </Link>
       </p>
+      </div>
     </div>
   );
 }

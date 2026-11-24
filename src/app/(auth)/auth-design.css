@@ -1,0 +1,97 @@
+/* The premium treatment applies only to login and signup. Other auth routes
+   retain their original shell. No global button or form styles are changed. */
+.studio-auth-shell:has(.studio-login) {
+  --auth-ink: #263125;
+  --auth-muted: #686d61;
+  --auth-line: #dedbd1;
+  --auth-green: #344332;
+  background: radial-gradient(ellipse at top left, #faf8f1 0%, #f1eee5 70%);
+  color: var(--auth-ink);
+  padding: 24px 18px 32px;
+}
+.studio-auth-container:has(.studio-login) { max-width: 1160px; }
+.studio-auth-container:has(.studio-auth-private) { max-width: 530px; }
+.studio-auth-container:has(.studio-login) .studio-auth-header {
+  display: flex; flex-direction: row-reverse; align-items: center;
+  justify-content: space-between; border-bottom: 1px solid var(--auth-line);
+  padding-bottom: 18px; margin-bottom: 24px; gap: 16px;
+}
+.studio-auth-container:has(.studio-login) .studio-auth-language { margin: 0; }
+.studio-auth-container:has(.studio-login) .studio-auth-language > div {
+  border-color: #d6d5cb; background: rgba(255,255,255,.4);
+  border-radius: 100px; padding: 3px;
+}
+.studio-auth-container:has(.studio-login) .studio-auth-language button {
+  border-radius: 100px; min-height: 34px; padding: 6px 10px;
+}
+.studio-auth-container:has(.studio-login) .studio-auth-language button[aria-pressed="true"] {
+  background: #e4e8de; color: var(--auth-green);
+}
+.studio-auth-container:has(.studio-login) .studio-auth-wordmark {
+  margin: 0; text-align: left; font-size: 23px; font-weight: 600;
+  letter-spacing: -.055em; color: var(--auth-ink);
+}
+.studio-auth-container:has(.studio-login) .studio-auth-wordmark-accent { color: #697a62; }
+.studio-auth-grid { display: grid; gap: 28px; align-items: center; min-width: 0; }
+.studio-auth-form { width: 100%; min-width: 0; max-width: 470px; margin: 0 auto; }
+.studio-auth-kicker { color: #68745e; font-size: 10px; font-weight: 600; letter-spacing: .15em; line-height: 1.5; margin-bottom: 12px; }
+.studio-auth-heading { font-family: Georgia, 'Times New Roman', serif; font-weight: 400; font-size: clamp(35px,5vw,56px); line-height: 1.08; letter-spacing: -.045em; color: var(--auth-ink); }
+.studio-auth-signup .studio-auth-heading, .studio-auth-private .studio-auth-heading { font-size: clamp(32px,4.4vw,49px); }
+.studio-auth-description { font-size: 15px; line-height: 1.65; margin-top: 12px; color: var(--auth-muted); }
+.studio-auth-switch { font-size: 14px; line-height: 1.6; margin-top: 16px; color: var(--auth-muted); }
+.studio-auth-switch a { color: var(--auth-green); font-weight: 600; text-decoration: underline; text-underline-offset: 4px; }
+.studio-auth-switch-bottom { border-top: 1px solid var(--auth-line); text-align: center; padding-top: 18px; margin-top: 24px; }
+.studio-auth-fields { display: grid; gap: 17px; margin-top: 25px; }
+.studio-auth-form .label { font-size: 13px; font-weight: 600; color: var(--auth-ink); margin-bottom: 8px; }
+.studio-auth-form .input { min-height: 48px; border-radius: 8px; padding: 12px 14px; border: 1px solid #d1d1c5; background: #fffdf8; font-size: 16px; color: var(--auth-ink); box-shadow: none; }
+.studio-auth-form .input::placeholder { color: #787c73; }
+.studio-auth-form .input:focus { border-color: #778970; box-shadow: 0 0 0 3px #788a7026; outline: none; }
+.studio-auth-form .btn-primary { min-height: 50px; border-radius: 8px; background: var(--auth-green); font-size: 14px; font-weight: 600; letter-spacing: .02em; box-shadow: 0 5px 14px #27342618; transition: background-color .18s ease, box-shadow .18s ease; }
+.studio-auth-form .btn-primary:hover:not(:disabled) { background: #243423; box-shadow: 0 6px 18px #2734262a; }
+.studio-auth-notice { border: 1px solid #d9dcd0; border-left: 3px solid #829178; border-radius: 8px; background: #e9ebe1; padding: 15px 15px 15px 16px; margin-top: 20px; color: #3b4835; }
+.studio-auth-notice-title { font-weight: 600; font-size: 13px; line-height: 1.5; }
+.studio-auth-notice-copy { font-size: 12px; line-height: 1.7; margin-top: 5px; color: #485447; }
+.studio-auth-photos { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; min-width: 0; }
+.studio-auth-photo { position: relative; isolation: isolate; overflow: hidden; border-radius: 12px; background: #5d6656; aspect-ratio: 4/3; text-align: left; box-shadow: 0 8px 20px #26312512; }
+.studio-auth-photo-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform .4s ease; }
+.studio-auth-photo-shade { position: absolute; inset: 0; background: linear-gradient(0deg,rgba(18,24,17,.9),rgba(18,24,17,.25) 46%,transparent 80%); }
+.studio-auth-photo-caption { display: block; position: absolute; left: 0; right: 0; bottom: 0; padding: 12px; color: #fff; }
+.studio-auth-photo-name { display: block; font-family: Georgia, 'Times New Roman', serif; font-size: 17px; font-weight: 400; line-height: 1.15; letter-spacing: -.025em; }
+.studio-auth-photo-address { display: block; margin-top: 4px; font-size: 10px; color: #f5f3ed; line-height: 1.35; }
+.studio-auth-photo-action { display: flex; align-items: center; justify-content: space-between; gap: 5px; padding-top: 7px; margin-top: 8px; border-top: 1px solid #ffffff50; font-size: 11px; font-weight: 500; }
+.studio-auth-photo-button { cursor: pointer; }
+.studio-auth-photo-button:focus-visible, .studio-auth-shell:has(.studio-login) :focus-visible { outline: 2px solid #778970; outline-offset: 3px; }
+.studio-auth-signup-photos .studio-auth-photo { aspect-ratio: 16/10; }
+.studio-auth-private .studio-auth-form { max-width: 470px; }
+.studio-login dialog { width: calc(100% - 24px); }
+@media (min-width: 640px) {
+  .studio-auth-shell:has(.studio-login) { padding: 36px 32px; }
+  .studio-auth-photo { aspect-ratio: 16/10; }
+  .studio-auth-photo-caption { padding: 18px; }
+  .studio-auth-photo-name { font-size: 24px; }
+  .studio-auth-photo-address { font-size: 12px; }
+  .studio-auth-photo-action { font-size: 12px; }
+  .studio-auth-signup-photos .studio-auth-photo { aspect-ratio: 16/9; }
+}
+@media (min-width: 1024px) {
+  .studio-auth-shell:has(.studio-login) { padding: 40px 48px; }
+  .studio-auth-container:has(.studio-login) .studio-auth-header { margin-bottom: 34px; padding-bottom: 22px; }
+  .studio-auth-grid { grid-template-columns: minmax(0,1.13fr) minmax(0,1fr); gap: clamp(42px,5.5vw,80px); }
+  .studio-auth-private { grid-template-columns: 1fr; }
+  .studio-auth-photos { grid-template-columns: 1fr; gap: 14px; }
+  .studio-auth-photo, .studio-auth-signup-photos .studio-auth-photo { aspect-ratio: 2.1/1; border-radius: 16px; }
+  .studio-auth-photo-caption { padding: 23px; }
+  .studio-auth-photo-name { font-size: 30px; }
+  .studio-auth-photo-address { font-size: 13px; }
+  .studio-auth-photo-action { font-size: 13px; margin-top: 12px; padding-top: 10px; }
+  .studio-auth-signup .studio-auth-fields { gap: 13px; margin-top: 18px; }
+  .studio-auth-signup .studio-auth-form .input { min-height: 45px; padding: 10px 13px; }
+  .studio-auth-signup .studio-auth-description { margin-top: 9px; }
+  .studio-auth-signup .studio-auth-notice { margin-top: 16px; }
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .studio-auth-photo-button:hover .studio-auth-photo-image { transform: scale(1.045); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .studio-auth-photo-image, .studio-auth-form .btn-primary { transition: none; }
+}

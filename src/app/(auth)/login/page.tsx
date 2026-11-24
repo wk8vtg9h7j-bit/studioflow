@@ -6,6 +6,7 @@
 "use client";
 
 import Link from "next/link";
+import { STUDIO_PHOTOS } from "../studio-photos";
 import { useFormState } from "react-dom";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
@@ -51,22 +52,7 @@ function PreviewRolePicker({ next }: { next: string }) {
 // Reuse the publicly available cover photographs already configured for
 // StudioFlow's two customer-facing studios. No extra database dependency
 // is introduced into the authentication flow.
-const STUDIO_PHOTOS = [
-  {
-    name: "Hideaway Pilates",
-    slug: "hideaway-pilates",
-    id: "29a71d53-effe-4343-8da2-f523d6f109f8",
-    address: "460 Trưng Nữ Vương",
-    image: "https://znrjjqkjpcabcilyhwdk.supabase.co/storage/v1/object/public/studio-gallery/29a71d53-effe-4343-8da2-f523d6f109f8/1390141e-bd08-40f8-aa56-4deb24320032.jpg",
-  },
-  {
-    name: "Downtown Pilates",
-    slug: "downtown-pilates",
-    id: "3f017a73-cf60-4c97-a8c6-f683f4041c7c",
-    address: "89 Lê Thanh Nghị",
-    image: "https://znrjjqkjpcabcilyhwdk.supabase.co/storage/v1/object/public/studio-gallery/3f017a73-cf60-4c97-a8c6-f683f4041c7c/4b4f5f11-e242-42d1-bea9-3f6758395de5.jpg",
-  },
-] as const;
+
 
 type StudioPhoto = (typeof STUDIO_PHOTOS)[number];
 type UpcomingClass = { startsAt: string; name: string };
@@ -192,7 +178,7 @@ function StudioPhotography({ vi, onBook }: {
     <>
       <section
         aria-label={vi ? "Các studio Pilates của chúng tôi" : "Our Pilates studios"}
-        className="grid min-w-0 grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-1"
+        className="studio-auth-photos"
       >
         {STUDIO_PHOTOS.map((studio) => (
           <button
@@ -201,15 +187,15 @@ function StudioPhotography({ vi, onBook }: {
             aria-haspopup="dialog"
             aria-label={studio.name + (vi ? " — Xem lịch" : " — View schedule")}
             onClick={(event) => { trigger.current = event.currentTarget; setSelected(studio); }}
-            className="group relative isolate aspect-[4/3] overflow-hidden rounded-xl bg-[#55594b] text-left sm:aspect-[16/9] lg:aspect-[2.15/1] lg:rounded-2xl"
+            className="studio-auth-photo studio-auth-photo-button"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={studio.image} alt="" className="absolute inset-0 h-full w-full object-cover motion-safe:transition-transform motion-safe:duration-300 motion-safe:group-hover:scale-105" decoding="async" onError={(event) => { event.currentTarget.style.visibility = "hidden"; }} />
-            <span aria-hidden="true" className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/15 to-transparent" />
-            <span className="absolute inset-x-0 bottom-0 block p-2.5 text-white sm:p-4 lg:p-6">
-              <span className="block text-[10px] font-semibold uppercase leading-snug tracking-[0.08em] sm:text-sm lg:text-base">{studio.name}</span>
-              <span className="mt-0.5 block text-[10px] leading-snug text-white/95 sm:text-xs lg:text-sm">{studio.address}</span>
-              <span className="mt-2 flex items-center justify-between gap-1 text-[10px] font-medium text-white sm:text-xs lg:text-sm">
+            <img src={studio.image} alt="" className="studio-auth-photo-image" decoding="async" onError={(event) => { event.currentTarget.style.visibility = "hidden"; }} />
+            <span aria-hidden="true" className="studio-auth-photo-shade" />
+            <span className="studio-auth-photo-caption">
+              <span className="studio-auth-photo-name">{studio.name}</span>
+              <span className="studio-auth-photo-address">{studio.address}</span>
+              <span className="studio-auth-photo-action">
                 {vi ? "Xem lịch" : "View schedule"} <span aria-hidden="true">→</span>
               </span>
             </span>
@@ -238,24 +224,25 @@ function LoginForm() {
   const vi = locale === "vi";
 
   return (
-    <div className="studio-login grid items-center gap-7 lg:grid-cols-[1.15fr_1fr] lg:gap-12 xl:gap-16">
+    <div className="studio-login studio-auth-grid">
       <StudioPhotography vi={vi} onBook={chooseStudio} />
-      <div className="mx-auto w-full max-w-md min-w-0 px-1 sm:px-0 [&_.btn-primary]:min-h-[46px] [&_.btn-primary]:bg-[#34402c] [&_.btn-primary:hover]:bg-[#263222] [&_.input]:min-h-[44px] [&_.input]:border-[#cfcac0] [&_.input]:bg-white/65 [&_.input:focus]:border-[#657559] [&_.input:focus]:ring-[#657559]">
-      <h1 className="font-serif text-3xl tracking-tight text-[#263222] sm:text-4xl lg:text-5xl">
+      <div className="studio-auth-form">
+      <p className="studio-auth-kicker">{vi ? "PILATES BY RECHARGED · HỘI VIÊN" : "PILATES BY RECHARGED · MEMBER ACCESS"}</p>
+      <h1 className="studio-auth-heading">
         {vi ? "Chào mừng trở lại" : "Welcome back"}
       </h1>
-      <p className="mt-3 text-sm leading-relaxed text-ink-muted sm:text-base">
+      <p className="studio-auth-description">
         {vi ? "Đăng nhập để đặt lớp và quản lý tài khoản của bạn." : "Log in to manage your studio or book a class."}
       </p>
 
-      <p className="mt-4 text-sm text-ink-muted">
+      <p className="studio-auth-switch">
         {vi ? "Chưa có tài khoản?" : "New here?"}{" "}
         <Link href="/signup" className="font-medium text-[#34402c] underline underline-offset-2 hover:text-[#263222]">
           {vi ? "Tạo tài khoản" : "Create an account"}
         </Link>
       </p>
 
-      <form action={formAction} className="mt-7 space-y-5">
+      <form action={formAction} className="studio-auth-fields">
         <input type="hidden" name="next" value={bookingTarget ?? next} />
         {bookingStudio && <p role="status" className="rounded-lg bg-[#e7ebdf] px-3 py-2 text-sm text-[#34402c]">{vi ? "Đăng nhập để đặt lớp tại" : "Sign in to book at"} {bookingStudio}.</p>}
 
