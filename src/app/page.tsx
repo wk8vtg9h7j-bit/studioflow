@@ -25,7 +25,7 @@ const STUDIO_COPY: Record<string, { short: string; blurb: string }> = {
   default: {
     short: "Studio",
     blurb:
-      "Small-group reformer Pilates with hands-on coaching. Book a mat, move with intention, leave recharged.",
+      "Small-group reformer Pilates with hands-on coaching. Book your reformer, move with intention, leave recharged.",
   },
 };
 

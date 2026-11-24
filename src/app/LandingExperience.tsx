@@ -76,7 +76,7 @@ export default function LandingExperience({
     const existing = studios.find((s) => s.key === photo.slug);
     const weekly = WEEKLY_STUDIO_SCHEDULE[photo.slug];
     return {
-      ...(existing ?? { key: photo.slug, accent: "#344332", blurb: "Small-group reformer Pilates with hands-on coaching. Book a mat, move with intention, leave recharged.", classes: [], scheduleLabel: "", weekdayTimes: weekly.weekdayTimes, weekendTimes: weekly.weekendTimes }),
+      ...(existing ?? { key: photo.slug, accent: "#344332", blurb: "Small-group reformer Pilates with hands-on coaching. Book your reformer, move with intention, leave recharged.", classes: [], scheduleLabel: "", weekdayTimes: weekly.weekdayTimes, weekendTimes: weekly.weekendTimes }),
       name: photo.name, short: photo.name, address: photo.address,
       image: photo.image, id: photo.id,
     };
@@ -138,7 +138,7 @@ export default function LandingExperience({
           <p className="sf-landing-eyebrow">{vi ? "PILATES REFORMER · ĐÀ NẴNG" : "REFORMER PILATES · DA NANG"}</p>
           <h1>{vi ? "Chuyển động có chủ đích." : "Move with intention."}<br />{vi ? "Rời lớp với năng lượng mới." : "Leave recharged."}</h1>
           <p className="sf-landing-description">
-            {vi ? "Pilates reformer nhóm nhỏ với hướng dẫn tận tình. Đặt lớp, tập có chủ đích và rời studio với năng lượng mới." : studio.blurb}
+            {vi ? "Pilates reformer nhóm nhỏ với hướng dẫn tận tình. Đặt chỗ tập Reformer, tập có chủ đích và rời studio với năng lượng mới." : studio.blurb}
           </p>
           <div className="sf-landing-actions">
             <Link href="/book" className="sf-landing-primary">{vi ? "Đặt lớp đầu tiên" : "Book your first class"}</Link>
