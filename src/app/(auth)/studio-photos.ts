@@ -1,16 +1,37 @@
+// ============================================================================
+// Studio cover photographs used on the login and signup pages.
+//
+// The storage host is derived from the configured Supabase project rather than
+// written out literally, so pointing the app at a different project cannot
+// leave the front door quietly showing two empty panels.
+//
+// The studio ids are pinned in supabase/seed.sql, which is what makes them safe
+// to hardcode: they are the same in any database seeded from that file. They are
+// used to build the /book?studio=<id> deep link from the schedule dialog.
+// ============================================================================
+const STORAGE_BASE = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").replace(/\/+$/, "");
+
+function galleryUrl(path: string): string {
+  return `${STORAGE_BASE}/storage/v1/object/public/studio-gallery/${path}`;
+}
+
 export const STUDIO_PHOTOS = [
   {
     name: "Hideaway Pilates",
     slug: "hideaway-pilates",
     id: "29a71d53-effe-4343-8da2-f523d6f109f8",
     address: "460 Trưng Nữ Vương",
-    image: "https://znrjjqkjpcabcilyhwdk.supabase.co/storage/v1/object/public/studio-gallery/29a71d53-effe-4343-8da2-f523d6f109f8/1390141e-bd08-40f8-aa56-4deb24320032.jpg",
+    image: galleryUrl(
+      "29a71d53-effe-4343-8da2-f523d6f109f8/1390141e-bd08-40f8-aa56-4deb24320032.jpg",
+    ),
   },
   {
     name: "Downtown Pilates",
     slug: "downtown-pilates",
     id: "3f017a73-cf60-4c97-a8c6-f683f4041c7c",
     address: "89 Lê Thanh Nghị",
-    image: "https://znrjjqkjpcabcilyhwdk.supabase.co/storage/v1/object/public/studio-gallery/3f017a73-cf60-4c97-a8c6-f683f4041c7c/4b4f5f11-e242-42d1-bea9-3f6758395de5.jpg",
+    image: galleryUrl(
+      "3f017a73-cf60-4c97-a8c6-f683f4041c7c/4b4f5f11-e242-42d1-bea9-3f6758395de5.jpg",
+    ),
   },
 ] as const;

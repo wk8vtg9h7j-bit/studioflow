@@ -6,11 +6,12 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { STUDIO_PHOTOS } from "../studio-photos";
 import { useFormState } from "react-dom";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
-import { WEEKLY_STUDIO_SCHEDULE } from "@/lib/studioSchedule";
+import { WEEKLY_STUDIO_SCHEDULE, type WeeklyStudioSchedule } from "@/lib/studioSchedule";
 import { signInAction, type AuthState } from "../actions";
 import { SubmitButton } from "../SubmitButton";
 import { GoogleButton } from "../GoogleButton";
@@ -57,7 +58,7 @@ function PreviewRolePicker({ next }: { next: string }) {
 
 type StudioPhoto = (typeof STUDIO_PHOTOS)[number];
 type UpcomingClass = { startsAt: string; name: string };
-type ScheduleResult = { classes: UpcomingClass[] };
+type ScheduleResult = { classes: UpcomingClass[]; weekly?: WeeklyStudioSchedule };
 
 function StudioScheduleDialog({ studio, vi, onClose, onBook }: {
   studio: StudioPhoto;
@@ -68,7 +69,16 @@ function StudioScheduleDialog({ studio, vi, onClose, onBook }: {
   const dialog = useRef<HTMLDialogElement>(null);
   const [data, setData] = useState<ScheduleResult | null>(null);
   const [failed, setFailed] = useState(false);
-  const weekly = WEEKLY_STUDIO_SCHEDULE[studio.slug];
+  // Prefer the pattern derived from real sessions. The static table in
+  // lib/studioSchedule.ts is only a fallback for when the endpoint is
+  // unreachable or the studio has nothing scheduled to derive from — it is
+  // maintained by hand and has drifted from the real schedule before.
+  const derived = data?.weekly;
+  const isDerived = Boolean(
+    derived && (derived.weekdayTimes.length > 0 || derived.weekendTimes.length > 0),
+  );
+  const weekly: WeeklyStudioSchedule =
+    isDerived && derived ? derived : WEEKLY_STUDIO_SCHEDULE[studio.slug];
 
   useEffect(() => {
     const element = dialog.current;
@@ -126,7 +136,9 @@ function StudioScheduleDialog({ studio, vi, onClose, onBook }: {
         </div>
         <section className="mt-5">
           <h3 className="text-sm font-semibold">{vi ? "Lịch hàng tuần" : "Weekly timetable"}</h3>
-          <p className="mt-1 text-xs text-ink-muted">{vi ? "Giờ thường lệ · giờ Đà Nẵng · có thể thay đổi" : "Regular times · Da Nang time · subject to change"}</p>
+          <p className="mt-1 text-xs text-ink-muted">{isDerived
+            ? (vi ? "Theo lịch 4 tuần tới · giờ Đà Nẵng" : "From the next 4 weeks · Da Nang time")
+            : (vi ? "Giờ thường lệ · giờ Đà Nẵng · có thể thay đổi" : "Regular times · Da Nang time · subject to change")}</p>
           <div className="mt-3 grid grid-cols-2 gap-2">
             {[
               { label: vi ? "Thứ 2 – Thứ 6" : "Monday – Friday", times: weekly.weekdayTimes },
@@ -190,8 +202,7 @@ function StudioPhotography({ vi, onBook }: {
             onClick={(event) => { trigger.current = event.currentTarget; setSelected(studio); }}
             className="studio-auth-photo studio-auth-photo-button"
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={studio.image} alt="" className="studio-auth-photo-image" decoding="async" onError={(event) => { event.currentTarget.style.visibility = "hidden"; }} />
+            <Image src={studio.image} alt="" fill priority sizes="(min-width: 1024px) 620px, 50vw" className="studio-auth-photo-image" onError={(event) => { event.currentTarget.style.visibility = "hidden"; console.warn("Studio cover photo failed to load", studio.image); }} />
             <span aria-hidden="true" className="studio-auth-photo-shade" />
             <span className="studio-auth-photo-caption">
               <span className="studio-auth-photo-name">{studio.name}</span>

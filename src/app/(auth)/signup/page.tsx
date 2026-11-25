@@ -5,6 +5,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { STUDIO_PHOTOS } from "../studio-photos";
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
@@ -59,8 +60,7 @@ function SignupForm() {
       {!privateAnThuong && <aside className="studio-auth-photos studio-auth-signup-photos" aria-label={vi ? "Các studio Pilates của chúng tôi" : "Our Pilates studios"}>
         {STUDIO_PHOTOS.map((studio) => (
           <figure key={studio.slug} className="studio-auth-photo">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={studio.image} alt={studio.name} className="studio-auth-photo-image" decoding="async" onError={(event) => { event.currentTarget.style.visibility = "hidden"; }} />
+            <Image src={studio.image} alt={studio.name} fill sizes="(min-width: 1024px) 620px, 50vw" className="studio-auth-photo-image" onError={(event) => { event.currentTarget.style.visibility = "hidden"; console.warn("Studio cover photo failed to load", studio.image); }} />
             <div aria-hidden="true" className="studio-auth-photo-shade" />
             <figcaption className="studio-auth-photo-caption">
               <span className="studio-auth-photo-name">{studio.name}</span>
