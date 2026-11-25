@@ -5,12 +5,14 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { STUDIO_PHOTOS } from "../studio-photos";
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useFormState } from "react-dom";
 import { signUpAction, type AuthState } from "../actions";
 import { SubmitButton } from "../SubmitButton";
+import { GoogleButton } from "../GoogleButton";
 import { useLanguage } from "@/components/LanguageProvider";
 
 const initial: AuthState = { error: null };
@@ -58,8 +60,7 @@ function SignupForm() {
       {!privateAnThuong && <aside className="studio-auth-photos studio-auth-signup-photos" aria-label={vi ? "Các studio Pilates của chúng tôi" : "Our Pilates studios"}>
         {STUDIO_PHOTOS.map((studio) => (
           <figure key={studio.slug} className="studio-auth-photo">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={studio.image} alt={studio.name} className="studio-auth-photo-image" decoding="async" onError={(event) => { event.currentTarget.style.visibility = "hidden"; }} />
+            <Image src={studio.image} alt={studio.name} fill sizes="(min-width: 1024px) 620px, 50vw" className="studio-auth-photo-image" onError={(event) => { event.currentTarget.style.visibility = "hidden"; console.warn("Studio cover photo failed to load", studio.image); }} />
             <div aria-hidden="true" className="studio-auth-photo-shade" />
             <figcaption className="studio-auth-photo-caption">
               <span className="studio-auth-photo-name">{studio.name}</span>
@@ -89,6 +90,8 @@ function SignupForm() {
       </div>}
 
       {privateAnThuong && <div className="studio-auth-notice text-sm">Private Pilates at An Thuong · Ruby & Violet. Your personal coaching program becomes available once your instructor is assigned.</div>}
+      <GoogleButton />
+
       <form action={formAction} className="studio-auth-fields">
         <div>
           <label htmlFor="fullName" className="label">

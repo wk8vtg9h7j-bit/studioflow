@@ -93,5 +93,28 @@
   .studio-auth-photo-button:hover .studio-auth-photo-image { transform: scale(1.045); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .studio-auth-photo-image, .studio-auth-form .btn-primary { transition: none; }
+  .studio-auth-photo-image, .studio-auth-form .btn-primary, .studio-auth-oauth-button { transition: none; }
+}
+
+/* Third-party sign-in. Sits above the email/password fields on both pages and
+   borrows the same ink, line and radius as .studio-auth-form .input so it reads
+   as part of the form rather than a bolted-on widget. */
+.studio-auth-oauth { margin-top: 25px; }
+.studio-auth-oauth-button {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; min-height: 50px; border-radius: 8px;
+  border: 1px solid #d1d1c5; background: #fffdf8; color: var(--auth-ink);
+  font-size: 14px; font-weight: 600; letter-spacing: .02em; cursor: pointer;
+  transition: background-color .18s ease, border-color .18s ease;
+}
+.studio-auth-oauth-button:hover:not(:disabled) { background: #f4f1e8; border-color: #b9bcae; }
+.studio-auth-oauth-button:disabled { opacity: .62; cursor: default; }
+.studio-auth-oauth-error { margin-top: 8px; font-size: 13px; line-height: 1.5; color: #a3332c; }
+.studio-auth-divider {
+  display: flex; align-items: center; gap: 12px; margin-top: 22px;
+  color: var(--auth-muted); font-size: 11px; font-weight: 600;
+  letter-spacing: .14em; text-transform: uppercase;
+}
+.studio-auth-divider::before, .studio-auth-divider::after {
+  content: ""; flex: 1; height: 1px; background: var(--auth-line);
 }

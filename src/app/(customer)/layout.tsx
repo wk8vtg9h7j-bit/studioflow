@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
 import { getLocale } from "@/lib/locale-server";
 import { LanguageProvider, LanguageSwitcher } from "@/components/LanguageProvider";
@@ -18,6 +19,16 @@ export default async function CustomerLayout({children}:{children:React.ReactNod
     const {data:studio} = await svc.from("studios").select("id").eq("slug",slug).maybeSingle();
     if (studio) await svc.from("customers").update({preferred_studio_id:studio.id}).eq("profile_id",profile.id).is("preferred_studio_id",null);
   }
+  // A Google sign-in skips signUpAction, so these members arrive with no phone
+  // number and reception cannot reach them. Collect it once before the app is
+  // usable. /complete-profile sits outside this route group on purpose, so this
+  // redirect cannot loop. Email/password members are untouched: signUpAction has
+  // always required a phone, and pre-0012 accounts without one are left alone.
+  const authProviders = user?.app_metadata?.providers ?? user?.app_metadata?.provider;
+  const usedGoogle = Array.isArray(authProviders)
+    ? authProviders.includes("google")
+    : authProviders === "google";
+  if (usedGoogle && !profile.phone) redirect("/complete-profile");
   const links=[
     {href:"/home",label:vi?"Trang chủ":"Home",symbol:"⌂"},
     {href:"/book",label:vi?"Đặt lớp":"Book",symbol:"▦"},

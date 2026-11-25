@@ -67,6 +67,73 @@ export async function signInAction(
   redirect(next ?? (profile ? homePathForRole(profile.role) : "/dashboard"));
 }
 
+// ---------------------------------------------------------------------------
+// Google sign-in. Supabase mints the provider URL; we hand the browser to it,
+// and Google returns the user to /auth/callback, which exchanges the code for a
+// session — the same route password-recovery links already use.
+//
+// For a first-time Google user the account is created by Supabase itself, so
+// signUpAction below never runs. See the note on it.
+// ---------------------------------------------------------------------------
+export async function signInWithGoogleAction(
+  _prev: AuthState,
+  formData: FormData,
+): Promise<AuthState> {
+  const vi = (await getLocale()) === "vi";
+
+  // The button is hidden unless this is set, but the action is reachable on its
+  // own, so refuse here too rather than trusting the UI.
+  if (process.env.NEXT_PUBLIC_GOOGLE_SIGN_IN !== "1") {
+    return {
+      error: vi
+        ? "Đăng nhập Google chưa khả dụng."
+        : "Google sign-in is not available yet.",
+    };
+  }
+
+  // Preview mode stubs the auth endpoints, so there is nothing to sign in to.
+  if (PREVIEW_MODE) {
+    return {
+      error: vi
+        ? "Đăng nhập Google không khả dụng ở chế độ xem trước."
+        : "Google sign-in is unavailable in preview mode.",
+    };
+  }
+
+  const next = safeNext(formData.get("next"));
+  const callback = new URL("/auth/callback", siteOrigin());
+  if (next) callback.searchParams.set("next", next);
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo: callback.toString() },
+  });
+
+  if (error || !data?.url) {
+    return {
+      error: vi
+        ? "Không thể bắt đầu đăng nhập Google. Vui lòng thử lại."
+        : "Could not start Google sign-in. Please try again.",
+    };
+  }
+
+  redirect(data.url);
+}
+
+// ---------------------------------------------------------------------------
+// IMPORTANT — this is not the only way an account can be created.
+//
+// A third-party sign-in (Google) creates the Supabase auth user itself, so none
+// of the validation below runs for those members: no phone check, no studio
+// choice, no "account already exists" message. The only thing behind an OAuth
+// signup is the handle_new_user() trigger
+// (supabase/migrations/20261125120000_oauth_identity_guards.sql), which defaults
+// the role to 'customer', creates the CRM row and grants the starter credit.
+//
+// So: any rule added here that must hold for EVERY member has to be mirrored in
+// that trigger, or it will silently not apply to Google users.
+// ---------------------------------------------------------------------------
 export async function signUpAction(
   _prev: AuthState,
   formData: FormData,
