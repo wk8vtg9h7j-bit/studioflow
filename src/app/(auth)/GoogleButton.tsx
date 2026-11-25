@@ -16,6 +16,12 @@ const initial: AuthState = { error: null };
 
 const PREVIEW_MODE = process.env.NEXT_PUBLIC_PREVIEW_MODE === "1";
 
+// Opt-in per environment. While the Google OAuth app is in Testing mode Google
+// blocks everyone except its listed test users, so a visible button would be a
+// dead end for every member. Set NEXT_PUBLIC_GOOGLE_SIGN_IN=1 only where the
+// Google app is published and working.
+const GOOGLE_SIGN_IN_ENABLED = process.env.NEXT_PUBLIC_GOOGLE_SIGN_IN === "1";
+
 function GoogleMark() {
   return (
     <svg aria-hidden="true" width="18" height="18" viewBox="0 0 18 18">
@@ -54,7 +60,7 @@ export function GoogleButton({ next = "" }: { next?: string }) {
   const { locale } = useLanguage();
   const vi = locale === "vi";
 
-  if (PREVIEW_MODE) return null;
+  if (PREVIEW_MODE || !GOOGLE_SIGN_IN_ENABLED) return null;
 
   return (
     <div className="studio-auth-oauth">

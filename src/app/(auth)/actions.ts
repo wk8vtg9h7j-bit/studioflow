@@ -81,6 +81,16 @@ export async function signInWithGoogleAction(
 ): Promise<AuthState> {
   const vi = (await getLocale()) === "vi";
 
+  // The button is hidden unless this is set, but the action is reachable on its
+  // own, so refuse here too rather than trusting the UI.
+  if (process.env.NEXT_PUBLIC_GOOGLE_SIGN_IN !== "1") {
+    return {
+      error: vi
+        ? "Đăng nhập Google chưa khả dụng."
+        : "Google sign-in is not available yet.",
+    };
+  }
+
   // Preview mode stubs the auth endpoints, so there is nothing to sign in to.
   if (PREVIEW_MODE) {
     return {
