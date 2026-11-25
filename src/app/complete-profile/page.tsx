@@ -11,12 +11,6 @@ import { completeProfileAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-const STUDIOS: { slug: string; label: string }[] = [
-  { slug: "downtown-pilates", label: "Downtown Pilates" },
-  { slug: "hideaway-pilates", label: "Hideaway Pilates" },
-  { slug: "an-thuong-pilates", label: "An Thuong — Private Coaching" },
-];
-
 export default async function CompleteProfilePage({
   searchParams,
 }: {
@@ -78,21 +72,11 @@ export default async function CompleteProfilePage({
             />
           </div>
 
-          <div>
-            <label htmlFor="studio_slug" className="label">
-              {vi ? "Studio bạn hay tập (tuỳ chọn)" : "Your usual studio (optional)"}
-            </label>
-            <select id="studio_slug" name="studio_slug" className="input" defaultValue="">
-              <option value="">
-                {vi ? "Chọn sau" : "Choose later"}
-              </option>
-              {STUDIOS.map((studio) => (
-                <option key={studio.slug} value={studio.slug}>
-                  {studio.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <p className="text-xs text-ink-muted">
+            {vi
+              ? "Bạn có thể đặt lớp tại bất kỳ studio nào của chúng tôi."
+              : "You can book classes at any of our studios."}
+          </p>
 
           <button type="submit" className="btn-primary w-full">
             {vi ? "Tiếp tục" : "Continue"}

@@ -1,11 +1,13 @@
 // ============================================================================
 // Finish setting up an account created by a third-party sign-in.
 //
-// Google gives us a verified email and a name, but never a phone number, and
-// never the studio choice that the signup form collects. Reception relies on a
-// phone number to reach members about classes, so it is required here before
-// the app becomes usable. Studio is optional — it only sets a default and the
-// member can change it later on /profile.
+// Google gives us a verified email and a name, but never a phone number.
+// Reception relies on a phone number to reach members about classes, so it is
+// required here before the app becomes usable.
+//
+// Nothing else is asked for. In particular there is no studio choice: members
+// book at any studio, /book lists them all, and preferred_studio_id gates
+// nothing — asking here would imply a restriction that does not exist.
 // ============================================================================
 "use server";
 
@@ -13,12 +15,6 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-
-const STUDIO_SLUGS = [
-  "downtown-pilates",
-  "hideaway-pilates",
-  "an-thuong-pilates",
-];
 
 export async function completeProfileAction(formData: FormData) {
   const profile = await requireRole("customer", "/complete-profile");
@@ -47,22 +43,6 @@ export async function completeProfileAction(formData: FormData) {
     .eq("profile_id", profile.id);
   if (customerError) redirect("/complete-profile?status=error");
 
-  const slug = String(formData.get("studio_slug") ?? "");
-  if (STUDIO_SLUGS.includes(slug)) {
-    const { data: studio } = await service
-      .from("studios")
-      .select("id")
-      .eq("slug", slug)
-      .eq("active", true)
-      .maybeSingle();
-    if (studio) {
-      await service
-        .from("customers")
-        .update({ preferred_studio_id: (studio as { id: string }).id })
-        .eq("profile_id", profile.id);
-    }
-  }
-
   revalidatePath("/", "layout");
-  redirect(slug === "an-thuong-pilates" ? "/coaching" : "/home");
+  redirect("/home");
 }
