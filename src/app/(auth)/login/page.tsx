@@ -11,6 +11,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { signInAction, type AuthState } from "../actions";
 import { SubmitButton } from "../SubmitButton";
+import { GoogleButton } from "../GoogleButton";
 import { useLanguage } from "@/components/LanguageProvider";
 
 const initial: AuthState = { error: null };
@@ -61,6 +62,8 @@ function LoginForm() {
       <p className="mt-1 text-sm text-ink-muted">
         {vi ? "Đăng nhập để đặt lớp và quản lý tài khoản của bạn." : "Log in to manage your studio or book a class."}
       </p>
+
+      <GoogleButton next={next} />
 
       <form action={formAction} className="mt-6 space-y-4">
         <input type="hidden" name="next" value={next} />

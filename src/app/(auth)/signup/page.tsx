@@ -10,6 +10,7 @@ import { useSearchParams } from "next/navigation";
 import { useFormState } from "react-dom";
 import { signUpAction, type AuthState } from "../actions";
 import { SubmitButton } from "../SubmitButton";
+import { GoogleButton } from "../GoogleButton";
 import { useLanguage } from "@/components/LanguageProvider";
 
 const initial: AuthState = { error: null };
@@ -73,6 +74,8 @@ function SignupForm() {
       </div>}
 
       {privateAnThuong && <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">Private Pilates at An Thuong · Ruby & Violet. Your personal coaching program becomes available once your instructor is assigned.</div>}
+      <GoogleButton />
+
       <form action={formAction} className="mt-6 space-y-4">
         <div>
           <label htmlFor="fullName" className="label">
