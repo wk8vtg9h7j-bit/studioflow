@@ -40,10 +40,19 @@ export default async function CustomerLayout({children}:{children:React.ReactNod
       <header className="customer-header"><div className="customer-header-inner">
         <Link className="customer-brand" href="/home">Studio<span style={{color:"#8b9d8a"}}>Flow</span></Link>
         <nav aria-label="Customer navigation" className="customer-desktop-nav">
-          {links.map(link=><Link key={link.href} href={link.href}>{link.label}</Link>)}
-          <Link href="/studios">{vi?"Studio":"Studios"}</Link><Link href="/private">{vi?"Buổi riêng":"Private sessions"}</Link>
-          <Link href="/coaching">{vi?"Tiến độ":"My progress"}</Link>
-          <Link href="/my-packages">{vi?"Gói tập":"Packages"}</Link>
+          <Link href="/home">{vi?"Trang chủ":"Home"}</Link>
+          <Link href="/book">{vi?"Lớp nhóm":"Group classes"}</Link>
+          <Link href="/private">{vi?"Buổi riêng":"Private"}</Link>
+          <Link href="/my-bookings">{vi?"Lịch sử":"Activity"}</Link>
+          <details className="customer-nav-more">
+            <summary>{vi?"Thêm":"More"} <span aria-hidden="true">⌄</span></summary>
+            <div className="customer-nav-more-panel">
+              <Link href="/profile">{vi?"Hồ sơ":"Profile"}</Link>
+              <Link href="/studios">{vi?"Studio":"Studios"}</Link>
+              <Link href="/coaching">{vi?"Tiến độ":"My progress"}</Link>
+              <Link href="/my-packages">{vi?"Gói tập":"Packages"}</Link>
+            </div>
+          </details>
         </nav>
         <div className="customer-account-actions"><div className="customer-account-info"><span className="customer-account-name">{profile.full_name || (vi?"Tài khoản":"My account")}</span><span className="customer-account-email" title={profile.email ?? ""}>{profile.email || ""}</span></div><LanguageSwitcher/><span className="customer-logout"><SignOutButton label={vi?"Đăng xuất":"Log out"}/></span></div>
       </div></header>
