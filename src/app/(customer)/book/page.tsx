@@ -10,6 +10,7 @@
 // are read through their normal authed client so each row knows whether they're
 // already booked or waitlisted.
 // ============================================================================
+import Link from "next/link";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import type { SessionWithRelations } from "@/lib/types";
@@ -69,9 +70,14 @@ export default async function BookPage({
     .lt("starts_at", dayEnd.toISOString());
 
   // An Thuong is a private-only location, never part of the public group timetable.
-  const { data: privateOnlyStudios } = await service.from("studios").select("id").eq("private_only",true);
+  const [{ data: privateOnlyStudios }, {data: regularTypes}] = await Promise.all([
+    service.from("studios").select("id").eq("private_only",true),
+    service.from("class_types").select("id").eq("pool","regular"),
+  ]);
   const privateOnlyIds = (privateOnlyStudios??[]).map((st)=>st.id);
   if (privateOnlyIds.length) sessionsQuery = sessionsQuery.not("studio_id","in",`(${privateOnlyIds.join(",")})`);
+  const regularTypeIds = (regularTypes??[]).map(t=>t.id);
+  if (regularTypeIds.length) sessionsQuery = sessionsQuery.in("class_type_id",regularTypeIds);
   if (studio) sessionsQuery = sessionsQuery.eq("studio_id", studio);
   if (type) sessionsQuery = sessionsQuery.eq("class_type_id", type);
 
@@ -85,7 +91,7 @@ export default async function BookPage({
   // for non-admins, so whatever comes back is safe to offer.
   const [studiosRes, classTypesRes] = await Promise.all([
     supabase.from("studios").select("id,name").eq("active",true).eq("private_only",false).order("name"),
-    supabase.from("class_types").select("id,name").order("name"),
+    supabase.from("class_types").select("id,name").eq("pool","regular").order("name"),
   ]);
   const studios = (studiosRes.data ?? []) as { id: string; name: string }[];
   const classTypes = (classTypesRes.data ?? []) as {
@@ -168,9 +174,13 @@ export default async function BookPage({
 
   return (
     <div className="space-y-8">
+      <nav aria-label="Choose booking type" className="grid grid-cols-2 gap-2 rounded-2xl border border-stone-200 bg-white p-2">
+        <span aria-current="page" className="flex min-h-14 items-center justify-center rounded-xl bg-[#354a40] px-3 text-center text-sm font-semibold text-white">{vi?"Lớp Reformer nhóm":"Group Reformer classes"}</span>
+        <Link href="/private" className="flex min-h-14 items-center justify-center rounded-xl px-3 text-center text-sm font-semibold text-[#354a40] hover:bg-stone-100">{vi?"Buổi tập riêng":"Private sessions"} →</Link>
+      </nav>
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-ink">
-          {vi ? "Đặt lớp" : "Book a class"}
+          {vi ? "Đặt lớp Reformer nhóm" : "Book a Group Reformer Class"}
         </h1>
         <p className="mt-1 text-sm text-ink-muted">
           {vi
