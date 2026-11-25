@@ -42,11 +42,7 @@ function GoogleMark() {
 function GoogleSubmit({ label, pendingLabel }: { label: string; pendingLabel: string }) {
   const { pending } = useFormStatus();
   return (
-    <button
-      type="submit"
-      className="btn btn-secondary flex w-full items-center justify-center gap-2"
-      disabled={pending}
-    >
+    <button type="submit" className="studio-auth-oauth-button" disabled={pending}>
       {pending ? null : <GoogleMark />}
       <span>{pending ? pendingLabel : label}</span>
     </button>
@@ -61,7 +57,7 @@ export function GoogleButton({ next = "" }: { next?: string }) {
   if (PREVIEW_MODE) return null;
 
   return (
-    <div className="mt-6">
+    <div className="studio-auth-oauth">
       <form action={formAction}>
         <input type="hidden" name="next" value={next} />
         <GoogleSubmit
@@ -71,17 +67,13 @@ export function GoogleButton({ next = "" }: { next?: string }) {
       </form>
 
       {state.error ? (
-        <p className="mt-2 text-sm text-red-600" role="alert">
+        <p className="studio-auth-oauth-error" role="alert">
           {state.error}
         </p>
       ) : null}
 
-      <div className="mt-6 flex items-center gap-3">
-        <span className="h-px flex-1 bg-line" />
-        <span className="text-xs font-medium uppercase tracking-wide text-ink-muted">
-          {vi ? "hoặc" : "or"}
-        </span>
-        <span className="h-px flex-1 bg-line" />
+      <div className="studio-auth-divider" aria-hidden="true">
+        {vi ? "hoặc" : "or"}
       </div>
     </div>
   );

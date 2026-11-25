@@ -8,7 +8,10 @@
 // emil-design-eng: custom ease-out curves, transform/opacity only, press +
 // hover-lift, and reduced-motion fallbacks (utilities live in globals.css).
 // ============================================================================
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { STUDIO_PHOTOS } from "./(auth)/studio-photos";
+import { WEEKLY_STUDIO_SCHEDULE } from "@/lib/studioSchedule";
+import "./landing-design.css";
 import Link from "next/link";
 import {
   LanguageSwitcher,
@@ -69,19 +72,44 @@ export default function LandingExperience({
 }: {
   studios: LandingStudio[];
 }) {
-  const [studioKey, setStudioKey] = useState<string>(studios[0]?.key ?? "");
+  const publicStudios = STUDIO_PHOTOS.map((photo) => {
+    const existing = studios.find((s) => s.key === photo.slug);
+    const weekly = WEEKLY_STUDIO_SCHEDULE[photo.slug];
+    return {
+      ...(existing ?? { key: photo.slug, accent: "#344332", blurb: "Small-group reformer Pilates with hands-on coaching. Book your reformer, move with intention, leave recharged.", classes: [], scheduleLabel: "", weekdayTimes: weekly.weekdayTimes, weekendTimes: weekly.weekendTimes }),
+      name: photo.name, short: photo.name, address: photo.address,
+      image: photo.image, id: photo.id,
+    };
+  });
+  const [studioKey, setStudioKey] = useState<string>(publicStudios[0].key);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const photoTrigger = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog || !scheduleOpen) return;
+    dialog.showModal();
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { dialog.close(); document.body.style.overflow = previous; };
+  }, [scheduleOpen]);
+  function closeSchedule() {
+    setScheduleOpen(false);
+    requestAnimationFrame(() => photoTrigger.current?.focus());
+  }
   const [selected, setSelected] = useState<number>(2); // default: 10 Class Pack
   const { locale } = useLanguage();
   const vi = locale === "vi";
 
-  const studio = studios.find((s) => s.key === studioKey) ?? studios[0];
+  const studio = publicStudios.find((s) => s.key === studioKey) ?? publicStudios[0];
   const pkg = PACKAGES[selected];
   const perClass = Math.round(pkg.price / pkg.credits);
   const savedPerClass = SINGLE_PER_CLASS - perClass;
   const savedTotal = savedPerClass * pkg.credits;
   const savedPct = Math.round((savedPerClass / SINGLE_PER_CLASS) * 100);
 
-  const accent = studio?.accent ?? "#7c3aed";
+  const accent = "#344332";
+  const bookingHref = "/login?next=" + encodeURIComponent("/book?studio=" + studio.id);
   const packageName = (p: Pkg) => {
     if (!vi) return p.name;
     if (p.credits === 1) return "Lớp lẻ";
@@ -90,117 +118,114 @@ export default function LandingExperience({
 
   return (
     <main
-      className="min-h-screen transition-colors duration-500"
+      className="sf-landing min-h-screen"
       style={{ ["--accent" as string]: accent }}
     >
-      {/* Header ----------------------------------------------------------- */}
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
-        <span className="text-lg font-semibold tracking-tight text-ink">
-          Recharged
-          <span className="text-[var(--accent)] transition-colors duration-500">
-            {" "}
-            Da Nang
-          </span>
-        </span>
-        <nav className="flex items-center gap-2">
+      <header className="sf-landing-header">
+        <div className="sf-landing-brand">
+          <span className="sf-landing-wordmark">Studio<span>Flow</span></span>
+          <span className="sf-landing-brand-sub">PILATES BY RECHARGED</span>
+        </div>
+        <nav className="sf-landing-nav">
           <LanguageSwitcher />
-          <Link href="/login" className="btn-ghost press">
-            {vi ? "Đăng nhập" : "Log in"}
-          </Link>
-          <Link
-            href="/book"
-            className="press inline-flex items-center justify-center rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors duration-500 hover:opacity-90"
-          >
-            {vi ? "Đặt lớp" : "Book a class"}
-          </Link>
+          <Link href="/login" className="sf-landing-nav-login">{vi ? "Đăng nhập" : "Log in"}</Link>
+          <Link href="/book" className="sf-landing-primary sf-landing-nav-book">{vi ? "Đặt lớp" : "Book a class"}</Link>
         </nav>
       </header>
 
-      {/* Hero ------------------------------------------------------------- */}
-      <section className="mx-auto max-w-3xl px-6 pb-10 pt-16 text-center sm:pt-20">
-        {/* Location toggle */}
-        {studios.length > 1 && (
-          <div className="reveal reveal-1 mb-7 inline-flex rounded-full border border-stone-200 bg-white p-1 shadow-sm">
-            {studios.map((s) => {
-              const active = s.key === studio?.key;
-              return (
-                <button
-                  key={s.key}
-                  type="button"
-                  onClick={() => setStudioKey(s.key)}
-                  aria-pressed={active}
-                  className="press relative rounded-full px-5 py-2 text-sm font-medium transition-colors duration-300"
-                  style={
-                    active
-                      ? { backgroundColor: s.accent, color: "#fff" }
-                      : { color: "#57534e" }
-                  }
-                >
-                  {s.short}
-                </button>
-              );
-            })}
+      <section className="sf-landing-hero">
+        <div className="sf-landing-intro">
+          <p className="sf-landing-eyebrow">{vi ? "PILATES REFORMER · ĐÀ NẴNG" : "REFORMER PILATES · DA NANG"}</p>
+          <h1>{vi ? "Chuyển động có chủ đích." : "Move with intention."}<br />{vi ? "Rời lớp với năng lượng mới." : "Leave recharged."}</h1>
+          <p className="sf-landing-description">
+            {vi ? "Pilates reformer nhóm nhỏ với hướng dẫn tận tình. Đặt chỗ tập Reformer, tập có chủ đích và rời studio với năng lượng mới." : studio.blurb}
+          </p>
+          <div className="sf-landing-actions">
+            <Link href="/book" className="sf-landing-primary">{vi ? "Đặt lớp đầu tiên" : "Book your first class"}</Link>
+            <Link href="/login" className="sf-landing-secondary">{vi ? "Tôi đã có tài khoản" : "I have an account"}</Link>
           </div>
-        )}
-
-        <p className="reveal reveal-2 mb-4 inline-flex items-center rounded-full border border-stone-200 bg-white px-3 py-1 text-xs font-medium text-ink-muted">
-          {studio?.name}
-          {studio?.address ? ` · ${studio.address}` : ""}
-        </p>
-        <h1 className="reveal reveal-3 text-balance text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
-          {vi ? "Chuyển động có chủ đích." : "Move with intention."}
-          <br />
-          {vi ? "Rời lớp với năng lượng mới." : "Leave recharged."}
-        </h1>
-        <p className="reveal reveal-4 mx-auto mt-5 max-w-xl text-pretty text-lg text-ink-muted">
-          {vi
-            ? "Pilates reformer nhóm nhỏ với hướng dẫn tận tình. Đặt lớp, tập có chủ đích và rời studio với năng lượng mới."
-            : studio?.blurb}
-        </p>
-        <div className="reveal reveal-5 mt-8 flex items-center justify-center gap-3">
-          <Link
-            href="/book"
-            className="press inline-flex items-center justify-center rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors duration-500 hover:opacity-90"
-          >
-            {vi ? "Đặt lớp đầu tiên" : "Book your first class"}
-          </Link>
-          <Link href="/login" className="btn-secondary press">
-            {vi ? "Tôi đã có tài khoản" : "I have an account"}
-          </Link>
         </div>
-
-        <div className="reveal mt-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left">
-          <p className="text-sm font-semibold text-amber-900">
+        <div className="sf-landing-photos" aria-label={vi ? "Chọn studio để xem lịch" : "Choose a studio to view its schedule"}>
+          {publicStudios.map((s) => (
+            <button key={s.key} type="button" className="sf-landing-photo" aria-haspopup="dialog"
+              aria-label={s.name + (vi ? " — Xem lịch" : " — View schedule")}
+              onClick={(event) => { photoTrigger.current = event.currentTarget; setStudioKey(s.key); setScheduleOpen(true); }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={s.image} alt="" decoding="async" onError={(event) => { event.currentTarget.style.visibility = "hidden"; }} />
+              <span className="sf-landing-photo-shade" aria-hidden="true" />
+              <span className="sf-landing-photo-caption">
+                <span className="sf-landing-photo-name">{s.name}</span>
+                <span className="sf-landing-photo-address">{s.address}</span>
+                <span className="sf-landing-photo-action">{vi ? "Xem lịch" : "View schedule"} <span aria-hidden="true">→</span></span>
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="sf-landing-notice">
+          <p className="sf-landing-notice-title">
             {vi ? "Đặt trước, thanh toán sau buổi tập" : "Reserve now, pay after class"}
           </p>
-          <p className="mt-1 text-sm leading-relaxed text-amber-800">
+          <p className="sf-landing-notice-copy">
             {vi
               ? "Khi tạo tài khoản, bạn sẽ thấy 1 tín dụng khởi đầu để giữ chỗ cho lớp thường đầu tiên. Đây là tín dụng đặt chỗ, không phải lớp miễn phí. Nếu chưa mua gói trả phí, bạn thanh toán tại studio sau buổi tập. Lớp lẻ thường: 400.000 ₫."
               : "When you create an account, you’ll see 1 starter credit so you can reserve your first regular class. It is a booking credit, not a free class. If you haven’t purchased a paid package, you pay at the studio after class. Single regular class: 400,000 VND."}
           </p>
         </div>
+
       </section>
 
+      <dialog ref={dialogRef} className="sf-landing-dialog" aria-labelledby="sf-schedule-title"
+        onCancel={(event) => { event.preventDefault(); closeSchedule(); }}
+        onClick={(event) => { if (event.target === event.currentTarget) closeSchedule(); }}>
+        {scheduleOpen && <div className="sf-landing-dialog-inner">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="sf-landing-eyebrow">{vi ? "LỊCH TẬP PILATES" : "PILATES SCHEDULE"}</p>
+              <h2 id="sf-schedule-title" className="sf-landing-section-title">{studio.name}</h2>
+              <p className="mt-1 text-sm text-ink-muted">{studio.address}</p>
+            </div>
+            <button type="button" autoFocus onClick={closeSchedule} aria-label={vi ? "Đóng" : "Close"} className="sf-landing-close">×</button>
+          </div>
+          <div className="mt-5 grid grid-cols-2 gap-2">
+            {[{label: vi ? "Thứ 2 – Thứ 6" : "Monday – Friday", times: studio.weekdayTimes}, {label: vi ? "Thứ 7 – Chủ nhật" : "Saturday – Sunday", times: studio.weekendTimes}].map((group) => (
+              <div key={group.label} className="sf-landing-timetable">
+                <p className="text-xs font-semibold">{group.label}</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">{group.times.map(time => <span key={time} className="sf-landing-time">{time}</span>)}</div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-ink-muted">{vi ? "Giờ thường lệ · giờ Đà Nẵng · có thể thay đổi" : "Regular times · Da Nang time · subject to change"}</p>
+          <div className="mt-5 border-t border-[#dedbd1] pt-4">
+            <h3 className="text-sm font-semibold">{vi ? "Lớp sắp tới" : "Next classes"}{studio.scheduleLabel && " · " + studio.scheduleLabel}</h3>
+            {studio.classes.length > 0 ? <ul className="mt-2 divide-y divide-[#dedbd1]">
+              {studio.classes.map((item, i) => <li key={item.time + i} className="flex items-center justify-between gap-3 py-3 text-sm"><div><p className="font-medium">{item.name}</p><p className="text-xs text-ink-muted">{item.time} · {vi ? "Tín dụng" : "Credits"}: {item.credits}</p></div><span className="text-xs text-ink-muted">{item.booked}/{item.capacity} {vi ? "đã đặt" : "booked"}</span></li>)}
+            </ul> : <p className="mt-3 text-sm text-ink-muted">{vi ? "Lịch lớp sẽ sớm được cập nhật." : "Schedule coming soon — check back shortly."}</p>}
+          </div>
+          <Link href={bookingHref} className="sf-landing-primary mt-5 w-full">{vi ? "Đăng nhập để đặt lớp" : "Log in to book a class"}</Link>
+        </div>}
+      </dialog>
+
       {/* Classes ---------------------------------------------------------- */}
-      <section className="mx-auto max-w-5xl px-6 py-12">
-        <div className="mb-6 flex items-end justify-between">
+      <section className="sf-landing-section">
+        <div className="sf-landing-section-header">
           <div>
-            <h2 className="text-xl font-semibold tracking-tight text-ink">
+            <h2 className="sf-landing-section-title">
               {vi ? "Lịch lớp" : "Weekly schedule"} · {studio?.short}
             </h2>
             <p className="mt-1 text-sm text-ink-muted">
               {vi ? "Lịch cố định hàng tuần" : "Current recurring timetable"}
             </p>
           </div>
-          <span className="text-sm text-ink-muted">
-            {vi ? "50 phút · tối đa 4 người" : "50 min · max 4 people"}
-          </span>
+          <div className="sf-landing-schedule-switch">
+            {publicStudios.map(s => <button key={s.key} type="button" aria-pressed={s.key === studioKey} onClick={() => setStudioKey(s.key)}>{s.name.replace(" Pilates", "")}</button>)}
+          </div>
+          <span className="text-xs text-ink-muted">{vi ? "50 phút · tối đa 4 người" : "50 min · max 4 people"}</span>
         </div>
 
         {studio &&
           (studio.weekdayTimes.length > 0 || studio.weekendTimes.length > 0) && (
             <div className="mb-6 grid gap-3 sm:grid-cols-2">
-              <div className="card px-4 py-3">
+              <div className="sf-landing-timetable">
                 <p className="text-xs font-semibold uppercase tracking-wide text-ink-soft">
                   {vi ? "Thứ 2 – Thứ 6" : "Monday – Friday"}
                 </p>
@@ -208,7 +233,7 @@ export default function LandingExperience({
                   {studio.weekdayTimes.join(" · ")}
                 </p>
               </div>
-              <div className="card px-4 py-3">
+              <div className="sf-landing-timetable">
                 <p className="text-xs font-semibold uppercase tracking-wide text-ink-soft">
                   {vi ? "Thứ 7 – Chủ nhật" : "Saturday – Sunday"}
                 </p>
@@ -226,11 +251,11 @@ export default function LandingExperience({
         )}
 
         {studio && studio.classes.length > 0 ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {studio.classes.map((c, i) => (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {studio.classes.map((c) => (
               <article
                 key={`${c.name}-${c.time}`}
-                className={`card hover-lift reveal reveal-${Math.min(i + 1, 6)} p-5`}
+                className="sf-landing-class"
               >
                 <div className="flex items-center justify-between">
                   <span
@@ -259,16 +284,16 @@ export default function LandingExperience({
             ))}
           </div>
         ) : (
-          <div className="card px-5 py-12 text-center text-sm text-ink-muted">
+          <div className="sf-landing-class px-5 py-12 text-center text-sm text-ink-muted">
             {vi ? "Lịch lớp sẽ sớm được cập nhật." : "Schedule coming soon — check back shortly."}
           </div>
         )}
       </section>
 
       {/* Pricing ---------------------------------------------------------- */}
-      <section className="mx-auto max-w-5xl px-6 pb-24 pt-4">
+      <section className="sf-landing-section sf-landing-pricing">
         <div className="mb-6 text-center">
-          <h2 className="text-xl font-semibold tracking-tight text-ink">
+          <h2 className="sf-landing-section-title">
             {vi ? "Gói lớp" : "Class packages"}
           </h2>
           <p className="mt-1.5 text-sm text-ink-muted">
@@ -278,7 +303,7 @@ export default function LandingExperience({
           </p>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="sf-landing-packages">
           {PACKAGES.map((p, i) => {
             const active = i === selected;
             const each = Math.round(p.price / p.credits);
@@ -288,7 +313,7 @@ export default function LandingExperience({
                 type="button"
                 onClick={() => setSelected(i)}
                 aria-pressed={active}
-                className={`press relative rounded-xl border bg-white p-5 text-left transition-[transform,box-shadow,border-color] duration-200 ${
+                className={`sf-landing-package relative border text-left ${
                   active
                     ? "shadow-card"
                     : "border-stone-200 hover:border-stone-300"
@@ -311,7 +336,7 @@ export default function LandingExperience({
                   </span>
                 )}
                 <h3 className="text-sm font-semibold text-ink">{packageName(p)}</h3>
-                <p className="mt-2 text-2xl font-semibold tracking-tight text-ink">
+                <p className="mt-2 font-serif text-xl tracking-tight text-ink sm:text-2xl">
                   {vnd(p.price)}
                 </p>
                 <p className="mt-1 text-xs text-ink-muted">
@@ -330,7 +355,7 @@ export default function LandingExperience({
         {/* Selected summary */}
         <div
           key={`${selected}-${studio?.key}`}
-          className="reveal card mt-6 flex flex-col items-start justify-between gap-4 p-6 sm:flex-row sm:items-center"
+          className="sf-landing-summary mt-6 flex flex-col items-start justify-between gap-4 p-5 sm:flex-row sm:items-center"
         >
           <div>
             <p className="text-sm font-medium text-ink">
@@ -353,7 +378,7 @@ export default function LandingExperience({
           </div>
           <Link
             href="/book"
-            className="press inline-flex shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors duration-500 hover:opacity-90"
+            className="sf-landing-primary shrink-0"
           >
             {vi
               ? `Mua ${pkg.credits} tín dụng`
