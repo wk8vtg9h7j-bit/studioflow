@@ -22,11 +22,13 @@ import {
   grantPackageAction,
   adjustCreditsAction,
   attachLoginAction,
+  issueCustomerPasswordAction,
   deleteCustomerAction,
   getCustomerHistoryAction,
   overrideBookingPaymentStatusAction,
   type CustomerActionState,
   type AddCustomerState,
+  type IssuePasswordState,
   type CustomerHistoryResult,
 } from "./actions";
 
@@ -39,6 +41,7 @@ export type CustomerWithProfile = Customer & {
 
 const attachInitialState: AddCustomerState = {};
 const deleteInitialState: AddCustomerState = {};
+const issuePasswordInitialState: IssuePasswordState = {};
 
 const STATUS_STYLES: Record<string, string> = {
   active: "bg-emerald-50 text-emerald-700",
@@ -308,8 +311,10 @@ export function CustomerRow({
       {editing && (
         <div className="space-y-6 border-t border-stone-200 bg-stone-50 px-5 py-4">
           <CustomerForm customer={customer} onDone={() => setEditing(false)} />
-          {isWalkIn && (
+          {isWalkIn ? (
             <AttachLogin customerId={customer.id} defaultName={name} />
+          ) : (
+            <IssuePassword customerId={customer.id} />
           )}
           <AdjustCredits
             customerId={customer.id}
@@ -434,6 +439,75 @@ function AttachLogin({
 
         <SubmitButton>Attach login</SubmitButton>
       </form>
+    </div>
+  );
+}
+
+// Hand a member a password at the desk, for when they cannot get at the
+// "forgot password" email. Shown once; we never store it.
+function IssuePassword({ customerId }: { customerId: string }) {
+  const [state, formAction] = useFormState(
+    issueCustomerPasswordAction,
+    issuePasswordInitialState,
+  );
+  const [copied, setCopied] = useState(false);
+
+  return (
+    <div className="border-t border-stone-200 pt-4">
+      <h3 className="mb-2 text-sm font-semibold text-ink">Issue a password</h3>
+      <p className="mb-3 text-xs leading-relaxed text-ink-muted">
+        Generates a new password for this member and shows it once, for when
+        they cannot use the &ldquo;forgot password&rdquo; email. It replaces
+        their current password straight away, so only do this with the member
+        present — and ask them to change it after signing in.
+      </p>
+
+      <form action={formAction}>
+        <input type="hidden" name="customer_id" value={customerId} />
+        <SubmitButton>Generate password</SubmitButton>
+      </form>
+
+      {state.error ? (
+        <p className="mt-2 text-sm text-rose-700" role="alert">
+          {state.error}
+        </p>
+      ) : null}
+
+      {state.ok && state.password ? (
+        <div
+          className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3"
+          role="status"
+        >
+          <p className="text-xs font-semibold text-amber-900">
+            New password{state.email ? ` for ${state.email}` : ""}
+          </p>
+          <div className="mt-2 flex items-center gap-2">
+            <code className="flex-1 rounded border border-amber-200 bg-white px-2 py-1 font-mono text-sm tracking-wide text-ink">
+              {state.password}
+            </code>
+            <button
+              type="button"
+              className="btn btn-secondary shrink-0 text-xs"
+              onClick={() => {
+                const value = state.password;
+                if (!value) return;
+                navigator.clipboard
+                  ?.writeText(value)
+                  .then(() => {
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  })
+                  .catch(() => {});
+              }}
+            >
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-amber-800">
+            Shown once and not stored anywhere. If it is lost, generate another.
+          </p>
+        </div>
+      ) : null}
     </div>
   );
 }
