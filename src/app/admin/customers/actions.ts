@@ -25,8 +25,9 @@ export type CustomerActionState = {
   privateBalance?: number;
 };
 export type AddCustomerState = { error?: string; ok?: boolean; message?: string };
-// The generated password is returned to the admin's screen once and never
-// stored anywhere by us — Supabase keeps only its hash.
+// The generated password is returned to the admin's screen once because we
+// never store it — Supabase keeps only its hash. The password itself stays
+// valid until the member changes it.
 export type IssuePasswordState = {
   error?: string;
   ok?: boolean;
@@ -618,17 +619,20 @@ export async function attachLoginAction(
 // can read email at the moment they are standing at the desk. This gives
 // reception a password to hand over instead.
 //
-// The password is generated here rather than typed by staff: a desk-chosen
-// password tends to be weak and reused, and the member is asked to change it
-// after signing in anyway. It is shown once on the admin's screen and is not
-// stored by us — Supabase keeps only its hash.
+// This becomes the member's actual password. Nothing expires it and nothing
+// forces a change: it stays in use until the member changes it themselves.
+//
+// It is generated rather than typed by staff because a desk-chosen password
+// tends to be weak and reused. It is displayed once on the admin's screen —
+// not because it stops working, but because we never store it; Supabase keeps
+// only its hash, so it cannot be looked up again later.
 // ----------------------------------------------------------------------------
 
 // Deliberately excludes I, l, 1, O and 0 so it can be read aloud or copied off
 // a screen without ambiguity.
 const PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
 
-function generateTempPassword(length = 12): string {
+function generatePassword(length = 12): string {
   let out = "";
   for (let i = 0; i < length; i += 1) {
     out += PASSWORD_ALPHABET[randomInt(PASSWORD_ALPHABET.length)];
@@ -691,7 +695,7 @@ export async function issueCustomerPasswordAction(
     };
   }
 
-  const password = generateTempPassword();
+  const password = generatePassword();
   const { error: updateErr } = await svc.auth.admin.updateUserById(profileId, {
     password,
   });

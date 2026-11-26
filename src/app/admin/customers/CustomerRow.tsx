@@ -444,7 +444,8 @@ function AttachLogin({
 }
 
 // Hand a member a password at the desk, for when they cannot get at the
-// "forgot password" email. Shown once; we never store it.
+// "forgot password" email. It becomes their real password and keeps working
+// until they change it; we just can't show it again, because we never store it.
 function IssuePassword({ customerId }: { customerId: string }) {
   const [state, formAction] = useFormState(
     issueCustomerPasswordAction,
@@ -456,10 +457,10 @@ function IssuePassword({ customerId }: { customerId: string }) {
     <div className="border-t border-stone-200 pt-4">
       <h3 className="mb-2 text-sm font-semibold text-ink">Issue a password</h3>
       <p className="mb-3 text-xs leading-relaxed text-ink-muted">
-        Generates a new password for this member and shows it once, for when
-        they cannot use the &ldquo;forgot password&rdquo; email. It replaces
-        their current password straight away, so only do this with the member
-        present — and ask them to change it after signing in.
+        Generates a password for this member, for when they cannot use the
+        &ldquo;forgot password&rdquo; email. This becomes their password and
+        keeps working until they change it themselves. It replaces their
+        current one straight away, so only do this with the member present.
       </p>
 
       <form action={formAction}>
@@ -504,7 +505,9 @@ function IssuePassword({ customerId }: { customerId: string }) {
             </button>
           </div>
           <p className="mt-2 text-xs text-amber-800">
-            Shown once and not stored anywhere. If it is lost, generate another.
+            Give this to the member now — it is not stored anywhere, so it
+            cannot be shown again. The password itself stays valid until they
+            change it. If it is lost, generate another.
           </p>
         </div>
       ) : null}
