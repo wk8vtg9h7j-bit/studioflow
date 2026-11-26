@@ -271,16 +271,49 @@ export async function updatePasswordAction(
   _prev: ResetState,
   formData: FormData,
 ): Promise<ResetState> {
+  const vi = (await getLocale()) === "vi";
   const parsed = passwordOnly.safeParse({ password: formData.get("password") });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid password." };
   }
 
   const supabase = await createClient();
+
+  // The recovery token is spent HERE, on submit — not when the link was opened.
+  // /auth/callback deliberately forwards it untouched, because opening the link
+  // is a GET and email scanners were burning the single-use token before the
+  // member ever saw the form. A scanner does not submit a form.
+  const expired = vi
+    ? "Liên kết đặt lại đã hết hạn hoặc đã được dùng. Vui lòng yêu cầu liên kết mới."
+    : "This reset link has expired or was already used. Please request a new one.";
+
+  const code = String(formData.get("code") ?? "");
+  const tokenHash = String(formData.get("token_hash") ?? "");
+
+  if (code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) return { error: expired };
+  } else if (tokenHash) {
+    const { error } = await supabase.auth.verifyOtp({
+      type: "recovery",
+      token_hash: tokenHash,
+    });
+    if (error) return { error: expired };
+  }
+
   const { error } = await supabase.auth.updateUser({
     password: parsed.data.password,
   });
   if (error) {
+    // No token and no existing session is the common case here: the link was
+    // opened in a different browser from the one that requested the reset.
+    if (/session|jwt|auth/i.test(error.message)) {
+      return {
+        error: vi
+          ? "Không tìm thấy phiên đặt lại. Hãy mở liên kết trong cùng trình duyệt bạn đã yêu cầu, hoặc yêu cầu liên kết mới."
+          : "We couldn't find your reset session. Open the link in the same browser you requested it from, or request a new link.",
+      };
+    }
     return { error: error.message };
   }
 
