@@ -11,6 +11,7 @@
 // ============================================================================
 "use server";
 
+import { randomInt } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireRole } from "@/lib/auth";
@@ -24,6 +25,15 @@ export type CustomerActionState = {
   privateBalance?: number;
 };
 export type AddCustomerState = { error?: string; ok?: boolean; message?: string };
+// The generated password is returned to the admin's screen once because we
+// never store it — Supabase keeps only its hash. The password itself stays
+// valid until the member changes it.
+export type IssuePasswordState = {
+  error?: string;
+  ok?: boolean;
+  password?: string;
+  email?: string;
+};
 
 export type CustomerBookingHistoryItem = {
   id: string;
@@ -599,6 +609,100 @@ export async function attachLoginAction(
     ok: true,
     message: `Login attached — ${email} can now sign in (via "forgot password").`,
   };
+}
+
+// ----------------------------------------------------------------------------
+// Issue a password for a member who already has a login.
+//
+// Both login paths above set an unguessable random password nobody ever sees,
+// which leaves "forgot password" as the only way in. That assumes the member
+// can read email at the moment they are standing at the desk. This gives
+// reception a password to hand over instead.
+//
+// This becomes the member's actual password. Nothing expires it and nothing
+// forces a change: it stays in use until the member changes it themselves.
+//
+// It is generated rather than typed by staff because a desk-chosen password
+// tends to be weak and reused. It is displayed once on the admin's screen —
+// not because it stops working, but because we never store it; Supabase keeps
+// only its hash, so it cannot be looked up again later.
+// ----------------------------------------------------------------------------
+
+// Deliberately excludes I, l, 1, O and 0 so it can be read aloud or copied off
+// a screen without ambiguity.
+const PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+
+function generatePassword(length = 12): string {
+  let out = "";
+  for (let i = 0; i < length; i += 1) {
+    out += PASSWORD_ALPHABET[randomInt(PASSWORD_ALPHABET.length)];
+  }
+  return out;
+}
+
+const IssuePasswordSchema = z.object({
+  customer_id: z.string().uuid("Could not identify the customer."),
+});
+
+export async function issueCustomerPasswordAction(
+  _prev: IssuePasswordState,
+  formData: FormData,
+): Promise<IssuePasswordState> {
+  await requireRole("admin", "/admin/customers");
+
+  const parsed = IssuePasswordSchema.safeParse({
+    customer_id: formData.get("customer_id"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Check the form." };
+  }
+
+  const svc = createServiceClient();
+
+  // Resolve the login from the customer record rather than trusting a posted
+  // profile id, so this can only ever touch the account shown on the row.
+  const { data: customerRow, error: customerErr } = await svc
+    .from("customers")
+    .select("profile_id")
+    .eq("id", parsed.data.customer_id)
+    .maybeSingle();
+  if (customerErr) return { error: customerErr.message };
+  if (!customerRow) return { error: "That customer could not be found." };
+
+  const profileId = (customerRow as { profile_id: string | null }).profile_id;
+  if (!profileId) {
+    return {
+      error:
+        "This customer has no login yet. Attach a login first, then issue a password.",
+    };
+  }
+
+  // Only ever reset a customer login from the CRM. Without this check, a
+  // customer row pointed at a staff profile would let the CRM reset an admin's
+  // or instructor's password.
+  const { data: profileRow, error: profileErr } = await svc
+    .from("profiles")
+    .select("role,email")
+    .eq("id", profileId)
+    .maybeSingle();
+  if (profileErr) return { error: profileErr.message };
+  if (!profileRow) return { error: "That login could not be found." };
+
+  const { role, email } = profileRow as { role: string; email: string | null };
+  if (role !== "customer") {
+    return {
+      error: "That account is not a customer login and cannot be reset here.",
+    };
+  }
+
+  const password = generatePassword();
+  const { error: updateErr } = await svc.auth.admin.updateUserById(profileId, {
+    password,
+  });
+  if (updateErr) return { error: updateErr.message };
+
+  revalidatePath("/admin/customers");
+  return { ok: true, password, email: email ?? undefined };
 }
 
 // ----------------------------------------------------------------------------
